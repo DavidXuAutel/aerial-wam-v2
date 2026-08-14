@@ -211,14 +211,17 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 
 ## 11. 本仓库迁移说明
 
-本目录 `/Users/xudazhong/Projects/aerial-wam-v2` 从 `robomaster-tt-control/.claude/worktrees/aerial-rl-skeleton` 提取，**仅含 V0 相关**：
+本目录 `/Users/xudazhong/Projects/aerial-wam-v2` 从 `robomaster-tt-control/.claude/worktrees/aerial-rl-skeleton` @ `8a063be` 提取。
 
-- `experiments/aerial/rl/` — gate、训练、collector、DA3 vendored
-- `experiments/aerial/sim_verify/` — Fork A 前置验证
-- `experiments/aerial/scripts/` — sync / env / renderer（4 脚本）
-- `configs/aerial_rl*.yaml`
-- V0 文档子集
+**已迁移（整棵 `experiments/aerial/`）**：
 
-**未迁移**：FastWAM、B0/B1 orchestration、Tello 控制、collapse_fix 等。
+- `rl/` — V0 gate、WM 训练、collector、DA3 vendored
+- `sim_verify/` — Fork A 前置验证
+- `orchestration/` / `eval/` / `collapse_fix/` — B0/B1 编排与评测（v1 线，历史资产）
+- `scripts/` — sync/env/renderer + B0/B1/collapse 脚本
+- OpenFly 辅助：`convert_openfly_to_lerobot.py`、`path_expert.py`、`takeover.py` 等
+- `configs/aerial_rl*.yaml` + V0/B0 相关 docs
+
+**未迁移（刻意留在旧 monorepo）**：FastWAM `src/`、`configs/train.yaml` / libero / robotwin、Tello 真机控制。
 
 H100 上 artifacts 仍指向旧 checkout 路径；后续可将 `sync_pull.sh` 的 remote/branch 指向本仓库新 remote。

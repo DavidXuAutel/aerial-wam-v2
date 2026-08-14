@@ -2,7 +2,7 @@
 
 Pure-vision aerial world model (DreamerV3 RSSM) for OpenFly/AirSim, gated by the **V0 four-signal contract** before any production flags flip.
 
-This repository is a **clean extraction** from the `aerial-rl-skeleton` worktree of `robomaster-tt-control`. It contains only V0 bring-up code, specs, and runbooks — no FastWAM training stack, no B0/B1 orchestration, no Tello flight control.
+This repository is a **clean extraction** from the `aerial-rl-skeleton` worktree of `robomaster-tt-control`. It contains the full `experiments/aerial/` tree (V0 RL/gate, sim_verify, B0/B1 orchestration, collapse_fix, OpenFly eval helpers) plus V0 specs/runbooks — **not** the FastWAM `src/` training stack or Tello flight control.
 
 ## Quick links
 
