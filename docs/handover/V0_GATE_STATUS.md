@@ -134,7 +134,7 @@ Mac worktree 全盘 `find` 均无:
   1. **②④ rollout PASS**(H100→4090): `v0_partial_24_r60_20260814.json`; scan 10/16 accepted → eval **n=8**; ② progress 13.49 vs −4.30; ④ ratio **0.113**, before=1.0(空过)
   2. **Merge PASS exit 0**: `v0_gate_r60_20260814.json` = partial 1 + 3 + 24; 四信号全 `ok=true`
   3. **Flags 翻转**(`configs/aerial_rl.yaml`): `depth_head.enable=true`, `safety.kind=threshold`; V1/V4 flags **仍 OFF**
-  4. **Git**: doc+flag commit pending push
+  4. **Git**: commit **`cad5a08`** pushed origin+github; 4090 pulled; H100 bundle sync
 - **2026-08-14(晚³)** —— **git + 语料 + ②④ rollout 启动**:
   1. **Git**: Mac commit **`caa28e6`**(`P0a predict_cones` + r60 scripts + gate doc) → pushed **origin(4090 bare)** + **github**; 4090 pulled; H100 synced via **git bundle** → `caa28e6`
   2. **r60 语料核实**: `dataset_v0_local_depth_r60_20260814` — **51 npz** / **48 usable** / 3 quarantined(`quarantine_fraction=0.059`) on **4090 + H100**; manifest OK; `grab_depth=true`, `step_hz=5.0`
