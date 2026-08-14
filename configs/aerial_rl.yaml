@@ -1,0 +1,144 @@
+# Aerial WAM v2 — model-based RL skeleton config (Plan A).
+# Standalone (not composed via defaults); consumed by
+# experiments/aerial/rl/train_rl.py. Override on the CLI, e.g.
+#   python -m experiments.aerial.rl.train_rl env.backend=airsim corrector.smoke=true
+
+env:
+  backend: mock            # mock | airsim
+  host: 10.229.20.125      # 4090 renderer (see config.env); airsim backend only
+  port: 41451
+  camera: front_custom
+  vehicle: drone_1
+  width: 224               # working resolution — Fork A confirmed here
+  height: 224
+  # Plan-A serial real-env rate. CAPTURE-ONLY L2f is ~20 fps; CLOSED loop is slower.
+  # 4090 loopback (2026-08-04, after depth-aware observe_budget):
+  #   RGB-only ceiling ~14 Hz; grab_depth=true ceiling ~6.2 Hz (observe~120 ms).
+  #   Commanded 5.0 + depth rate-locks (achieved 4.99); commanded 6.0 is near the
+  #   ceiling (5.6–6.0). Cross-net H100→4090 depth was ~0.7 Hz — do NOT collect depth
+  #   off-box. Legacy dataset_v0 labeled 12 Hz / achieved ~7.9 is dt-desynced smoke.
+  step_hz: 5.0
+  grab_depth: false        # depth is supervision-only (spec §1.2); enable via
+                           # collect_dataset --grab-depth on 4090 loopback at step_hz≤5.
+  health_check: true       # sanity-gate IMU + depth on reset (airsim backend)
+  seed: 0
+
+buffer:
+  capacity_episodes: 1000
+  seed: 0
+
+reward:
+  w_progress: 1.0
+  w_collision: 10.0
+  w_maneuver: 0.01         # maneuver-penalty curriculum START weight
+  success_bonus: 10.0
+  # Online arrival/termination radius (m). Deliberately TIGHTER than the eval
+  # success metric (metrics.OPENFLY_SUCCESS_DIST_M = 20 m): the eval radius is a
+  # loose "did it get to the region" score, not a per-step termination gate.
+  success_dist_m: 3.0
+  # Maneuver-penalty curriculum (design doc §2.4): keep the aggressive-maneuver
+  # penalty low early, ramp it up as competence (mean episode return) rises. The
+  # corrector rewrites the live w_maneuver each iter, ramping from the START
+  # weight above toward w_maneuver_final over [threshold, threshold+ramp].
+  # Defaults below make it a NO-OP (final == start). The threshold is a project
+  # placeholder for OUR SEARCH regime — NOT DreamerV3's reward-50.0 (§1.5).
+  w_maneuver_final: 0.01
+  maneuver_curriculum_threshold: 0.0
+  maneuver_curriculum_ramp: 1.0
+
+dynamics:
+  kind: stub               # V0 posture — REVERTED 2026-08-04. The prior "torch"
+                           # (V1 ON) rested on wm_step_5000.pt, now INVALIDATED: a
+                           # single-pillar RGB-only RSSM that skipped the perception
+                           # skeleton (see aerial_v1_wm_gate_invalidated). Rebuild
+                           # goal-first per §7; flip back to torch only when the V0
+                           # four-signal gate (_v0_gate) passes on a clean retrain.
+                           #   stub  = analytic latent (V0, offline-testable)
+                           #   wan   = offline distillation source ONLY (§4.4/§11)
+                           #   torch = DreamerV3 RSSM WM (V1) — needs torch (H100);
+                           #           reads the world_model block below.
+  latent_dim: 8
+  collide_radius_m: 2.0
+
+# DreamerV3-aligned latent world model (design doc §2.1/§2.2). Consumed by
+# dynamics.kind=torch (Phase 2b, dynamics_torch.py) — the recipe transfers, the
+# tuning does not (§1.5). Inert unless kind=torch is selected.
+world_model:
+  recurrent_dim: 512       # RSSM deterministic h (GRU)
+  stoch_dim: 32            # discrete latent groups
+  stoch_classes: 32        # classes per group (32x32 categorical z, DreamerV3)
+  pred_transform: symlog   # reward/progress head regresses symlog(target)
+  reward_head: two_hot
+  num_bins: 255            # two-hot grid over symlog space
+  bin_lo: -20.0
+  bin_hi: 20.0
+  free_bits: 1.0           # per-term KL floor (nats)
+  loss_scales:             # §1.5 governing boundary
+    pred: 1.0
+    dyn: 1.0
+    rep: 0.1
+  decoder:
+    train_only: true       # RGB reconstruction supervises training; not stepped online
+  lr: 1.0e-4
+  train_steps_per_update: 1
+  grad_clip: 1000.0        # clip_grad_norm_ (FastWAM convention)
+  device: cuda
+  checkpoint_dir: experiments/aerial/rl/artifacts/wm_ckpt
+  # [1b] multi-frame depth head (frozen §3 / §6 Step 3). Train offline via
+  # ``python -m experiments.aerial.rl.train_depth_head``. ``enable`` flips to
+  # true ONLY after ``_v0_gate`` four-signal PASS (frozen §4) — keep false here.
+  depth_head:
+    enable: false
+    n_frames: 4
+    # Channel width. Canonical AbsRel-PASS ckpt is base=32. Capacity lift
+    # (DA-V2 teacher absent offline on H100) uses CLI ``--base 64`` — do NOT
+    # silently change this default or init-ckpt from base=32 will refuse.
+    base: 32
+    lr: 1.0e-4
+    grad_clip: 5.0           # real clipping; protects AbsRel from outlier batches
+    absrel_weight: 1.0
+    nll_weight: 0.1
+    # Δ-depth for V0 ③: keep << AbsRel (1.0 from-scratch → AbsRel 0.98/0.70 FAIL).
+    # Prefer --init-ckpt finetune from canonical AbsRel-PASS ckpt.
+    delta_weight: 0.1
+    delta_min_gt_m: 0.5      # approach gate: only ŝ_gt ≥ this contributes
+    delta_support_ratio: 0.6 # match §4.1 scale_support_ratio
+    approach_oversample: 4   # rank candidate windows by GT |Δ| before batching
+    max_depth_m: 200.0       # outdoor AirSim: exclude sky/far-plane from AbsRel
+    scale_depth_min_m: 1.0   # ③ navigational band (must match V0GateThresholds)
+    scale_depth_max_m: 40.0
+    # Decoder-only Δ-finetune (CLI --freeze-encoder). Keep false in yaml until a
+    # head-only run is intentional; enable via CLI for AbsRel-preserving FT.
+    freeze_encoder: false
+    checkpoint_dir: experiments/aerial/rl/artifacts/depth_ckpt
+
+imagination:
+  batch: 64
+  horizon: 10              # <= MAX_IMAGINATION_HORIZON (spec §9 cap)
+
+safety:
+  kind: null               # null | threshold
+  min_depth_m: 1.5
+  min_tau_s: 1.0
+  max_p_coll: 0.5
+
+corrector:
+  iterations: 10
+  episodes_per_iter: 1
+  max_steps: 200
+  # V0 runs today; V1/V4 stay gated OFF until each milestone passes.
+  enable_wm_update: false     # GATE V1 — REVERTED to OFF 2026-08-04. The clean WM
+                              # co-train runs OFFLINE via _wm_train_validate/_v0_gate,
+                              # not the live corrector, until the V0 gate passes.
+  enable_policy_update: false # GATE V4: imagination actor-critic update
+  strict_gates: false
+  # WM-training window sampling (used once enable_wm_update flips on): draw
+  # wm_batch windows of wm_window contiguous steps from the replay buffer.
+  wm_batch: 32
+  wm_window: 8
+  smoke: false
+
+# Optional OpenFly annotation of episodes (start/goal poses). null -> single
+# origin->goal-less episode from the env's default reset.
+annotation: null
+max_episodes: 20
