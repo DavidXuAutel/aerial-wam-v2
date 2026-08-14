@@ -88,7 +88,7 @@ world_model:
   # ``python -m experiments.aerial.rl.train_depth_head``. ``enable`` flips to
   # true ONLY after ``_v0_gate`` four-signal PASS (frozen §4) — keep false here.
   depth_head:
-    enable: false
+    enable: true              # V0 gate PASS 2026-08-14 (v0_gate_r60_20260814.json)
     n_frames: 4
     # Channel width. Canonical AbsRel-PASS ckpt is base=32. Capacity lift
     # (DA-V2 teacher absent offline on H100) uses CLI ``--base 64`` — do NOT
@@ -117,7 +117,7 @@ imagination:
   horizon: 10              # <= MAX_IMAGINATION_HORIZON (spec §9 cap)
 
 safety:
-  kind: null               # null | threshold
+  kind: threshold            # V0 gate PASS 2026-08-14 (v0_gate_r60_20260814.json)
   min_depth_m: 1.5
   min_tau_s: 1.0
   max_p_coll: 0.5

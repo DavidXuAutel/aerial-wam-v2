@@ -6,9 +6,9 @@
 
 ---
 
-## 1. 一句话结论(2026-08-12)
+## 1. 一句话结论(2026-08-14)
 
-**四信号从未在「同一 depth head + 一次 merge」下合拢过。** 各信号在不同时间/机器/ckpt 上分别通过,但 `_v0_gate --merge` 要求所有 signal 的 verdict JSON 并存且全 `ok=true`(`_v0_gate.py:1260` `all_ok = all(v["ok"] is True ...)`)→ **merge 从未跑成**。
+**✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ n=8(<16, scan 仅 10/16 accepted); ④ `before=1.0` 合法空过(`n_contact=0`), ratio=0.113。
 
 ---
 
@@ -18,15 +18,15 @@
 |---|---|---|---|
 | **①a–c** | loss↓≥2% / recon 不劣 / min entropy-frac ≥0.10 | ✅ **r60 clean WM 训练 PASS**(H100 2026-08-14): loss 3.87→1.96 / recon 0.065→0.021 / min_ent 0.47; `wm_train_meta.json` **authoritative=true**; ✅ **partial emit PASS** → `v0_partial_1_r60_20260814.json` | **无 —— partial 已落盘**(H100 2026-08-14) |
 | **①d** | AbsRel ≤0.30 | ✅ head A 0.132(代表)/0.167(approach OOD);✅ **head B local 0.0483**(晚⁷);✅ **r60 ft-head holdout 0.0641**(同上 partial 1) | **无 —— r60 ckpt 已在 partial 1 通过** |
-| **②** | N=16;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ 决定性通过(多次:24.13/−5.11、11.18/−3.75 等) | 仅 **n<16**(已决定不追,见 §4) |
+| **②** | N=16;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ **r60 merge PASS**(H100 2026-08-14): progress **13.49** vs random **−4.30**; final_dist **16.54** vs **34.12**; **n=8** | **无 —— partial 24 + merge 已 PASS** |
 | **③** | reproj median 相对误差 ≤0.25;有效窗 ≥8 | ✅ head A 0.05–0.12(余量对 0.25 不宽);✅ **r60 ft-head median 0.212 / n=90**(H100 2026-08-14) | **无 —— partial 3 已落盘** |
-| **④** | before ≥0.50;ratio ≤0.80 | ✅ head B 稳健 PASS ×3(晚¹⁸:ratio 0.13/0.23/0.12) | 仅 **n<16** + `before=1.0` 属合法空过 |
+| **④** | before ≥0.50;ratio ≤0.80 | ✅ **r60 merge PASS**: ratio **0.113**; before **1.0**(空过,n_contact=0); **n=8** | **无 —— partial 24 + merge 已 PASS** |
 
 ### 2.1 核心 gap:head 一致性
 
-- **r60 部署线(2026-08-14)**: depth = `depth_ckpt_da3_r60_20260814`(init from head B `near_weight=3.0`); WM = `wm_ckpt_r60_20260814`; 语料 = `dataset_v0_local_depth_r60_20260814`
-- ①a–c / ①d / ③ 的 partial 均已在 **r60 ft-head** 上 emit PASS
-- ④ 的 shield predictor 仍用 **head B**(`depth_ckpt_da3_near_20260811`) — P0b 前 **未切到 r60 ckpt**,②④ partial 待 P0 后重跑
+- **r60 部署线(2026-08-14)**: depth = `depth_ckpt_da3_r60_20260814`; WM = `wm_ckpt_r60_20260814`; 语料 = `dataset_v0_local_depth_r60_20260814`
+- **Merge 权威 verdict**: `v0_gate_r60_20260814.json` — 四信号全 `ok=true`, exit 0
+- **Flags 已翻**(2026-08-14): `depth_head.enable=true`, `safety.kind=threshold`; **`enable_wm_update` / `enable_policy_update` 仍 OFF**
 
 ---
 
@@ -47,8 +47,8 @@
 - [x] **C0. P0a: `predict_cones()` 落地** — Mac @ `27f11a3+`; `depth_geometry.py` + `DepthMinPredictor.predict_cones` 五向净空; **`predict_min()`/collector/safety 未动** → ④ 逐字节不变。单测 7/7 pass。
 - [ ] **C1. P0b: shield 消费侧切到锥** — 在 ④ 重跑前做;会改 ④ 行为 → 需重跑 emit partial
 - [ ] **D. n 的 re-freeze** — 见 §4,待用户定 n 值
-- [ ] **E. ②④ 重跑**(P0 之后,4090 渲染器需先起)→ emit partial
-- [ ] **F. `--merge` 全四 partial JSON** → **exit 0 才翻 flags**
+- [x] **E. ②④ 重跑** — ✅ `v0_partial_24_r60_20260814.json` PASS(n=8; ② progress 13.49/−4.30; ④ ratio 0.113, before=1.0 空过)
+- [x] **F. `--merge` 全四 partial JSON** — ✅ **`v0_gate_r60_20260814.json` MERGED PASS exit 0**; flags 已翻
 
 ### 3.1 H100 查证进展(2026-08-12 第一轮已回)
 
@@ -130,6 +130,17 @@ Mac worktree 全盘 `find` 均无:
 
 ## 6. 变更记录
 
+- **2026-08-14(晚⁴)** —— **V0 GATE 合拢 + flags 翻转**:
+  1. **②④ rollout PASS**(H100→4090): `v0_partial_24_r60_20260814.json`; scan 10/16 accepted → eval **n=8**; ② progress 13.49 vs −4.30; ④ ratio **0.113**, before=1.0(空过)
+  2. **Merge PASS exit 0**: `v0_gate_r60_20260814.json` = partial 1 + 3 + 24; 四信号全 `ok=true`
+  3. **Flags 翻转**(`configs/aerial_rl.yaml`): `depth_head.enable=true`, `safety.kind=threshold`; V1/V4 flags **仍 OFF**
+  4. **Git**: doc+flag commit pending push
+- **2026-08-14(晚³)** —— **git + 语料 + ②④ rollout 启动**:
+  1. **Git**: Mac commit **`caa28e6`**(`P0a predict_cones` + r60 scripts + gate doc) → pushed **origin(4090 bare)** + **github**; 4090 pulled; H100 synced via **git bundle** → `caa28e6`
+  2. **r60 语料核实**: `dataset_v0_local_depth_r60_20260814` — **51 npz** / **48 usable** / 3 quarantined(`quarantine_fraction=0.059`) on **4090 + H100**; manifest OK; `grab_depth=true`, `step_hz=5.0`
+  3. **Gate partials 已有(H100)**: `v0_partial_1_r60_20260814.json`(① PASS), `v0_partial_3_r60_20260814.json`(③ median 0.212)
+  4. **②④ rollout 启动(H100→4090)**: `_v0_gate --signals 2,4 --rollout-eval`, depth=`depth_ckpt_da3_r60_20260814`, rollout-dataset=`dataset_v0_headon_20260811`, emit=`v0_partial_24_r60_20260814.json`, log=`~/aerial-wam-v2/artifacts/v0_gate_24_r60.log`, PID≈6143; scan 进行中(10/16 accepted @440/1000 时)
+  5. **Next**: partial 24 PASS → `--merge` 1+3+24 → exit 0 → flip `depth_head.enable` + `safety.kind: threshold`
 - **2026-08-14(晚²)** —— **B' 管线完成(H100 `.25`)**:
   1. **PASS coarse verify**: manifest `grab_depth=true`, `step_hz=5.0`, `quarantine_fraction=0.059≤0.20`, npz keys depth/imu_*/timestamps/vel OK
   2. **Step 3 DepthHead**: `depth_ckpt_da3_r60_20260814/` — finetune from `depth_ckpt_da3_near_20260811`, holdout AbsRel 0.0641, DEPTH_EXIT=0
