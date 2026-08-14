@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Optional
+from typing import Any, Deque, Dict, Optional
 
 import numpy as np
 
+from experiments.aerial.rl.depth_geometry import CONE_KEYS, cone_clearances
 from experiments.aerial.rl.env.obs import Observation
 
 
@@ -21,6 +22,9 @@ class DepthMinPredictor:
     Spec: collector must set ``obs.info['depth_min_pred']`` **before**
     ``safety.should_override``. When no checkpoint is loaded this is a no-op
     (returns None) so V0 default collection stays shield-inert.
+
+    P0a adds :meth:`predict_cones` (five directional clearances on D̂). The
+    collector/shield still consume only :meth:`predict_min` until P0b.
     """
 
     def __init__(self, *, n_frames: int = 4, device: str = "cpu") -> None:
@@ -55,8 +59,8 @@ class DepthMinPredictor:
     def reset(self) -> None:
         self._hist.clear()
 
-    def predict_min(self, obs: Observation) -> Optional[float]:
-        """Push ``obs.rgb`` into history; return min ``D̂`` or None if unloaded."""
+    def _run_depth_head(self, obs: Observation) -> Optional[np.ndarray]:
+        """Push ``obs.rgb`` into history; return 2-D D̂ or None if unloaded/empty."""
         if self._model is None:
             return None
         import torch
@@ -71,8 +75,37 @@ class DepthMinPredictor:
         tensor = torch.from_numpy(stack).unsqueeze(0)  # [1,L,H,W,3]
         with torch.no_grad():
             depth, _ = self._model.predict_from_window(tensor.to(self.device))
-        d = depth.squeeze(0).detach().float().cpu().numpy()
+        return depth.squeeze(0).detach().float().cpu().numpy()
+
+    def predict_min(self, obs: Observation) -> Optional[float]:
+        """Push ``obs.rgb`` into history; return min ``D̂`` or None if unloaded."""
+        d = self._run_depth_head(obs)
+        if d is None:
+            return None
         finite = d[np.isfinite(d) & (d > 0)]
         if finite.size == 0:
             return None
         return float(np.min(finite))
+
+    def predict_cones(
+        self,
+        obs: Observation,
+        *,
+        center_frac: float = 0.5,
+    ) -> Optional[Dict[str, float]]:
+        """Push ``obs.rgb`` into history; return five-direction clearances on D̂.
+
+        Keys (see :mod:`depth_geometry`): ``forward``, ``left``, ``right``,
+        ``up``, ``down``. Each value is the min finite+positive depth in that
+        region; ``inf`` means no obstacle seen there.
+
+        Not wired into the collector/shield until P0b — :meth:`predict_min`
+        remains the sole input for ``depth_min_pred``.
+        """
+        d = self._run_depth_head(obs)
+        if d is None:
+            return None
+        cones = cone_clearances(d, center_frac=center_frac)
+        if all(cones[k] == float("inf") for k in CONE_KEYS):
+            return None
+        return cones

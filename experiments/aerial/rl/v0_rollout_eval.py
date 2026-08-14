@@ -25,6 +25,11 @@ import numpy as np
 
 from experiments.aerial.rl.buffer import Episode, ReplayBuffer
 from experiments.aerial.rl.collector import RolloutCollector
+from experiments.aerial.rl.depth_geometry import (
+    forward_min_depth as _forward_min_depth,
+    full_min_depth as _full_min_depth,
+    min_depth_pixel_loc as _min_depth_pixel_loc,
+)
 from experiments.aerial.rl.reward import RewardConfig
 from experiments.aerial.rl.safety import ThresholdSafetyShield
 
@@ -233,30 +238,6 @@ def make_start_episodes(
             {"pos": np.stack([start, goal]), "yaw": np.array([0.0, 0.0])}
         )
     return episodes
-
-
-def _forward_min_depth(depth: np.ndarray, *, center_frac: float) -> float:
-    """Min finite+positive depth over the central ``center_frac`` box (forward).
-
-    The front camera faces body-forward (the episode yaw), so the image centre
-    is the flight direction. Restricting the obstacle test to a centre crop is
-    what makes "is there something *ahead*" distinct from "is there ground far
-    below / a wall off to the side" — a full-field min at cruise altitude is
-    almost always the ground, which never triggers a 1.5 m near-collision.
-    """
-    h, w = depth.shape[-2], depth.shape[-1]
-    cf = float(np.clip(center_frac, 0.05, 1.0))
-    dh, dw = int(h * cf), int(w * cf)
-    r0, c0 = (h - dh) // 2, (w - dw) // 2
-    crop = np.asarray(depth[r0 : r0 + dh, c0 : c0 + dw], dtype=np.float64)
-    finite = crop[np.isfinite(crop) & (crop > 0)]
-    return float(np.min(finite)) if finite.size else float("inf")
-
-
-def _full_min_depth(depth: np.ndarray) -> float:
-    d = np.asarray(depth, dtype=np.float64)
-    finite = d[np.isfinite(d) & (d > 0)]
-    return float(np.min(finite)) if finite.size else float("inf")
 
 
 def make_obstacle_facing_episodes(
@@ -767,33 +748,6 @@ def _episode_geom_diag(
         "start_collided_off": (
             bool(getattr(ep_off[0].obs, "collided", False)) if ep_off else None
         ),
-    }
-
-
-def _min_depth_pixel_loc(depth: Optional[np.ndarray]) -> Optional[Dict[str, float]]:
-    """Normalised (row, col) of the nearest finite+positive depth pixel.
-
-    Read-only. This is the forensic that separates a FRONTAL obstacle (nearest
-    pixel near image centre) from a LATERAL/rear blind-spot hit (nearest pixel at
-    the left/right edge) or GROUND (bottom rows). ``row``/``col`` ∈ [0,1] with
-    (0,0)=top-left; ``col`` near 0/1 ⇒ side, ``row`` near 1 ⇒ below. A forward-only
-    depth shield structurally cannot react to a min that is not near the centre.
-    """
-    if depth is None:
-        return None
-    d = np.asarray(depth, dtype=np.float64)
-    if d.ndim != 2:
-        return None
-    mask = np.isfinite(d) & (d > 0)
-    if not mask.any():
-        return None
-    dd = np.where(mask, d, np.inf)
-    r, c = np.unravel_index(int(np.argmin(dd)), dd.shape)
-    h, w = dd.shape
-    return {
-        "row": round(float(r) / max(h - 1, 1), 3),
-        "col": round(float(c) / max(w - 1, 1), 3),
-        "val": round(float(dd[r, c]), 3),
     }
 
 
