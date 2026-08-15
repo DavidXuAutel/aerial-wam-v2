@@ -6,10 +6,10 @@
 
 ---
 
-## 1. 一句话结论（2026-08-15 晚⁴）
+## 1. 一句话结论（2026-08-15 晚⁶）
 
 **✅ V1a 完成** + **V1b scaffold 已落**（`a0a973d` §1.2 re-freeze）。  
-**🟡 V1 partial**：③ proxy PASS；② FAIL（reward）；① **scan 0/8 blocked**（非 δ 问题 — 见 §5）。**merge 未做**。
+**🟡 V1 partial**：③ proxy PASS；② FAIL（reward）；① **scan 曾 8/8 但 starts 非碰撞向**（full-field 地面误收）→ 双臂 hard=0 baseline 无效。晚⁶ 修 probe=forward∨collided + 候选 forward 排序 + near-coll episode 回退；**复跑中**。
 
 产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/artifacts/v1_gate_r60_20260815/`
 
@@ -17,9 +17,9 @@
 
 ## 2. 三信号：还差什么
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁴） | **还差什么** |
+| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁶） | **还差什么** |
 |---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | 🟡 **scan 8/8 OK**（harness @ `9875b1a`）；**FAIL** — V0/V1 臂均 `coll_rate=0` → baseline 无效 | 需含碰撞 eval 或引用 V0 partial_24 baseline；非 scan 问题 |
+| **V1-①** | 碰撞率相对 V0 ↓20% | 🔧 harness 修复待复跑：先前 8/8 全是地面 false-hit（fwd≡18 m / full≡1.0 / probe coll=0）；V0 partial_24 亦 `n_contact=0` | 复跑得有效 baseline（hard 或 `near_coll_episode`） |
 | **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
 | **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A**（`coll_traj_pos=0`） | 增采碰撞 held-out；诚实留出 ckpt 重训 |
 
@@ -33,7 +33,7 @@
 - [x] **V1b-2** — `DepthTauShield` + `ImaginationPlanner` + collector/`train_rl` 接线 — 单测 + `v1b_planner_smoke.py` OK
 - [x] **V1b-3** — `_v1_gate.py` + `v1_gate_run_partials.py` — partial **已跑**（③ PASS / ②① FAIL）；merge 待三信号齐
 - [ ] **V1-merge** — `--merge` 三 partial → `v1_gate_r60_20260815.json`（**blocked**）
-- [ ] **V1-① 复跑** — scan 已通（8/8）；待 collision-bearing eval 或 frozen V0 baseline
+- [ ] **V1-① 复跑** — 晚⁶ probe/ranking 修复后 H100→4090 复跑
 - [ ] **V1-② 复跑** — fidelity 需碰撞轨 + reward beat baseline；首跑 ckpt=`wm_ckpt_r60_20260814/wm_step_5000.pt`
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
@@ -124,6 +124,7 @@ python -m experiments.aerial.rl._v1_gate --self-check
 
 ## 6. 变更记录
 
+- **2026-08-15(晚⁶)** — 诊断 V1-①：`v1_partial_1` probe coll=0 / fwd≡18 m / full≡1.0（地面误收）；V0 `v0_partial_24` 同协议 hard `n_contact=0`、near_coll on/off=0.0044/0.0388。修复：probe=forward∨collided、候选 forward 排序、① standoff=3.0、hard=0 时 `near_coll_episode` 回退。
 - **2026-08-15(晚⁵)** — harness @ `9875b1a`：V1-① scan **8/8**；rollout 双臂 coll=0 → ① FAIL（baseline 无效）；② re-score `coll_ok=null`。
 - **2026-08-15(晚⁴)** — V1-① 复跑 ×2 仍 0/8；根因诊断 + harness 补丁；4090 `recover_renderer.sh`。
 - **2026-08-15(晚³)** — **§1.2 re-freeze 草案**写入设计 doc；`v1_metrics` 对齐 coll N/A + Phase 标记。

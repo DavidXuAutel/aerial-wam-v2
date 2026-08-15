@@ -701,17 +701,15 @@ def test_forwardness_backward_is_axis_aligned():
 
 
 # --------------------------------------------------------------------------- #
-# probe-verify accept must match the ④ eval's FULL-FIELD near mask, not a      #
-# centre crop (2026-08-11: head-on collisions whose contact geometry sat       #
-# outside the 0.3 centre crop were all rejected → accepted 0).                 #
+# probe-verify accept: forward near OR hard collision (NOT full-field alone). #
+# Full-field ground pixels at cruise falsely fill the accept quota (V1-①).   #
 # --------------------------------------------------------------------------- #
 class _ApproachEnv:
-    """Steps a probe straight toward a frontal wall. The wall reads as a
-    high-but-in-range depth in the CENTRE crop (floors at ~1.6 m, never < 1.5)
-    while a corner pixel — outside the centre crop, inside the full field —
-    drops below 1.5 m as the drone closes. This is the real failure geometry:
-    a central-crop probe rejects it, a full-field probe (matching the eval)
-    accepts it. Advances ``travel`` by the horizontal action magnitude/step.
+    """Steps a probe straight toward a frontal wall that eventually collides.
+
+    Centre-crop depth floors above ``near_m`` while a corner pixel drops below —
+    the historical full-field-only accept case. With the 2026-08-15 rule the
+    start is still accepted via hard ``collided`` once travel closes the wall.
     """
 
     class _Cfg:
@@ -758,7 +756,7 @@ class _ApproachEnv:
         return self._obs(), {}
 
 
-def test_probe_accepts_on_full_field_not_centre_crop():
+def test_probe_accepts_on_collision_when_centre_stays_above_near():
     env = _ApproachEnv(wall_at_m=8.0)
     cand = np.array([[0.0, 0.0, 20.0]])
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
@@ -766,8 +764,62 @@ def test_probe_accepts_on_full_field_not_centre_crop():
         env, 1, cand, seed=0, center_frac=0.3,
         probe_policy=policy, probe_near_m=1.5, probe_steps=40,
     )
-    # Full-field reaches < 1.5 (corner) → accepted, even though the centre crop
-    # never drops below ~1.6 (would have been rejected by the old central test).
+    # Centre crop never < 1.5, but probe collides → accepted.
     assert diag["accepted"] == 1, diag
+    assert diag["probe"]["collided"] >= 1, diag["probe"]
+    assert diag["probe"]["reached_fwd_m"]["min"] >= 1.5, diag["probe"]
+
+
+class _GroundFalseHitEnv:
+    """Cruise pose: forward depth stays mid-range; full-field ground = 1.0 m; never collides."""
+
+    class _Cfg:
+        step_hz = 5.0
+
+    def __init__(self, size=8):
+        self.config = self._Cfg()
+        self._size = int(size)
+        self._pos = np.zeros(3)
+        self._yaw = 0.0
+        self._goal = None
+
+    @property
+    def goal(self):
+        return self._goal
+
+    def _obs(self):
+        d = np.full((self._size, self._size), 18.0, dtype=np.float32)
+        d[-1, :] = 1.0  # bottom row = ground
+        state = np.array([self._pos[0], self._pos[1], self._pos[2],
+                          0.0, 0.0, 0.0, self._yaw], dtype=np.float32)
+        return Observation(rgb=np.zeros((self._size, self._size, 3), np.uint8),
+                           state=state, depth=d, collided=False, info={})
+
+    def reset(self, episode=None):
+        pos = np.asarray(episode["pos"], dtype=np.float64)
+        self._pos = pos[0].copy()
+        self._goal = pos[-1].copy()
+        self._yaw = float(np.asarray(episode["yaw"]).reshape(-1)[0])
+        return self._obs()
+
+    def step(self, action):
+        a = np.asarray(action, dtype=np.float64).reshape(-1)
+        d = float(np.linalg.norm(a[:2]))
+        self._pos = self._pos + np.array([np.cos(self._yaw), np.sin(self._yaw), 0.0]) * d
+        return self._obs(), {}
+
+
+def test_probe_rejects_ground_only_full_field_hit():
+    env = _GroundFalseHitEnv()
+    cand = np.array([[0.0, 0.0, 20.0]])
+    policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
+    eps, diag = rollout.make_obstacle_facing_episodes(
+        env, 1, cand, seed=0, center_frac=0.3,
+        obstacle_min_m=5.0, obstacle_max_m=25.0, start_clearance_m=3.0,
+        probe_policy=policy, probe_near_m=1.5, probe_steps=40,
+    )
+    assert diag["accepted"] == 0, diag
+    assert diag["rejections"]["probe_no_hit"] >= 1, diag["rejections"]
     assert diag["probe"]["reached_full_m"]["min"] < 1.5, diag["probe"]
     assert diag["probe"]["reached_fwd_m"]["min"] >= 1.5, diag["probe"]
+    assert diag["probe"]["collided"] == 0, diag["probe"]

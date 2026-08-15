@@ -59,6 +59,7 @@ import numpy as np
 
 from experiments.aerial.rl import dataset as ds
 from experiments.aerial.rl import v0_metrics as metrics
+from experiments.aerial.rl.depth_geometry import forward_min_depth
 
 
 def _refuse_rgb_only_desync(root: Path, allow: bool) -> None:
@@ -522,14 +523,16 @@ def _obstacle_candidate_positions(
     at, never a guessed obstacle location.
 
     Positions are returned **nearest-geometry-first**: when the collection stored
-    per-frame depth, we rank each sampled pose by its full-field min depth (the
-    nearest geometry in *any* direction at that pose) ascending, so the scan
-    (with ``preserve_order=True``) walks the near-building poses first instead of
-    burning ``max_scans`` on open cruise corridors. The 2026-08-11 diag showed
-    392/400 scanned poses were open-ahead (>15 m) — cruise flight is mostly open,
-    so ordering the few near-obstacle poses to the front is what makes ④ scannable.
-    If the corpus is RGB-only (no stored depth) every pose ranks ``inf`` and the
-    order is left unchanged — a safe no-op fallback.
+    per-frame depth, we rank each sampled pose by its **forward** (central-crop)
+    min depth ascending, so the scan (with ``preserve_order=True``) walks
+    frontal-obstacle poses first instead of burning ``max_scans`` on open cruise
+    corridors. Full-field ranking was retired after V1-① 2026-08-15: ground
+    pixels at ~1 m sort cruise poses to the front and fill the accept quota with
+    non-frontal starts. The 2026-08-11 diag showed 392/400 scanned poses were
+    open-ahead (>15 m) — cruise flight is mostly open, so ordering the few
+    near-obstacle poses to the front is what makes ④ scannable. If the corpus is
+    RGB-only (no stored depth) every pose ranks ``inf`` and the order is left
+    unchanged — a safe no-op fallback.
 
     Also returns the per-pose **recorded yaw** (radians, row-aligned with the
     positions) so the obstacle scan can try the heading the drone actually flew —
@@ -551,9 +554,7 @@ def _obstacle_candidate_positions(
             if d is None:
                 prox.append(float("inf"))
                 continue
-            d = np.asarray(d, dtype=np.float64)
-            finite = d[np.isfinite(d) & (d > 0)]
-            prox.append(float(np.min(finite)) if finite.size else float("inf"))
+            prox.append(float(forward_min_depth(np.asarray(d), center_frac=0.3)))
     if not pts:
         raise ValueError(f"no positions in dataset {dataset_dir}")
     out = np.stack(pts)

@@ -293,18 +293,13 @@ def make_obstacle_facing_episodes(
          unscorable (observed 2026-08-11: 16/16 accepted on the proxy, all
          near_coll_off==0). So after the proxy passes, roll ``probe_policy`` from
          this start for ``probe_steps`` (shield OFF, no predictor) and keep the
-         start ONLY if it reproduces what the ④ eval scores: the **full-field**
-         GT-depth min drops below ``probe_near_m`` (= near-collision depth) OR the
-         probe **collides**. Both are read the same way by ``_episode_masks`` on
-         the shield-OFF arm (near mask = full-field min < near_m; ``collided`` from
-         ``next_obs``), so an accepted start makes ``near_coll_rate_off > 0`` by
-         construction. NOTE the probe test must MATCH the eval's full-field near
-         mask: an earlier central-crop (0.3) test was strictly stricter and
-         rejected genuine head-on starts whose contact geometry sat outside the
-         centre crop (2026-08-11 head-on corpus: reached_fwd p50 4.0 m, collided
-         10/22, accepted 0 — the drone rammed obstacles the centre crop never
-         registered below 1.5 m). ② still passes on these starts: even blocked,
-         the goal-seeker out-progresses the random policy before it stalls.
+         start ONLY if **forward** (central-crop) GT-depth min drops below
+         ``probe_near_m`` OR the probe **collides**. Full-field-only hits are
+         rejected: live renderer ground pixels at ~1 m false-accept cruise poses
+         (V1-① 2026-08-15: reached_fwd≡18 m / reached_full≡1.0 / collided=0).
+         Hard collision still covers the 2026-08-11 head-on case where contact
+         geometry sat outside the centre crop. An accepted start makes
+         ``near_coll_rate_off > 0`` (or shield-off hard coll) by construction.
 
     This is a ②/④ *harness* geometry fix (selecting valid episodes for the
     shield comparison), NOT a §4.1 change: env / thresholds / model / flags are
@@ -469,20 +464,21 @@ def make_obstacle_facing_episodes(
                 probe_travel.append(float(np.linalg.norm(p1 - p0)))
             if collided_here:
                 probe_collided += 1
-            # Accept iff the shield-OFF goal-seeker enters the SAME near mask the ④
-            # eval scores — full-field GT < near_m (``_episode_masks`` uses the
-            # full-field min, not a centre crop) — OR physically collides. Both
-            # reproduce near_coll_off>0 on the eval's shield-off arm (same policy,
-            # same start, same full-field mask + collided flag). The old test used
-            # the 0.3 centre crop, strictly stricter than the eval, so it rejected
-            # all 22 head-on starts whose contact geometry sat outside the centre
-            # crop (2026-08-11: reached_fwd p50 4.0 m, full-field unmeasured,
-            # collided 10/22, accepted 0). Collision is the most jitter-robust
-            # proof the start faces reachable geometry.
-            if not (probe_full < float(probe_near_m) or collided_here):
+            # Accept iff the shield-OFF goal-seeker (a) physically collides OR
+            # (b) drives FORWARD (central-crop) depth below near_m. Full-field
+            # alone is NOT enough: live renderer depth maps often carry ~1 m
+            # ground pixels at the image bottom, so full-field < near_m while
+            # forward stays mid-range (V1-① 2026-08-15: accepted 8/8 with
+            # reached_fwd≡18.1 m, reached_full≡1.0, probe collided=0 → both
+            # shield arms hard-coll=0). Hard collision remains the most
+            # jitter-robust proof; forward near catches frontal approaches that
+            # graze without latching ``collided`` in the short probe. The
+            # 2026-08-11 centre-crop-only miss (head-on contact outside 0.3 crop,
+            # collided 10/22) is still covered by the collided branch.
+            if not (probe_min < float(probe_near_m) or collided_here):
                 rej["probe_no_hit"] += 1
                 continue
-            hit_val = probe_full if math.isfinite(probe_full) else probe_min
+            hit_val = probe_min if math.isfinite(probe_min) else probe_full
             if math.isfinite(hit_val):
                 probe_hit_depths.append(hit_val)
         rej["obstacle_ok"] += 1

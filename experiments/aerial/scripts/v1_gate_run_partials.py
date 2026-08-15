@@ -132,6 +132,13 @@ def _episode_collision_rate(collided: List[List[bool]]) -> float:
     return float(hits / len(collided))
 
 
+def _frame_near_coll_rate(near: List[List[bool]]) -> float:
+    total = sum(len(ep) for ep in near)
+    if total <= 0:
+        return float("nan")
+    return float(sum(sum(1 for x in ep if x) for ep in near) / total)
+
+
 def run_rollout4090(args: argparse.Namespace) -> int:
     root = _repo_root(args.repo)
     if str(root) not in sys.path:
@@ -158,6 +165,9 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     env = _build_env(cfg.get("env", {}) or {})
     reward_cfg = RewardConfig(**(cfg.get("reward", {}) or {})) if cfg.get("reward") else None
     thr = v0m.DEFAULT_THRESHOLDS
+    # Match V0 ②④ reaction standoff (frozen-spec ④a re-freeze); yaml may still
+    # carry min_depth_m=1.5 for dual-channel scaffolding — do not use that for ①.
+    shield_trigger_m = float(args.shield_trigger_m)
 
     rollout_ds = Path(args.rollout_dataset).expanduser()
     if not rollout_ds.is_absolute():
@@ -184,56 +194,103 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         _emit(out_dir / "v1_partial_1_r60_20260815.json", partial1)
         return 1
 
+    probe = scan_diag.get("probe") or {}
+    if int(probe.get("collided", 0)) <= 0 and not (
+        probe.get("reached_fwd_m") and float((probe["reached_fwd_m"] or {}).get("min") or 1e9) < float(thr.near_collision_depth_m)
+    ):
+        s1 = {
+            "ok": False,
+            "reason": "starts not collision-bearing (probe forward-near/collided required)",
+            "scan": scan_diag,
+        }
+        partial1 = {"partial": True, "signals_requested": ["1"], "ok": False, "signals": {"1": s1}}
+        _emit(out_dir / "v1_partial_1_r60_20260815.json", partial1)
+        return 1
+
     predictor = DepthMinPredictor.from_checkpoint(depth_ckpt, device=args.device)
     tau_pred = TauPredictor()
 
     def _run_v1_shield(shield_kind: str) -> Dict[str, Any]:
         collided_on: List[List[bool]] = []
+        near_on: List[List[bool]] = []
         drop_stats: Dict[str, int] = {}
         for epi in starts:
             if hasattr(policy, "reset"):
                 policy.reset()
             if shield_kind == "depth_tau":
                 shield = DepthTauShield(
-                    min_depth_m=float(cfg.get("safety", {}).get("min_depth_m", 1.5)),
+                    min_depth_m=shield_trigger_m,
                     min_tau_s=float(cfg.get("safety", {}).get("min_tau_s", 1.0)),
                 )
+            elif shield_kind == "off":
+                shield = None
             else:
                 shield = ThresholdSafetyShield(
-                    min_depth_m=float(cfg.get("safety", {}).get("min_depth_m", 1.5)),
+                    min_depth_m=shield_trigger_m,
                     min_tau_s=float(cfg.get("safety", {}).get("min_tau_s", 1.0)),
                 )
             ep = rollout._run_one_resilient(
                 env, policy, epi, max_steps=int(args.max_steps), reward_cfg=reward_cfg,
-                shield=shield, depth_predictor=predictor, tau_predictor=tau_pred,
+                shield=shield, depth_predictor=predictor if shield is not None else None,
+                tau_predictor=tau_pred if shield_kind == "depth_tau" else None,
                 drop_stats=drop_stats,
             )
             if ep is None:
                 continue
             m = rollout._episode_masks(ep, near_collision_depth_m=float(thr.near_collision_depth_m))
             collided_on.append(m["collided"])
-        rate = _episode_collision_rate(collided_on)
+            near_on.append(m["near"])
+        hard_rate = _episode_collision_rate(collided_on)
+        near_ep_rate = _episode_collision_rate(near_on)
+        near_frame_rate = _frame_near_coll_rate(near_on)
         return {
-            "collision_rate": rate,
+            "collision_rate": hard_rate,
+            "near_coll_episode_rate": near_ep_rate,
+            "near_coll_rate": near_frame_rate,
             "n_episodes": len(collided_on),
             "drop_stats": drop_stats,
             "shield_kind": shield_kind,
+            "shield_trigger_m": shield_trigger_m if shield_kind != "off" else None,
         }
 
     v0_stats = _run_v1_shield("threshold")
     v1_stats = _run_v1_shield("depth_tau")
+    off_stats = _run_v1_shield("off")
+
+    # Prefer hard episode coll_rate (design §1.2.1). Working ThresholdSafetyShield
+    # often yields hard coll_rate=0 on probe-verified starts (V0 partial_24
+    # n_contact=0); then fall back to episode-level any-near-collision — still
+    # shield-on, same starts, non-vacuous when shield-off collides.
+    baseline_kind = "hard_collision"
     v0_rate = float(v0_stats["collision_rate"])
     v1_rate = float(v1_stats["collision_rate"])
     if args.v0_coll_rate is not None:
         v0_rate = float(args.v0_coll_rate)
+        baseline_kind = "cli_override"
+    elif not (v0_rate > 0):
+        v0_rate = float(v0_stats["near_coll_episode_rate"])
+        v1_rate = float(v1_stats["near_coll_episode_rate"])
+        baseline_kind = "near_coll_episode"
     s1 = v1_metrics.check_collision_reduction(v0_rate, v1_rate)
+    s1["baseline_kind"] = baseline_kind
     s1["v0_measured"] = v0_stats
     s1["v1_measured"] = v1_stats
+    s1["shield_off_measured"] = off_stats
     s1["scan"] = scan_diag
+    if baseline_kind == "near_coll_episode":
+        s1["note"] = (
+            "hard coll_rate_v0==0 (matches V0 partial_24 n_contact=0); "
+            "compared episode near-coll rates under same starts / standoff=3.0"
+        )
 
     partial1 = {"partial": True, "signals_requested": ["1"], "ok": bool(s1.get("ok")), "signals": {"1": s1}}
     _emit(out_dir / "v1_partial_1_r60_20260815.json", partial1)
-    print(f"[v1-run] 4090 signal1 ok={s1.get('ok')} v0={v0_rate:.4f} v1={v1_rate:.4f}")
+    print(
+        f"[v1-run] 4090 signal1 ok={s1.get('ok')} kind={baseline_kind} "
+        f"v0={v0_rate:.4f} v1={v1_rate:.4f} "
+        f"hard_v0={v0_stats['collision_rate']:.4f} hard_v1={v1_stats['collision_rate']:.4f} "
+        f"off_hard={off_stats['collision_rate']:.4f}"
+    )
     return 0 if s1.get("ok") else 1
 
 
@@ -289,6 +346,12 @@ def main() -> int:
     p.add_argument("--max-steps", type=int, default=200)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--v0-coll-rate", type=float, default=None)
+    p.add_argument(
+        "--shield-trigger-m",
+        type=float,
+        default=3.0,
+        help="V0/V1 shield reaction standoff (match V0 ②④; default 3.0)",
+    )
     args = p.parse_args()
     if args.mode == "h100":
         return run_h100(args)
