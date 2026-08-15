@@ -8,86 +8,72 @@
 
 ## 1. 一句话结论（2026-08-15 晚¹⁴）
 
-**✅ V1a 完成** + **① PASS** + **② PASS**（goalvel `beat_frac=0.93`）。  
-**🟡 V1-③**：Phase 1 proxy PASS 仍在；**Phase 2 代码已落**（FOE τ + auth gate path）— **authoritative ③ 尚未跑通** → **merge 仍 blocked**。  
-**禁止**凭 proxy ③ / 未过 auth ③ 做 `--merge` PASS。
-
-产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/logs/v1_gate_r60_20260815/`
+**✅ V1 merge PASS** — ① + ② + **③ Phase 2 auth** 齐。  
+产物：`v1_gate_r60_20260815.json`（H100 `logs/` + `artifacts/`）。  
+**未自动 flip yaml**（`tau_predictor.kind` 仍默认 `gt_proxy`；部署切 `foe_calibrated` 需人工）。
 
 | 主机 | HEAD |
 |---|---|
-| Mac / 125 / H100 | `b34fab5`（FOE Phase 2 scaffold） |
+| Mac / 125 / H100 | `e6c144d`+（FOE Phase 2；merge 后状态见本节提交） |
 
 ---
 
-## 2. 三信号：还差什么
+## 2. 三信号
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚¹⁴） | **还差什么** |
-|---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing` | 无 |
-| **V1-②** | H=15 想象保真 | ✅ **PASS**（goalvel 5k `reward_beat_frac=0.93`） | 无 |
-| **V1-③** | τ / D̂ 双通道独立 | proxy PASS；**auth 未评** | H100：训 calibrator（可选）→ `--phase3 auth` 评 FOE+D̂_pred |
-
----
-
-## 3. 待办（按依赖）
-
-- [x] **V1a / V1b scaffold / ① / ②** — 见既往
-- [x] **V1-③ Phase 2 代码** — FOE Farneback + τ；`phase=auth` gate；`train_tau_foe`；单测
-- [ ] **V1-③ Phase 2 实测** — H100 auth partial（`both_fail≤0.20`、τ MAE≤2.0、`tau_only≥0.005`）
-- [ ] **V1-merge** — blocked：**仅** auth ③
-- [ ] **P0b**（可选）— shield 消费 `predict_cones()`
+| 信号 | 判据 | 结果 |
+|---|---|---|
+| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ PASS — `tied_zero_collision_bearing` |
+| **V1-②** | H=15 想象保真 | ✅ PASS — goalvel `reward_beat_frac=0.93` |
+| **V1-③** | FOE τ + D̂_pred；both_fail≤0.20 | ✅ **auth PASS** — `both_fail=0.0013`；τ MAE=`0.93` s；`tau_only=0.010`；`foe_calibrated` |
 
 ---
 
-## 4. V1-③ Phase 2（本轮）
+## 3. 待办
 
-### 4.1 已落代码
-
-| 项 | 路径 |
-|---|---|
-| FOE τ | `tau_predictor.py` — `kind=foe` / `foe_calibrated`；**推理禁 GT depth** |
-| 伪标签训 | `train_tau_foe.py` — r60 GT τ → MLP calibrator |
-| auth ③ | `_v1_gate --phase3 auth --depth-ckpt ... [--tau-ckpt ...]` |
-| 阈值 | `v1_metrics`：auth both_fail≤0.20；τ MAE≤2.0；tau_only≥0.005 |
-| yaml | `tau_predictor.kind` 仍默认 `gt_proxy`（**未 flip**） |
-
-### 4.2 H100 下一步（auth 实测）
-
-```bash
-cd ~/aerial-wam-v2 && source .venv/bin/activate && export PYTHONPATH=.
-
-# 可选：calibrator（伪标签；古典 FOE 也可先盲跑 auth）
-python -m experiments.aerial.rl.train_tau_foe \
-  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --out-dir ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815 \
-  --steps 2000 --device cuda
-# ETA：harvest（Farneback 全语料接近帧）≈10–30 min + train 2000 step ≪5 min on H100
-
-# auth ③（古典 FOE 或 +calibrator）
-python -m experiments.aerial.rl._v1_gate --signals 3 \
-  --phase3 auth --device cuda \
-  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --depth-ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt \
-  --tau-kind foe \
-  --emit experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_partial_3_auth_r60_20260815.json
-```
-
-**已启动（2026-08-15 晚¹⁴）**：H100 `train_tau_foe` + 完成后链式 auth ③（logs：`train_tau_foe_20260815.out` / `v1_auth3_foe_20260815.out`）。**未 flip merge**。
+- [x] V1a / ① / ② / ③ Phase 2 代码 + auth 实测 + **merge**
+- [ ] **人工**：yaml `tau_predictor.kind=foe_calibrated` + `ckpt=.../tau_foe_calibrator.pt`（部署路径）
+- [ ] **可选**：P0b cones；V4 讨论（merge 已解锁前置）
 
 ---
 
-## 5. V1-② 资产（仍有效）
+## 4. V1-③ Phase 2 资产（H100）
 
 | 项 | 路径 / 值 |
 |---|---|
-| **② ckpt** | `wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt` — beat=**0.93** |
-| partial_2 | `v1_partial_2_r60_20260815.json` `ok=true` |
+| FOE calibrator | `~/aerial-rl-skeleton/.../tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt` |
+| 训 log | `logs/v1_gate_r60_20260815/train_tau_foe_20260815.out`（harvest 46 s + train 5 s） |
+| auth partial | `v1_partial_3_auth_r60_20260815.json` |
+| **merge** | `v1_gate_r60_20260815.json` — `ok=true` |
+
+### Auth ③ 数字
+
+| 指标 | 值 | 阈 |
+|---|---|---|
+| `both_fail_frac` | 0.0013 | ≤ 0.20 |
+| `tau_only_frac` | 0.010 | ≥ 0.005 |
+| `tau_mae_s` | 0.935 | ≤ 2.0 |
+| `n` | 1561 held-out frames | |
+| `tau_kind` | `foe_calibrated` | 禁 GT depth 推理 |
+
+---
+
+## 5. 复现 merge
+
+```bash
+cd ~/aerial-wam-v2 && source .venv/bin/activate && export PYTHONPATH=.
+LOG=experiments/aerial/rl/logs/v1_gate_r60_20260815
+ART=experiments/aerial/rl/artifacts/v1_gate_r60_20260815
+python -m experiments.aerial.rl._v1_gate --merge \
+  $ART/v1_partial_1_r60_20260815.json \
+  $LOG/v1_partial_2_r60_20260815.json \
+  $LOG/v1_partial_3_auth_r60_20260815.json \
+  --emit $LOG/v1_gate_r60_20260815.json
+```
 
 ---
 
 ## 6. 变更记录
 
-- **2026-08-15(晚¹⁴)** — V1-③ Phase 2：**FOE τ + auth gate + train_tau_foe 落地**；Mac 单测 PASS；**未**跑 auth 实测 / **未** merge。
-- **2026-08-15(晚¹³)** — ②：goalvel 5k → beat=0.93 PASS；merge 仅剩 ③ Phase 2。
+- **2026-08-15(晚¹⁴)** — Phase 2 FOE 落地；calibrator 训完；**auth ③ PASS**；**V1 merge PASS**；yaml 未 auto-flip。
+- **2026-08-15(晚¹³)** — ② goalvel beat=0.93 PASS。
 - **2026-08-15(晚¹²…午)** — 见既往。

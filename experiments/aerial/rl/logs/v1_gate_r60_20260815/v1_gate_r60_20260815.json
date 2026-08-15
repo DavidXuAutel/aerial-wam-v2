@@ -1,0 +1,152 @@
+{
+  "ok": true,
+  "passed": {
+    "1": true,
+    "2": true,
+    "3": true
+  },
+  "thresholds": {
+    "collision_reduction_delta": 0.2,
+    "dual_channel_max_both_fail_frac_proxy": 0.35,
+    "dual_channel_max_both_fail_frac_auth": 0.2,
+    "tau_mae_max_s": 2.0,
+    "tau_only_min_frac": 0.005,
+    "latent_norm_max": 25.0,
+    "coll_auroc_min": 0.65,
+    "coll_traj_min_for_auroc": 3,
+    "n_eval_episodes": 8
+  },
+  "details": {
+    "1": {
+      "ok": true,
+      "reason": "tied_zero_collision_bearing",
+      "v0_coll_rate": 0.0,
+      "v1_coll_rate": 0.0,
+      "target_max": 0.0,
+      "delta": 0.2,
+      "shield_off_coll_rate": 1.0,
+      "baseline_kind": "tied_zero_collision_bearing",
+      "v0_measured": {
+        "collision_rate": 0.0,
+        "near_coll_episode_rate": 0.0,
+        "near_coll_rate": 0.0,
+        "n_episodes": 8,
+        "drop_stats": {},
+        "shield_kind": "threshold",
+        "shield_trigger_m": 3.0
+      },
+      "v1_measured": {
+        "collision_rate": 0.0,
+        "near_coll_episode_rate": 0.0,
+        "near_coll_rate": 0.0,
+        "n_episodes": 8,
+        "drop_stats": {},
+        "shield_kind": "depth_tau",
+        "shield_trigger_m": 3.0
+      },
+      "shield_off_measured": {
+        "collision_rate": 1.0,
+        "near_coll_episode_rate": 0.5,
+        "near_coll_rate": 0.0945945945945946,
+        "n_episodes": 8,
+        "drop_stats": {},
+        "shield_kind": "off",
+        "shield_trigger_m": null
+      },
+      "scan": {
+        "requested": 8,
+        "accepted": 8,
+        "scanned": 28,
+        "candidates": 82,
+        "rejections": {
+          "no_depth": 0,
+          "spawn_collision": 7,
+          "too_close": 0,
+          "open_ahead": 9,
+          "proxy_ok": 12,
+          "probe_no_hit": 4,
+          "obstacle_ok": 8,
+          "reset_error": 0
+        },
+        "accepted_fwd_depth_m": {
+          "min": 5.859375,
+          "max": 10.1328125,
+          "mean": 7.74462890625
+        },
+        "probe": {
+          "enabled": true,
+          "near_m": 1.5,
+          "steps": 40,
+          "hits": 8,
+          "n_probed": 12,
+          "collided": 8,
+          "reached_fwd_m": {
+            "min": 1.9755859375,
+            "p50": 2.3818359375,
+            "max": 13.6953125
+          },
+          "reached_full_m": {
+            "min": 1.0498046875,
+            "p50": 1.42431640625,
+            "max": 4.11328125
+          },
+          "travel_m": {
+            "min": 5.4089221032011645,
+            "p50": 10.540996694215977,
+            "max": 28.220838209241997
+          },
+          "hit_depth_m": {
+            "min": 1.9755859375,
+            "max": 2.93359375,
+            "mean": 2.301513671875
+          }
+        },
+        "params": {
+          "goal_dist_m": 30.0,
+          "obstacle_min_m": 5.0,
+          "obstacle_max_m": 25.0,
+          "start_clearance_m": 3.0,
+          "center_frac": 0.3
+        }
+      },
+      "note": "V0/V1 shield-on hard and near-ep rates are 0 on starts with shield-off coll_rate=1.000; tied at zero floor is PASS"
+    },
+    "2": {
+      "ok": true,
+      "reward_ok": true,
+      "done_ok": true,
+      "recon_growth_ok": true,
+      "coll_ok": true,
+      "reward_beat_frac": 0.93,
+      "fidelity_log": "experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_fidelity_goalvel_20260815.out"
+    },
+    "3": {
+      "ok": true,
+      "phase": "auth",
+      "authoritative": true,
+      "n": 1561,
+      "both_fail_frac": 0.0012812299807815502,
+      "both_fail_max": 0.2,
+      "depth_only_frac": 0.007046764894298526,
+      "tau_only_frac": 0.010249839846252402,
+      "neither_frac": 0.9814221652786675,
+      "both_fail_indices": [
+        1547,
+        1559
+      ],
+      "tau_mae_s": 0.934910021476447,
+      "tau_mae_max_s": 2.0,
+      "depth_pred_vs_gt_both_fail_frac": 0.004484304932735426,
+      "tau_kind": "foe_calibrated",
+      "depth_ckpt": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt",
+      "heldout_frac": 0.25,
+      "n_tau_mae_frames": 717,
+      "v0_reproj_note": "D\u0302 median reproj must still satisfy V0 \u2462 \u22640.25 on same depth ckpt (cite v0_gate_r60_20260814 / depth_ckpt_da3_r60_20260814)"
+    }
+  },
+  "merged_from": [
+    "experiments/aerial/rl/artifacts/v1_gate_r60_20260815/v1_partial_1_r60_20260815.json",
+    "experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_partial_2_r60_20260815.json",
+    "experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_partial_3_auth_r60_20260815.json"
+  ]
+}

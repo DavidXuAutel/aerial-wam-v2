@@ -1,0 +1,32 @@
+{
+  "partial": true,
+  "signals_requested": [
+    "3"
+  ],
+  "ok": true,
+  "signals": {
+    "3": {
+      "ok": true,
+      "phase": "auth",
+      "authoritative": true,
+      "n": 1561,
+      "both_fail_frac": 0.0012812299807815502,
+      "both_fail_max": 0.2,
+      "depth_only_frac": 0.007046764894298526,
+      "tau_only_frac": 0.010249839846252402,
+      "neither_frac": 0.9814221652786675,
+      "both_fail_indices": [
+        1547,
+        1559
+      ],
+      "tau_mae_s": 0.934910021476447,
+      "tau_mae_max_s": 2.0,
+      "depth_pred_vs_gt_both_fail_frac": 0.004484304932735426,
+      "tau_kind": "foe_calibrated",
+      "depth_ckpt": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt",
+      "heldout_frac": 0.25,
+      "n_tau_mae_frames": 717,
+      "v0_reproj_note": "D\u0302 median reproj must still satisfy V0 \u2462 \u22640.25 on same depth ckpt (cite v0_gate_r60_20260814 / depth_ckpt_da3_r60_20260814)"
+    }
+  }
+}
