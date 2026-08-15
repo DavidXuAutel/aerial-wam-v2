@@ -9,29 +9,24 @@
 
 ## 1. 一句话 & 当前阶段
 
-**目标**:重建 goal-first 世界模型(干净重训现有 RSSM),让 V0 的**四个同权信号全过**,然后才翻 flags
-(`depth_head.enable` / `safety.kind` / `corrector.enable_wm_update`)。当前在 **§6 Step 6**
-(权威干净重训 + 四信号)。计划文件:`~/.claude/plans/humble-imagining-forest.md`。
+**V0 ✅ 已完成（2026-08-14）**：四信号 merge PASS → `v0_gate_r60_20260814.json`；flags 已翻 `depth_head.enable` + `safety.kind: threshold`。
 
-**为什么**:旧 `wm_step_5000.pt` 被判定为单柱 RGB-only RSSM shortcut(已失效);必须从随机初始化干净重训,
+**当前阶段：V1a ✅（2026-08-15）** — WM validate PASS + `enable_wm_update` 已翻 + corrector smoke `wm=updated`×3。下一步 **V1b**（τ + 想象规划 + 双通道罩）。设计见 [V1/V4 设计](docs/design/2026-08-15-v1-v4-design.md)；进度见 [V1_GATE_STATUS.md](docs/handover/V1_GATE_STATUS.md)。
+
+**为什么**：旧 `wm_step_5000.pt` 被判定为单柱 RGB-only RSSM shortcut(已失效);必须从随机初始化干净重训,
 结构性反 shortcut。
 
-## 2. 四信号现状
+## 2. 四信号现状（V0 — 已闭合，2026-08-14）
 
-| 信号 | 内容 | 评估位置 | 现状(2026-08-11) |
+| 信号 | 内容 | 评估位置 | r60 结果 |
 |---|---|---|---|
-| **①a–c** | WM 训练健康(loss↓≥2% / recon 不劣 / min entropy-frac ≥0.10) | H100 离线(重训日志) | 🟡 干净重训 dry-run 已产出(`wm_ckpt_v2clean_20260810`,非权威);权威 a–c 待 Step-6 语料重跑 |
-| **①d** | 深度 AbsRel ≤0.30 | H100 离线(DA3 ckpt) | ✅ 0.132 代表 / 0.167 approach OOD |
-| **②** | 接近量↑(N=16 rollout vs random) | **4090 sim rollout** | ✅ 决定性通过:progress 24.13 vs random −5.11;final_dist 5.01m vs 34.99m |
-| **③** | D̂ 尺度一致(reprojection,GT-proprio 位移) | H100 离线 | ✅ 0.05–0.12(重投影估计器,GT-oracle 0.002) |
-| **④** | 近障避让(shield 开/关对比) | **4090 sim rollout** | 🟡 scan 已修(accepted=10/11);晚¹⁰ `_shield_diag` 定位盲目后退撞后墙(coll_after_latch=9/9);晚¹¹ 保持(悬停)反致惯性滑进带并停留(near_count_on 200/200、ratio 12.96);晚¹² **shield 有界状态反馈后退**(D̂<standoff 后退刹动量、D̂≥standoff 保持不撞后墙;re-freeze);晚¹³ 遥测:④c ratio 0.172 ✓ 但 ④b=0,盲退 REFUTED;晚¹⁴ 真因=eval 关了 collector 出生碰撞守卫误计出生嵌入为碰撞 → 恢复 `skip_reset_collision=True`+重采样,**待 4090 重跑预期 spawn_collision_drops>0、④ PASS** |
+| **①a–c** | WM 训练健康 | H100 离线 | ✅ loss/recon/entropy PASS；`wm_train_meta authoritative=true` |
+| **①d** | 深度 AbsRel ≤0.30 | H100 离线 | ✅ **0.0641** |
+| **②** | 接近量↑ vs random | 4090 sim rollout | ✅ progress 13.49 vs −4.30；**n=8** |
+| **③** | D̂ 尺度（重投影） | H100 离线 | ✅ median **0.212** |
+| **④** | 近障 shield 开/关 | 4090 sim rollout | ✅ ratio **0.113**；before=1.0 空过；**n=8** |
 
-> ④ `near_coll_rate_off=0`(2026-08-11 rollout)根因:`HeuristicPolicy` 是纯 proprio 直线奔 goal、
-> **不看 depth 不避障**;宽锥深度代理(`center_frac=0.5`)只证明"视野里有障碍",直线策略从旁 >1.5m 擦过。
-> **已修(待重跑)**:`make_obstacle_facing_episodes` 加 **probe 验证** —— 代理通过后用直线策略空跑 24 步
-> (shield 关),只留 GT 深度真进 <1.5m 的起点;因 ④ shield-off 臂跑同策略同起点 → `near_coll_off>0`
-> 构造保证。同时收紧代理(`obstacle_max_m=15`、`center_frac=0.3`)。属 harness 几何修,不动 §4.1。
-> 重跑看 scan 的 `probe.hits`;若 probe 找不到 hit(场景太开)→ ④ 诚实 fail-closed,提示换候选点。
+> 完整路径与 partial JSON 见 [V0_GATE_STATUS.md](docs/handover/V0_GATE_STATUS.md)。②④ rollout-dataset 仍用 `dataset_v0_headon_20260811` 做 obstacle scan。
 
 ## 3. 文档地图
 
@@ -42,7 +37,9 @@
 - [signal3 OLS/axis proxy design](docs/superpowers/specs/2026-08-05-signal3-ols-axis-proxy-design.md)。
 
 **分主题 handover**(定义"怎么跑某一块"):
-- **[V0 GATE 状态活文档](docs/handover/V0_GATE_STATUS.md) —— gate 还差什么 / 待办 / n 处置。每次 gate 动作后必更新(Mac 侧无 emit JSON,不写就丢)。**
+- **[V0 GATE 状态活文档](docs/handover/V0_GATE_STATUS.md) —— V0 合拢记录（已 PASS）。**
+- **[V1 GATE 状态活文档](docs/handover/V1_GATE_STATUS.md) —— V1 三信号进度。**
+- **[V1/V4 设计](docs/design/2026-08-15-v1-v4-design.md) —— post-V0 阶段设计与 gate 草案。**
 - [4090 本地采集 runbook](docs/handover/2026-08-04-v0-4090-local-collect-runbook.md)
 - [V1 WM H100 验证 runbook](docs/handover/2026-08-04-v1-wm-h100-validation-runbook.md)
 - [signal3 reprojection estimator](docs/handover/2026-08-10-signal3-reprojection-estimator.md)
@@ -89,7 +86,8 @@
 
 ## 6. 治理红线（永不放宽）
 
-- 四信号**全过前不翻 flags**;`enable_policy_update`(V4)绝不顺带打开。
+- V0 flags **已翻**（2026-08-14）；**V1/V4 flags 仍 OFF**，各阶段独立 gate
+- `enable_policy_update`(V4) **仅在 V1b PASS 后**讨论
 - 阈值 = §4.1 冻结,改阈值 / 越出 §4 gate / §6 order → 先改并 re-freeze 冻结 spec(§8)。
 - 干净重训禁 warm-start 失效 ckpt;canonical `depth_step_5000.pt` 不动;失效 ckpt 归档保留。
 - 代码走 git,禁 scp 热补丁;`step_hz` 实测不猜。
@@ -110,6 +108,13 @@
 ## 8. 变更记录
 
 > 格式:`YYYY-MM-DD —— 改了什么(为什么 / 依据)`。最新在上。
+
+- **2026-08-15(午) —— V1a 执行完成（H100 `.25`）。**
+  `_wm_train_validate` 500 steps on r60 PASS → `wm_ckpt_v1a_20260815/`；flip `dynamics.kind=torch` + `enable_wm_update=true`；`v1a_corrector_smoke.py` 3 iter mock **`wm=updated`×3**。详见 [V1_GATE_STATUS.md](docs/handover/V1_GATE_STATUS.md)。
+- **2026-08-15 —— V0 合拢后文档同步 + V1/V4 设计。**
+  V0 merge PASS（`v0_gate_r60_20260814.json`）后更新 §1/§2/§6；新增 [V1/V4 设计](docs/design/2026-08-15-v1-v4-design.md)、[V1_GATE_STATUS.md](docs/handover/V1_GATE_STATUS.md)；`PROJECT_STATUS.md` 切至 V1a 阶段。V1 分 V1a（WM corrector 环）与 V1b（τ+想象规划+双通道罩，frozen spec 完整 V1）。
+- **2026-08-14(晚⁴) —— V0 GATE 合拢 + flags 翻转。**
+  ②④ `v0_partial_24_r60_20260814.json` PASS（n=8）；merge exit 0；`depth_head.enable` + `safety.kind: threshold`；commit `cad5a08`/`5b301ea`。详见 [V0_GATE_STATUS.md](docs/handover/V0_GATE_STATUS.md) §6。
 
 - **2026-08-12(晚²²) —— ①a–c 结案:v2clean 日志判据全过但**语料实质失格**(dt-desync 靠逃生舱放行)→ 用户拍板重采语料;根因(训练产物不自证语料)已修:新增 `wm_train_meta.json` 旁挂。**
   **查清过程**:H100 实测找到 `wm_ckpt_v2clean_20260810/wm_train.jsonl`(500 行,`recon_err`/`post_entropy_frac` 齐全 → 不触发 `_v0_gate.py:186-195` 缺字段 FAIL)。晚²¹ 首轮 `find -name "*train*log*"` 匹配不到 `.jsonl`,故漏搜。`check_learning_curves`(`v0_metrics.py:51`,k=50)三条**全过且余量量级**:a loss 16.7991→**1.4948**(−91%,只需 −2%);b recon 0.3245→**0.0282**(降 11.5×);c min_ent **0.4368**(需 ≥0.10,argmin 在 step 2 ⇒ **全程无后验塌缩**)。

@@ -94,6 +94,7 @@ class RolloutCollector:
         on_episode: Optional[Callable[[Episode, CollectStats], None]] = None,
         skip_reset_collision: bool = True,
         depth_predictor: Optional[Any] = None,
+        tau_predictor: Optional[Any] = None,
     ) -> None:
         self.env = env
         self.policy = policy
@@ -113,6 +114,8 @@ class RolloutCollector:
         # runs. ``DepthMinPredictor`` (or any object with ``predict_min`` /
         # optional ``reset``). None → leave info empty (default V0 posture).
         self.depth_predictor = depth_predictor
+        # V1b [1d]: τ independent of D̂ — ``predict_tau(obs)`` → obs.info['tau_pred'].
+        self.tau_predictor = tau_predictor
 
     def collect_episode(self, episode: Optional[Dict[str, Any]] = None) -> tuple[Episode, CollectStats]:
         instruction = str((episode or {}).get("gpt_instruction", ""))
@@ -159,6 +162,10 @@ class RolloutCollector:
                 d_min = self.depth_predictor.predict_min(obs)
                 if d_min is not None:
                     obs.info["depth_min_pred"] = float(d_min)
+            if self.tau_predictor is not None:
+                tau = self.tau_predictor.predict_tau(obs)
+                if tau is not None:
+                    obs.info["tau_pred"] = float(tau)
             if self.safety is not None and self.safety.should_override(obs):
                 action = clip_body_delta(self.safety.override_action(obs), limits)
                 intervened = True

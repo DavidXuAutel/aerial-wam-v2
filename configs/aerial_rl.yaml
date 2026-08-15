@@ -47,16 +47,7 @@ reward:
   maneuver_curriculum_ramp: 1.0
 
 dynamics:
-  kind: stub               # V0 posture — REVERTED 2026-08-04. The prior "torch"
-                           # (V1 ON) rested on wm_step_5000.pt, now INVALIDATED: a
-                           # single-pillar RGB-only RSSM that skipped the perception
-                           # skeleton (see aerial_v1_wm_gate_invalidated). Rebuild
-                           # goal-first per §7; flip back to torch only when the V0
-                           # four-signal gate (_v0_gate) passes on a clean retrain.
-                           #   stub  = analytic latent (V0, offline-testable)
-                           #   wan   = offline distillation source ONLY (§4.4/§11)
-                           #   torch = DreamerV3 RSSM WM (V1) — needs torch (H100);
-                           #           reads the world_model block below.
+  kind: torch              # V1a PASS 2026-08-15 (_wm_train_validate r60 + corrector smoke)
   latent_dim: 8
   collide_radius_m: 2.0
 
@@ -83,7 +74,7 @@ world_model:
   train_steps_per_update: 1
   grad_clip: 1000.0        # clip_grad_norm_ (FastWAM convention)
   device: cuda
-  checkpoint_dir: experiments/aerial/rl/artifacts/wm_ckpt
+  checkpoint_dir: experiments/aerial/rl/artifacts/wm_ckpt_v1a_20260815
   # [1b] multi-frame depth head (frozen §3 / §6 Step 3). Train offline via
   # ``python -m experiments.aerial.rl.train_depth_head``. ``enable`` flips to
   # true ONLY after ``_v0_gate`` four-signal PASS (frozen §4) — keep false here.
@@ -127,9 +118,7 @@ corrector:
   episodes_per_iter: 1
   max_steps: 200
   # V0 runs today; V1/V4 stay gated OFF until each milestone passes.
-  enable_wm_update: false     # GATE V1 — REVERTED to OFF 2026-08-04. The clean WM
-                              # co-train runs OFFLINE via _wm_train_validate/_v0_gate,
-                              # not the live corrector, until the V0 gate passes.
+  enable_wm_update: true     # GATE V1a — flipped 2026-08-15 after _wm_train_validate PASS
   enable_policy_update: false # GATE V4: imagination actor-critic update
   strict_gates: false
   # WM-training window sampling (used once enable_wm_update flips on): draw

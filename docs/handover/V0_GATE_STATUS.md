@@ -120,16 +120,17 @@ Mac worktree 全盘 `find` 均无:
 
 ---
 
-## 5. 治理红线(不变)
+## 5. 治理红线（V0 已过关；V1/V4 仍适用）
 
-- 四信号全过前**不翻 flags**(`depth_head.enable` / `safety.kind` / `corrector.enable_wm_update`);`enable_policy_update`(V4)绝不顺带开
-- **不为凑过调阈值/shield 参数** —— shield **控制律**是被测系统(可改),§4.1 **阈值**不可改(改需 re-freeze)
+- V0 flags **已翻**（2026-08-14）；**V1/V4 flags 仍 OFF**
+- **不为凑过调 §4.1 阈值**；shield 控制律可改，阈值改需 re-freeze
 - 代码走 git,禁 scp 热补丁
 
 ---
 
 ## 6. 变更记录
 
+- **2026-08-15** — V0 合拢后文档同步 + V1/V4 设计：新增 [V1/V4 设计](../design/2026-08-15-v1-v4-design.md)、[V1_GATE_STATUS.md](V1_GATE_STATUS.md)；更新 `PROJECT_STATUS.md` / `RUNBOOK_v0.md` / `README.md`。
 - **2026-08-14(晚⁴)** —— **V0 GATE 合拢 + flags 翻转**:
   1. **②④ rollout PASS**(H100→4090): `v0_partial_24_r60_20260814.json`; scan 10/16 accepted → eval **n=8**; ② progress 13.49 vs −4.30; ④ ratio **0.113**, before=1.0(空过)
   2. **Merge PASS exit 0**: `v0_gate_r60_20260814.json` = partial 1 + 3 + 24; 四信号全 `ok=true`

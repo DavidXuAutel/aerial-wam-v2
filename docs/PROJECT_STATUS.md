@@ -1,6 +1,6 @@
 # Aerial WAM v2 — 项目现状整理
 
-> **日期**: 2026-08-14（由 `V0_GATE_STATUS.md` + `RUNBOOK_v0.md` 收敛，并标注迁移来源）  
+> **日期**: 2026-08-15（V0 merge PASS 后更新；V1/V4 见 [设计](design/2026-08-15-v1-v4-design.md)）  
 > **代码来源**: `robomaster-tt-control` 分支 `aerial-rl-skeleton` @ `8a063be`  
 > **阈值权威**: [frozen spec §4.1](superpowers/specs/2026-08-04-aerial-wam-v2-frozen-spec.md) — 本文只摘录，不新建第二真相源
 
@@ -8,48 +8,49 @@
 
 ## 1. 项目目标
 
-重建 **goal-first 纯视觉世界模型**（DreamerV3 RSSM），从随机初始化干净重训，通过 V0 **四信号同权门禁**后，才允许打开：
+重建 **goal-first 纯视觉世界模型**（DreamerV3 RSSM），从随机初始化干净重训。
 
-- `world_model.depth_head.enable`
-- `safety.kind`（shield）
-- `corrector.enable_wm_update`
+**V0（已完成 2026-08-14）**：四信号 merge PASS → 已翻：
 
-**禁止**在四信号 merge 通过前顺带打开 `enable_policy_update`（V4）。
+- `world_model.depth_head.enable: true`
+- `safety.kind: threshold`
 
-旧 `wm_step_5000.pt` 已判定为单柱 RGB shortcut，**不可 warm-start**。
+**V1（进行中）**：`dynamics.kind=torch` + `enable_wm_update` + τ/想象规划/双通道罩 — 见 [V1/V4 设计](design/2026-08-15-v1-v4-design.md)。
 
----
+**V4（未开始）**：`enable_policy_update` — V1b 过门后才讨论。
 
-## 2. 一句话结论（2026-08-12）
-
-**四信号从未在「同一 depth head + 一次 `_v0_gate --merge`」下合拢过。**
-
-各信号在不同时间 / 机器 / checkpoint 上分别通过，但 merge 要求所有 partial JSON 并存且 `ok=true` → **merge 从未 exit 0**。
+旧 `wm_step_5000.pt` 已判定为单柱 RGB shortcut，**不可 warm-start**。权威 WM：`wm_ckpt_r60_20260814`。
 
 ---
 
-## 3. 四信号现状
+## 2. 一句话结论（2026-08-15）
 
-| 信号 | 判据摘要 | 最后已知结果 | 还差什么 |
-|---|---|---|---|
-| **①a–c** | WM 训练健康：loss↓≥2%、recon 不劣、min entropy-frac ≥0.10 | 🟡 dry-run 数字全过，但语料 **dt-desync**（靠 `--allow-v0-desync` 逃生舱）→ **实质失格** | **重采合格语料** + 权威重训；或先用 `dataset_v1_rgb`(8 Hz) 出合格日志 |
-| **①d** | holdout median AbsRel ≤ **0.30** | ✅ head B **0.0483**（local）；head A 0.132 | head B 上 **已完成**，不重跑 |
-| **②** | N=16；progress ≥ random+5.0 **或** final_dist ≤ random−3.0 | ✅ 决定性通过（如 progress 24.13 vs −5.11） | 仅 **n<16**（用户决定不追 scan 喂满 16） |
-| **③** | reprojection median rel err ≤ **0.25**；有效窗 ≥ **8** | ✅ head A **0.05–0.12**（GT-oracle ≈0.002） | **head B 上未跑** ← 唯一 depth 侧 gap |
-| **④** | before ≥0.50；shield on/off near_coll ratio ≤0.80 | ✅ head B 稳健 PASS ×3（ratio 0.13/0.23/0.12） | 仅 **n<16** + `before=1.0` 合法空过 |
+**✅ V0 四信号已在同一 r60 ft-head + 一次 merge 下合拢 PASS**（`v0_gate_r60_20260814.json`，H100 `.25`）。
 
-### 3.1 核心 gap：head 一致性
+**当前阶段：V1a ✅ / V1b 待做** — WM 已接入 corrector 在线环；τ + 想象规划 + 双通道罩待实现。
 
-| 用途 | Checkpoint | 路径（H100） |
+---
+
+## 3. 四信号现状（V0 — 已闭合）
+
+| 信号 | 判据摘要 | r60 结果（2026-08-14） |
 |---|---|---|
-| ①③ 历史 verdict | **head A** | `depth_ckpt_da3_20260810` |
-| ④ shield + ①d 权威 | **head B** | `depth_ckpt_da3_near_20260811`（`near_weight=3.0`） |
+| **①a–c** | loss↓≥2%、recon 不劣、min entropy-frac ≥0.10 | ✅ loss 3.87→1.96；recon↓；min_ent 0.47；`authoritative=true` |
+| **①d** | holdout AbsRel ≤ 0.30 | ✅ **0.0641**（r60 ft-head） |
+| **②** | progress ≥ random+5.0 ∨ final_dist ≤ random−3.0 | ✅ progress **13.49** vs **−4.30**；**n=8** |
+| **③** | reprojection median rel ≤ 0.25；n≥8 | ✅ median **0.212**；n=90 |
+| **④** | before ≥0.50；ratio ≤0.80 | ✅ ratio **0.113**；before=1.0 空过；**n=8** |
 
-部署只用一个 head → **merge 必须同一 ckpt**。
+### 3.1 r60 部署线（head 已统一）
 
-→ **只需在 head B 上补跑 `--signals 3`**（①d 已在 head B PASS）。
+| 资产 | 路径（H100 `~/aerial-rl-skeleton/.../artifacts/`） |
+|---|---|
+| 语料 | `dataset_v0_local_depth_r60_20260814`（51 npz / 48 usable） |
+| 深度 | `depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt` |
+| WM | `wm_ckpt_r60_20260814/wm_step_5000.pt` |
+| Merge | `v0_gate_r60_20260814.json` |
 
-**为何 ③ 要重跑、①d 不用**：①d 是全图聚合 AbsRel（远景/地面稀释近带）；③ 测**尺度**且在**接近窗**上重投影，而 `near_weight=3.0` 把近带压约 10×（6.415→0.645 m）——改动正落在被测量上。
+**开放**：§4.1 `n_eval_episodes=16` vs 实测 n=8 — 待 re-freeze（见 `V0_GATE_STATUS.md` §4）。
 
 ---
 
@@ -124,7 +125,7 @@ Shield 触发深度：**3.0 m**（反应余量，re-freeze 注；度量带仍为
 | 机器 | 地址 | 角色 |
 |---|---|---|
 | Mac | 本仓库 | 写代码 |
-| H100 | `a25689@10.239.121.22:31126` | 训练、①③ 离线 gate、②④ rollout 客户端 |
+| H100 | `a25689@10.239.121.25:31126` | 训练、①③ 离线 gate、②④ rollout 客户端 |
 | 4090 | `10.229.20.125:41451` | AirSim 渲染器 |
 
 **两个 checkout（H100）**：
@@ -138,32 +139,24 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 
 ---
 
-## 6. 待办（按依赖）
+## 6. 待办（V1 → V4）
 
-1. **A. head B 上跑 ③**（~分钟级，H100 离线）  
-   ```bash
-   python -m experiments.aerial.rl._v0_gate --signals 3 \
-     --depth-ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_near_20260811/depth_step_2000_da3_head.pt \
-     --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth \
-     --window 8 --max-windows 256 --device cuda \
-     --emit artifacts/v0_partial_3_headB.json
-   ```
+详见 [V1_GATE_STATUS.md](handover/V1_GATE_STATUS.md) 与 [V1/V4 设计](design/2026-08-15-v1-v4-design.md)。
 
-2. **B'. 合格语料重跑 ①a–c** — 重采 **或** 先用 `dataset_v1_rgb`(16 ep @8 Hz) 出权威 `wm_train.jsonl` + `wm_train_meta.json`（`authoritative=true`）
-
-3. **C. P0：shield 方向锥**（改 ④ 行为，merge 前完成）
-
-4. **D. n 的 re-freeze** — `n_eval_episodes` 从 16 降到实测可达值（待用户定数）
-
-5. **E. ②④ 重跑**（4090 渲染器 + P0 之后）→ emit partial
-
-6. **F. `--merge` 四 partial** → exit 0 → 才翻 flags
+| 优先级 | 任务 |
+|---|---|
+| ~~**V1a-1**~~ | ✅ `_wm_train_validate` → `wm_ckpt_v1a_20260815` |
+| ~~**V1a-2**~~ | ✅ `kind=torch` + `enable_wm_update=true` + corrector smoke |
+| **V1b** | τ 头 + 想象规划 + `DepthTauShield` + `_v1_gate` 三信号 |
+| **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
+| **n re-freeze** | `n_eval_episodes` 8 vs 16（V0 遗留） |
+| **V4** | V1b PASS 后：DreamerV3 λ-return AC + `enable_policy_update` |
 
 ---
 
 ## 7. 治理红线
 
-- 四信号全过前 **不翻 flags**
+- V0 flags **已翻**；V1/V4 flags **仍 OFF**，各阶段独立 gate
 - **不为凑过调 §4.1 阈值**；shield 控制律可改，阈值改需 re-freeze
 - 代码走 git，**禁 scp 热补丁**
 - 干净重训禁 warm-start 失效 ckpt
@@ -174,12 +167,12 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 
 | 资产 | 路径 |
 |---|---|
-| head A (DA3) | `.../depth_ckpt_da3_20260810/depth_step_2000_da3_head.pt` |
-| head B (DA3 near) | `.../depth_ckpt_da3_near_20260811/depth_step_2000_da3_head.pt` |
-| WM dry-run | `.../wm_ckpt_v2clean_20260810/`（非权威语料） |
-| 本地深度语料 | `.../dataset_v0_local_depth` |
+| **r60 语料（权威）** | `.../dataset_v0_local_depth_r60_20260814` |
+| **r60 深度 ckpt** | `.../depth_ckpt_da3_r60_20260814/` |
+| **r60 WM ckpt** | `.../wm_ckpt_r60_20260814/` |
+| V0 merge verdict | `.../v0_gate_r60_20260814.json` |
 | 头对头 rollout 语料 | `.../dataset_v0_headon_20260811` |
-| Step-4 RGB 语料 | `.../dataset_v1_rgb` |
+| 历史 head A/B | `depth_ckpt_da3_20260810` / `depth_ckpt_da3_near_20260811`（归档） |
 
 ---
 
@@ -200,7 +193,9 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | 文档 | 内容 |
 |---|---|
 | [RUNBOOK_v0.md](../experiments/aerial/RUNBOOK_v0.md) | 顶层入口 + §8 变更记录 |
-| [V0_GATE_STATUS.md](handover/V0_GATE_STATUS.md) | Gate 活文档 / 待办 |
+| [V0_GATE_STATUS.md](handover/V0_GATE_STATUS.md) | V0 合拢记录（已 PASS） |
+| [V1_GATE_STATUS.md](handover/V1_GATE_STATUS.md) | V1 三信号进度 |
+| [V1/V4 设计](design/2026-08-15-v1-v4-design.md) | post-V0 阶段设计 |
 | [frozen spec](superpowers/specs/2026-08-04-aerial-wam-v2-frozen-spec.md) | 阈值 §4.1 |
 | [pure-vision design v2](superpowers/specs/2026-08-03-aerial-wam-pure-vision-design-v2.md) | 架构 |
 | [DA3 backbone](handover/2026-08-10-da3-depth-backbone.md) | 深度骨干 |
