@@ -1,0 +1,19 @@
+{
+  "partial": true,
+  "signals_requested": ["2"],
+  "ok": false,
+  "head": "f41bd3b",
+  "ckpt": "wm_ckpt_v1_heldout_goalrel_20260815/wm_step_5000.pt",
+  "notes": "goalrel honest 5k; goals backfilled 51/51; kinematic oracle beat=1.0; model beat_frac=0.53 (FAIL; best still rew10 0.60). Next: body_vel analytic aux @ 39ead6b.",
+  "signals": {
+    "2": {
+      "ok": false,
+      "reward_ok": false,
+      "done_ok": true,
+      "recon_growth_ok": true,
+      "coll_ok": true,
+      "reward_beat_frac": 0.53,
+      "fidelity_log": "experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_fidelity_goalrel_20260815.out"
+    }
+  }
+}
