@@ -56,8 +56,16 @@ class LatentDynamics(abc.ABC):
         """Map a real observation to a latent state ``z``."""
 
     @abc.abstractmethod
-    def step(self, z: np.ndarray, action: np.ndarray) -> DynamicsOutput:
-        """Imagine one step forward from ``z`` under ``action``."""
+    def step(
+        self,
+        z: np.ndarray,
+        action: np.ndarray,
+        goal_rel: Optional[np.ndarray] = None,
+    ) -> DynamicsOutput:
+        """Imagine one step forward from ``z`` under ``action``.
+
+        ``goal_rel`` is optional reward-head conditioning (V1-②); stubs may ignore it.
+        """
 
     def decode(self, z: np.ndarray) -> np.ndarray:  # pragma: no cover - optional
         raise NotImplementedError("this dynamics model does not implement decode()")
@@ -105,9 +113,15 @@ class StubLatentDynamics(LatentDynamics):
         z[: min(4, self.latent_dim)] = base[: min(4, self.latent_dim)]
         return z
 
-    def step(self, z: np.ndarray, action: np.ndarray) -> DynamicsOutput:
+    def step(
+        self,
+        z: np.ndarray,
+        action: np.ndarray,
+        goal_rel: Optional[np.ndarray] = None,
+    ) -> DynamicsOutput:
         from experiments.aerial.eval.run_closed_loop import apply_body_delta
 
+        del goal_rel  # analytic stub uses set_goal(); goal_rel is TorchRSSM-only
         z = np.asarray(z, dtype=np.float64).reshape(self.latent_dim)
         pos = z[:3].copy()
         yaw = float(z[3]) if self.latent_dim > 3 else 0.0
@@ -166,7 +180,13 @@ class WanImaginationDynamics(LatentDynamics):
             "offline to build distillation targets, not in unit tests."
         )
 
-    def step(self, z: np.ndarray, action: np.ndarray) -> DynamicsOutput:  # pragma: no cover
+    def step(
+        self,
+        z: np.ndarray,
+        action: np.ndarray,
+        goal_rel: Optional[np.ndarray] = None,
+    ) -> DynamicsOutput:  # pragma: no cover
+        del goal_rel
         if self.offline_only and self._online_context:
             raise RuntimeError(
                 "Wan2.2 pixel model must not be stepped online (spec §4.4/§11); "

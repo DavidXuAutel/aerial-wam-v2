@@ -22,16 +22,17 @@ harness + verdict logic are unit-testable on the GPU-less dev host. The torch
 checkpoint eval (``_wm_fidelity_eval``) imports these same functions on the
 H100 so the metric math has a single source of truth.
 
-ALIGNMENT: rollout step ``t`` calls ``step(z_t, a_t)``; cont/coll heads are read
-from the *pre-action* feature and the reward head from ``[feature; a_t]``
-(matching ``TorchRSSMDynamics.training_loss``), then compared to the recorded
-consequence at ``window[t]`` (reward ``r_t``, post-step ``next_obs.collided``,
-``done``). Contact is a *post-step* event (same as ``v0_rollout_eval`` /
-``dataset``): reading pre-step ``obs.collided`` alone yields all-False labels
-on r60 and silently zeros ``coll_traj_pos``. There remains a ±1-step ambiguity
-in exactly when a contact is *labeled* vs *predicted*; the p_coll metric is
-deliberately trajectory-level (max over the horizon) so it is robust to that
-timing.
+ALIGNMENT: rollout step ``t`` calls ``step(z_t, a_t, goal_rel_t)``; cont/coll
+heads are read from the *pre-action* feature and the reward head from
+``[feature; a_t; goal_rel_t]`` (matching ``TorchRSSMDynamics.training_loss``),
+then compared to the recorded consequence at ``window[t]`` (reward ``r_t``,
+post-step ``next_obs.collided``, ``done``). ``goal_rel`` is teacher-forced from
+the recorded pose + episode goal (same honesty protocol as recorded actions).
+Contact is a *post-step* event (same as ``v0_rollout_eval`` / ``dataset``):
+reading pre-step ``obs.collided`` alone yields all-False labels on r60 and
+silently zeros ``coll_traj_pos``. There remains a ±1-step ambiguity in exactly
+when a contact is *labeled* vs *predicted*; the p_coll metric is deliberately
+trajectory-level (max over the horizon) so it is robust to that timing.
 """
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from experiments.aerial.rl.dynamics import LatentDynamics
+from experiments.aerial.rl.goal_features import goal_rel_from_obs
 from experiments.aerial.rl.imagination import MAX_IMAGINATION_HORIZON
 
 # -- pass thresholds (project-tuned for OUR regime, §1.5 — NOT paper numbers) --
@@ -114,7 +116,12 @@ def open_loop_rollout(
     first_done = None
     for t in range(H):
         tr = window[t]
-        out = dynamics.step(z, np.asarray(tr.action, dtype=np.float64).reshape(4))
+        g_rel = goal_rel_from_obs(tr.obs)
+        out = dynamics.step(
+            z,
+            np.asarray(tr.action, dtype=np.float64).reshape(4),
+            goal_rel=g_rel,
+        )
         z = np.asarray(out.z_next, dtype=np.float64).reshape(-1)
         reward_pred[t] = float(out.progress)
         p_coll_pred[t] = float(out.p_coll)

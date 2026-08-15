@@ -82,6 +82,19 @@ def test_write_episode_round_trip(tmp_path):
     np.testing.assert_allclose(loaded["actions"], ref["actions"])
 
 
+def test_write_episode_stores_goal_from_info(tmp_path):
+    ep = _moving_episode(n=4)
+    goal = np.array([30.0, 0.0, 2.0], dtype=np.float32)
+    for tr in ep:
+        tr.info["goal"] = goal.copy()
+    path = ds.write_episode(tmp_path, 3, ep)
+    loaded = np.load(path)
+    assert "goal" in loaded.files
+    np.testing.assert_allclose(loaded["goal"], goal)
+    roundtrip = ds.load_episode(path)
+    np.testing.assert_allclose(roundtrip[0].obs.info["goal"], goal)
+
+
 def test_depth_stored_only_when_every_frame_has_it():
     assert "depth" in ds.episode_arrays(_moving_episode(with_depth=True))
     # mixed: last frame missing depth -> whole channel dropped

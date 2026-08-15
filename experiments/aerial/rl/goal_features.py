@@ -1,0 +1,154 @@
+"""Goal-relative features for the V1-② reward head.
+
+``NavigationReward`` progress is Δdist(goal). r60 episode npz historically omitted
+``goal``, so open-loop reward fidelity cannot see the quantity the label depends
+on. This module:
+
+  * builds body-frame ``goal_rel = (fwd, left, up, remaining_dist)`` from pose+goal
+  * resolves a per-episode goal from stored npz / transition info, or (legacy)
+    an arrived end-proprio proxy / Gauss–Newton fit to the reward channel
+
+Goal is **reward-head conditioning only** (like action) — not an encoder / policy
+input — so the RGB+proprio4 §1.2 boundary stays intact.
+"""
+from __future__ import annotations
+
+from typing import Any, List, Optional, Sequence
+
+import numpy as np
+
+from experiments.aerial.rl.buffer import Transition
+
+GOAL_REL_DIM = 4  # body-frame fwd, left, up, remaining_dist_m
+
+
+def goal_rel_body(
+    pos: np.ndarray,
+    yaw: float,
+    goal: np.ndarray,
+) -> np.ndarray:
+    """World goal → body-frame delta + remaining distance ``[fwd, left, up, dist]``."""
+    pos = np.asarray(pos, dtype=np.float64).reshape(3)
+    goal = np.asarray(goal, dtype=np.float64).reshape(3)
+    delta = goal - pos
+    dist = float(np.linalg.norm(delta))
+    c = float(np.cos(yaw))
+    s = float(np.sin(yaw))
+    fwd = c * delta[0] + s * delta[1]
+    left = -s * delta[0] + c * delta[1]
+    up = float(delta[2])
+    return np.array([fwd, left, up, dist], dtype=np.float32)
+
+
+def goal_rel_from_obs(obs: Any) -> np.ndarray:
+    """``goal_rel`` for one observation; zeros when goal is missing."""
+    goal = None
+    info = getattr(obs, "info", None)
+    if isinstance(info, dict):
+        goal = info.get("goal")
+    if goal is None:
+        return np.zeros(GOAL_REL_DIM, dtype=np.float32)
+    return goal_rel_body(obs.position, float(obs.yaw), goal)
+
+
+def _goal_from_info(transitions: Sequence[Transition]) -> Optional[np.ndarray]:
+    for tr in transitions:
+        for bag in (tr.info, getattr(tr.obs, "info", {}) or {}):
+            if not isinstance(bag, dict):
+                continue
+            g = bag.get("goal")
+            if g is not None:
+                arr = np.asarray(g, dtype=np.float64).reshape(-1)
+                if arr.size >= 3 and np.all(np.isfinite(arr[:3])):
+                    return arr[:3].astype(np.float64)
+    return None
+
+
+def fit_goal_from_progress(
+    pos: np.ndarray,
+    prog: np.ndarray,
+    *,
+    n_iter: int = 30,
+    damp: float = 0.5,
+) -> np.ndarray:
+    """Gauss–Newton fit of a fixed goal to observed progress ``Δdist`` labels.
+
+    ``prog[t] ≈ ||pos[t]−g|| − ||pos[t+1]−g||`` for ``t < N−1``. Used as a legacy
+    npz recovery path when the collector did not persist ``goal``.
+    """
+    pos = np.asarray(pos, dtype=np.float64).reshape(-1, 3)
+    prog = np.asarray(prog, dtype=np.float64).reshape(-1)
+    if pos.shape[0] < 2:
+        return pos[-1].copy() if pos.shape[0] else np.zeros(3, dtype=np.float64)
+    g = pos[-1].copy()
+    for _ in range(int(n_iter)):
+        d = np.linalg.norm(pos - g[None, :], axis=1) + 1e-6
+        pred = d[:-1] - d[1:]
+        err = pred - prog[:-1]
+        u = (pos - g[None, :]) / d[:, None]
+        jac = -u[:-1] + u[1:]
+        dg, *_ = np.linalg.lstsq(jac, err, rcond=None)
+        g = g + float(damp) * dg
+    return g.astype(np.float64)
+
+
+def end_proprio_goal_proxy(transitions: Sequence[Transition]) -> Optional[np.ndarray]:
+    """Last pre-step position when the episode terminated without collision.
+
+    Arrived episodes end within ``success_dist_m`` of the true goal; the stored
+    terminal proprio is one step early but still a usable proxy for r60.
+    """
+    if not transitions:
+        return None
+    last = transitions[-1]
+    post = last.next_obs if last.next_obs is not None else last.obs
+    collided = bool(getattr(post, "collided", False) or last.obs.collided)
+    if not (last.done and not collided):
+        return None
+    return np.asarray(last.obs.position, dtype=np.float64).reshape(3)
+
+
+def resolve_episode_goal(
+    transitions: Sequence[Transition],
+    *,
+    allow_fit: bool = False,
+    allow_end_proxy: bool = True,
+    maneuver_w: float = 0.01,
+) -> Optional[np.ndarray]:
+    """Best-effort episode goal: info → optional fit → optional end-proprio proxy.
+
+    Default ``allow_fit=False``: Gauss–Newton recovery from the reward channel is
+    **not** reliable on r60 (reconstructed progress MAE ≫ mean baseline), so we
+    refuse to inject a misleading goal into ``goal_rel`` unless the caller opts in.
+    """
+    stored = _goal_from_info(transitions)
+    if stored is not None:
+        return stored
+    if not transitions:
+        return None
+    if allow_fit and len(transitions) >= 3:
+        pos = np.stack([t.obs.position for t in transitions], axis=0)
+        acts = np.stack([np.asarray(t.action, dtype=np.float64).reshape(4)
+                         for t in transitions], axis=0)
+        rew = np.asarray([t.reward for t in transitions], dtype=np.float64)
+        prog = rew + float(maneuver_w) * np.linalg.norm(acts, axis=1)
+        return fit_goal_from_progress(pos, prog)
+    if allow_end_proxy:
+        return end_proprio_goal_proxy(transitions)
+    return None
+
+
+def attach_goal(transitions: List[Transition], goal: Optional[np.ndarray]) -> None:
+    """Stamp ``goal`` onto every transition / obs ``info`` (in-place)."""
+    if goal is None:
+        return
+    g = np.asarray(goal, dtype=np.float32).reshape(3)
+    for tr in transitions:
+        tr.info["goal"] = g.copy()
+        if tr.obs.info is None:
+            tr.obs.info = {}
+        tr.obs.info["goal"] = g.copy()
+        if tr.next_obs is not None:
+            if tr.next_obs.info is None:
+                tr.next_obs.info = {}
+            tr.next_obs.info["goal"] = g.copy()

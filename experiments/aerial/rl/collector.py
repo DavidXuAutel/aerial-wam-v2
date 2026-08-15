@@ -141,6 +141,11 @@ class RolloutCollector:
 
         reward = NavigationReward(getattr(self.env, "goal", None), self.reward_cfg)
         reward.reset(getattr(self.env, "goal", None), obs.position)
+        env_goal = getattr(self.env, "goal", None)
+        goal_xyz = (
+            None if env_goal is None
+            else np.asarray(env_goal, dtype=np.float32).reshape(3)
+        )
 
         transitions: List[Transition] = []
         stats = CollectStats(episodes=1)
@@ -183,11 +188,14 @@ class RolloutCollector:
 
             next_obs, info = self.env.step(action)
             r, done, terms = reward.step(next_obs, action)
+            ep_info = {**info, **terms, "intervention": intervened}
+            if goal_xyz is not None:
+                ep_info["goal"] = goal_xyz.copy()
             transitions.append(
                 Transition(
                     obs=obs, action=action, reward=r, done=done,
                     next_obs=next_obs,
-                    info={**info, **terms, "intervention": intervened},
+                    info=ep_info,
                 )
             )
             stats.steps += 1

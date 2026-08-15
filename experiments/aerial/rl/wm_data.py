@@ -17,10 +17,13 @@ observation ``t``, the action taken from it, and the resulting reward/done):
     reward    [B, L]          float32
     done      [B, L]          bool
     collided  [B, L]          bool    post-step contact GT (next_obs, else obs)
+    goal_rel  [B, L, 4]       float32 body-frame (fwd, left, up, remaining_dist)
     depth     [B, L, H, W]    float32 ONLY if every frame carries it (else absent)
 
 ``depth`` follows ``dataset.episode_arrays``: present only when *every* frame in
 *every* window has it, so a partial-depth batch never yields a ragged channel.
+``goal_rel`` is reward-head conditioning (V1-②); zeros when the episode has no
+resolvable goal. Encoder / policy inputs remain RGB + proprio4 only (§1.2).
 """
 from __future__ import annotations
 
@@ -29,6 +32,7 @@ from typing import Dict, List
 import numpy as np
 
 from experiments.aerial.rl.buffer import Episode, Transition
+from experiments.aerial.rl.goal_features import GOAL_REL_DIM, goal_rel_from_obs
 
 
 def _validate(windows: List[Episode]) -> int:
@@ -87,6 +91,20 @@ def windows_to_arrays(windows: List[Episode]) -> Dict[str, np.ndarray]:
     collided = np.asarray(
         [[_collided(w, t) for t in range(length)] for w in windows], dtype=np.bool_
     )
+    goal_rel = np.stack(
+        [
+            np.stack(
+                [goal_rel_from_obs(_obs(w, t)) for t in range(length)],
+                axis=0,
+            )
+            for w in windows
+        ],
+        axis=0,
+    ).astype(np.float32, copy=False)
+    if goal_rel.shape[-1] != GOAL_REL_DIM:
+        raise ValueError(
+            f"goal_rel last dim must be {GOAL_REL_DIM}, got {goal_rel.shape}"
+        )
 
     out: Dict[str, np.ndarray] = {
         "rgb": rgb,
@@ -95,6 +113,7 @@ def windows_to_arrays(windows: List[Episode]) -> Dict[str, np.ndarray]:
         "reward": reward,
         "done": done,
         "collided": collided,
+        "goal_rel": goal_rel,
     }
 
     # Depth only when EVERY frame has it (mirror dataset.episode_arrays): a

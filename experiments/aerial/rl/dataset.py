@@ -27,6 +27,7 @@ import numpy as np
 
 from experiments.aerial.rl.buffer import Transition
 from experiments.aerial.rl.env.obs import Observation, depth_sanity_detail
+from experiments.aerial.rl.goal_features import attach_goal
 
 # A frozen renderer / dead API-control run is the failure we most need to catch.
 MIN_FRAME_VARIATION = 1e-3   # mean |Δ| between consecutive RGB frames (uint8 scale)
@@ -96,6 +97,21 @@ def episode_arrays(transitions: Sequence[Transition]) -> Dict[str, np.ndarray]:
     # Depth is optional per-step (grab_depth); store it only if every frame has it.
     if all(t.obs.depth is not None for t in transitions):
         arrays["depth"] = np.stack([np.asarray(t.obs.depth, np.float32) for t in transitions])
+    # Episode goal for V1-② reward features (optional; legacy corpora omit it).
+    goal = None
+    for tr in transitions:
+        for bag in (tr.info, getattr(tr.obs, "info", {}) or {}):
+            if isinstance(bag, dict) and bag.get("goal") is not None:
+                goal = np.asarray(bag["goal"], dtype=np.float32).reshape(3)
+                break
+        if goal is not None:
+            break
+    if goal is None:
+        # Write path: only persist an explicit collector-stamped goal (or none).
+        # Do not invent end-proprio proxies into training corpora.
+        pass
+    else:
+        arrays["goal"] = np.asarray(goal, dtype=np.float32).reshape(3)
     return arrays
 
 
@@ -143,6 +159,10 @@ def load_episode(path: Path) -> List[Transition]:
     imu_lin_acc = raw["imu_lin_acc"] if "imu_lin_acc" in raw.files else None
     imu_present = raw["imu_present"] if "imu_present" in raw.files else None
     timestamps = raw["timestamps"] if "timestamps" in raw.files else None
+    goal_npz = (
+        np.asarray(raw["goal"], dtype=np.float32).reshape(3)
+        if "goal" in raw.files else None
+    )
     n = int(rgb.shape[0])
     if n == 0:
         raise ValueError(f"empty episode file: {path}")
@@ -205,6 +225,11 @@ def load_episode(path: Path) -> List[Transition]:
                 next_obs=next_obs,
             )
         )
+    # Stamp goal for reward-head features (V1-②). Stored npz key only — do not
+    # invent end-proprio / reward-fit proxies here (r60 end-proxy and fit both
+    # mislead; use ``backfill_episode_goals`` against the OpenFly annotation).
+    if goal_npz is not None:
+        attach_goal(transitions, goal_npz)
     return transitions
 
 

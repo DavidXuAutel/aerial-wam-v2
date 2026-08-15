@@ -37,8 +37,21 @@ def test_shapes_dtypes_and_keys():
     assert arr["reward"].shape == (2, 5) and arr["reward"].dtype == np.float32
     assert arr["done"].shape == (2, 5) and arr["done"].dtype == np.bool_
     assert arr["collided"].shape == (2, 5) and arr["collided"].dtype == np.bool_
+    assert arr["goal_rel"].shape == (2, 5, 4) and arr["goal_rel"].dtype == np.float32
+    # fixtures without goal → zeros
+    assert np.allclose(arr["goal_rel"], 0.0)
     assert "depth" not in arr
 
+
+def test_goal_rel_from_obs_info():
+    windows = [_window(3)]
+    goal = np.array([10.0, 0.0, 2.0], dtype=np.float32)
+    for tr in windows[0]:
+        tr.obs.info["goal"] = goal.copy()
+    arr = wm_data.windows_to_arrays(windows)
+    # at x=0, yaw~0.1: remaining dist to (10,0,2) ≈ 10
+    assert arr["goal_rel"][0, 0, 3] > 9.0
+    assert arr["goal_rel"][0, 2, 3] < arr["goal_rel"][0, 0, 3]
 
 def test_obs_alignment():
     windows = [_window(4)]
