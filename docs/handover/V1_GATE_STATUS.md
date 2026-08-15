@@ -14,7 +14,7 @@
 |---|---|
 | Mac / 125 bare / H100 | `86dd457`+（① 拒 tied-zero；晚¹⁵ 实测后文档提交） |
 
-**未自动 flip yaml**（`tau_predictor.kind` 默认仍 `gt_proxy`；部署切 `foe_calibrated` 需人工）。
+**yaml 已 flip**（`tau_predictor.kind=foe_calibrated`，ckpt=tau_ckpt_foe_r60_20260815；`planner.enable`/`enable_policy_update` 仍 false）。下一步：**V4**。
 
 产物（H100）：
 
@@ -46,7 +46,7 @@
 ## 3. 待办
 
 - [x] V1a / 严谨 ① δ / ② honest / ③ Phase 2 auth + **merge**
-- [ ] **人工**：yaml `tau_predictor.kind=foe_calibrated` + `ckpt=.../tau_foe_calibrator.pt`
+- [x] **人工**：yaml `tau_predictor.kind=foe_calibrated` + `ckpt=.../tau_foe_calibrator.pt` (**flipped 2026-08-15 on 125**)
 - [ ] **可选**：增采含碰撞 held-out（使 ② `coll_traj_pos≥3` 可评 AUROC）；P0b cones；V4
 
 ---
@@ -121,3 +121,22 @@ python experiments/aerial/scripts/v1_gate_run_partials.py rollout4090 \
 - **2026-08-15(晚¹⁴)** — Phase 2 FOE；auth ③；曾 merge（① 为 soft tied-zero，后撤销权威性）。
 - **2026-08-15(晚¹³)** — ② goalvel beat=0.93。
 - **2026-08-15(晚¹²…午)** — scaffold / 首跑 partial / harness 修复等（见 git log）。
+
+---
+
+## Deploy flip (follow-up 2026-08-15)
+
+**Done on 125:** `tau_predictor.kind=foe_calibrated`, `use_gt_depth=false`, ckpt=`/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/checkpoints/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt`.
+
+- `planner.enable` remains **false**
+- `enable_policy_update` remains **false** (needs V4 gate re-freeze — do not flip)
+- Next focus: **V4** entry (re-freeze checklist below)
+- Ops: commit on 125 → push local bare `origin` → sync H100; Mac may sleep
+
+### V4 entry checklist (do not start training update yet)
+
+- [ ] Re-freeze V4 gate criteria in design doc
+- [ ] Confirm imagination / actor-critic eval harness
+- [ ] Only then consider flipping `enable_policy_update: true`
+- [ ] Keep planner.enable policy separate from V4 AC update
+

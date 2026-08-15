@@ -120,7 +120,7 @@ safety:
 
 # V1b short-horizon imagination planner (test-time scoring, not V4 AC training).
 planner:
-  enable: false              # flip ON after local v1b_planner_smoke PASS
+  enable: false              # stay OFF until planner smoke / design flip
   horizon: 5                 # <= MAX_IMAGINATION_HORIZON (15)
 
 # V1b [1d] time-to-contact head.
@@ -128,13 +128,13 @@ planner:
 # Phase 2 (auth):  kind=foe | foe_calibrated — FOE optical-flow; no GT depth.
 tau_predictor:
   enable: true
-  kind: gt_proxy             # flip to foe / foe_calibrated for Phase 2 auth ③
-  use_gt_depth: true         # ignored when kind is foe*
+  kind: foe_calibrated       # V1 PASS deploy flip 2026-08-15 (was gt_proxy)
+  use_gt_depth: false        # foe* ignores GT depth
   center_frac: 0.5
   min_closing_m_s: 0.05
   max_tau_s: 60.0
   dt_s: 0.1
-  ckpt: null                 # optional FoeTauCalibrator after train_tau_foe
+  ckpt: /home/a25689/aerial-rl-skeleton/experiments/aerial/rl/checkpoints/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt  # H100/runtime path from V1 gate
   device: cpu
 
 corrector:
