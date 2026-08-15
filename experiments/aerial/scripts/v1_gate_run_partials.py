@@ -233,6 +233,11 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     return 0 if s1.get("ok") else 1
 
 
+def _python_bin() -> str:
+    import os
+    return os.environ.get("PYTHON_BIN", sys.executable)
+
+
 def run_merge(args: argparse.Namespace) -> int:
     root = _repo_root(args.repo)
     if str(root) not in sys.path:

@@ -101,7 +101,7 @@ def _signal3_from_dataset(
             d_hat = obs.info.get("depth_min_pred")
             if d_hat is None:
                 from experiments.aerial.rl.depth_geometry import forward_min_depth
-                d_hat = forward_min_depth(obs.depth)
+                d_hat = forward_min_depth(obs.depth, center_frac=0.5)
             tau = obs.info.get("tau_pred")
             if tau is None:
                 tau = gt_tau_from_depth_velocity(obs.depth, obs)
