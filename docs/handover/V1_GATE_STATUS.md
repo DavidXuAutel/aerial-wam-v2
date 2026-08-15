@@ -16,7 +16,7 @@
 
 | 主机 | HEAD |
 |---|---|
-| Mac / H100 | 见本节提交后 SHA（FOE Phase 2 scaffold） |
+| Mac / 125 / H100 | `b34fab5`（FOE Phase 2 scaffold） |
 
 ---
 
@@ -62,7 +62,7 @@ python -m experiments.aerial.rl.train_tau_foe \
   --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
   --out-dir ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815 \
   --steps 2000 --device cuda
-# ETA：harvest ~数分钟（Farneback 全语料）+ train 2000 step ≪5 min on H100
+# ETA：harvest（Farneback 全语料接近帧）≈10–30 min + train 2000 step ≪5 min on H100
 
 # auth ③（古典 FOE 或 +calibrator）
 python -m experiments.aerial.rl._v1_gate --signals 3 \
@@ -73,7 +73,7 @@ python -m experiments.aerial.rl._v1_gate --signals 3 \
   --emit experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_partial_3_auth_r60_20260815.json
 ```
 
-**未 flip merge**：auth JSON `ok=true` 且 `authoritative=true` 后才可与 ①② 合并。
+**已启动（2026-08-15 晚¹⁴）**：H100 `train_tau_foe` + 完成后链式 auth ③（logs：`train_tau_foe_20260815.out` / `v1_auth3_foe_20260815.out`）。**未 flip merge**。
 
 ---
 
