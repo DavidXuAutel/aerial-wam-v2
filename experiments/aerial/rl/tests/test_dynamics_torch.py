@@ -129,6 +129,22 @@ def test_encode_step_latent_packing():
     assert isinstance(out.done, bool)
 
 
+def test_reward_head_is_action_conditioned():
+    """V1-②: reward_head input is [feature; action]; train/step share that shape."""
+    m = _tiny_model()
+    assert m.reward_in_dim == m.latent_dim + m.action_dim
+    first = next(m.reward_head.parameters())
+    assert first.shape[1] == m.reward_in_dim
+    z = m.encode(_obs())
+    a0 = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    a1 = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    # Untrained head still depends on action via the linear input concat.
+    p0 = m.step(z, a0).progress
+    p1 = m.step(z, a1).progress
+    assert np.isfinite(p0) and np.isfinite(p1)
+    assert p0 != p1
+
+
 def test_from_config_reads_world_model_block():
     cfg = {
         "recurrent_dim": 16, "stoch_dim": 4, "stoch_classes": 4, "num_bins": 41,

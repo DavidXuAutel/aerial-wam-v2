@@ -847,8 +847,13 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             spatial //= 2
         self.decoder = _RGBDecoder(feature_dim, self.encoder.flat_dim, spatial,
                                    out_ch=rgb_channels)
-        self.reward_head = nn.Sequential(nn.Linear(feature_dim, hidden_dim), nn.SiLU(),
-                                         nn.Linear(hidden_dim, int(num_bins)))
+        # Reward ≈ NavigationReward progress (Δdist to goal) is action-dependent;
+        # concat a so open-loop fidelity can beat a constant baseline at short H.
+        self.reward_in_dim = feature_dim + self.action_dim
+        self.reward_head = nn.Sequential(
+            nn.Linear(self.reward_in_dim, hidden_dim), nn.SiLU(),
+            nn.Linear(hidden_dim, int(num_bins)),
+        )
         self.continue_head = nn.Linear(feature_dim, 1)
         self.coll_head = nn.Linear(feature_dim, 1)
 
@@ -938,7 +943,10 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         recon_target = rgb_target.reshape(B * L, *recon.shape[1:])
         loss_recon = F.mse_loss(recon, recon_target)
 
-        reward_logits = self.reward_head(feature)           # [B, L, num_bins]
+        # Action-conditioned reward: same [feature; action] timing as :meth:`step`.
+        act = action.to(self.torch_dtype)
+        reward_in = torch.cat([feature, act], dim=-1)       # [B, L, feat+act]
+        reward_logits = self.reward_head(reward_in)         # [B, L, num_bins]
         reward_target = _twohot_targets(_symlog(reward.to(self.torch_dtype)), self.bins)
         loss_reward = -(reward_target * F.log_softmax(reward_logits, dim=-1)).sum(-1).mean()
 
@@ -1045,11 +1053,12 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
     def step(self, z: np.ndarray, action: np.ndarray) -> DynamicsOutput:
         """One imagined RSSM prior transition from packed latent ``[h ‖ z]``.
 
-        Head alignment (V1-②): ``training_loss`` scores reward/cont/coll from the
-        *pre-action* feature ``[h_t ‖ z_t]`` against ``reward_t`` / ``done_t`` /
-        ``collided_t``. Imagination must do the same — read heads on the current
-        feature, *then* advance with ``action``. Predicting from the post-action
-        prior was a +1 offset vs training and sank open-loop reward beat_frac.
+        Head alignment (V1-②): ``training_loss`` scores cont/coll from the
+        *pre-action* feature ``[h_t ‖ z_t]`` and reward from ``[h_t ‖ z_t ‖ a_t]``
+        against ``reward_t`` / ``done_t`` / ``collided_t``. Imagination must match
+        — read heads on the current feature (reward also sees ``a``), *then*
+        advance. Predicting from the post-action prior was a +1 offset vs
+        training and sank open-loop reward beat_frac.
 
         V4 note: ``progress`` is the reward head's symexp readout (per-step
         reward); goal-conditioned progress / arrival finalize at V4.
@@ -1063,7 +1072,8 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             self.device, self.torch_dtype).reshape(1, self.action_dim)
 
         feature = torch.cat([h, z_flat], dim=-1)
-        reward_probs = F.softmax(self.reward_head(feature), dim=-1)
+        reward_in = torch.cat([feature, a], dim=-1)
+        reward_probs = F.softmax(self.reward_head(reward_in), dim=-1)
         progress = float(_symexp(_twohot_decode(reward_probs, self.bins)).item())
         p_coll = float(torch.sigmoid(self.coll_head(feature)).item())
         cont = float(torch.sigmoid(self.continue_head(feature)).item())
