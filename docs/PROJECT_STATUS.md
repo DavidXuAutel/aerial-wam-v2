@@ -27,7 +27,7 @@
 
 **✅ V0 四信号已在同一 r60 ft-head + 一次 merge 下合拢 PASS**（`v0_gate_r60_20260814.json`，H100 `.25`）。
 
-**当前阶段：V1a ✅ / V1b scaffold ✅** — τ + 双通道罩 + 想象规划 + `_v1_gate` CLI 已落；待 H100/4090 三信号 merge PASS。
+**当前阶段：V1 partial 首跑完成（③ PASS / ②① FAIL）** — merge blocked；待 rollout spawn 修复 + fidelity 碰撞轨。
 
 ---
 
