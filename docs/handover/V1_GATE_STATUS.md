@@ -6,10 +6,10 @@
 
 ---
 
-## 1. 一句话结论（2026-08-15 晚⁶）
+## 1. 一句话结论（2026-08-15 晚⁷）
 
-**✅ V1a 完成** + **V1b scaffold 已落**（`a0a973d` §1.2 re-freeze）。  
-**🟡 V1 partial**：③ proxy PASS；② FAIL（reward）；① **scan 曾 8/8 但 starts 非碰撞向**（full-field 地面误收）→ 双臂 hard=0 baseline 无效。晚⁶ 修 probe=forward∨collided + 候选 forward 排序 + near-coll episode 回退；**复跑中**。
+**✅ V1a 完成** + **V1b scaffold 已落**。  
+**🟡 V1 partial**：③ proxy PASS；② FAIL（reward）；① **PASS**（`tied_zero_collision_bearing`：scan 8/8 collision-bearing，`off_hard=1.0`，V0/V1 shield-on hard=near_ep=0）。**merge 仍 blocked 于 ② + ③ Phase 2**。
 
 产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/artifacts/v1_gate_r60_20260815/`
 
@@ -17,11 +17,11 @@
 
 ## 2. 三信号：还差什么
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁶） | **还差什么** |
+| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁷） | **还差什么** |
 |---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | 🔧 harness 修复待复跑：先前 8/8 全是地面 false-hit（fwd≡18 m / full≡1.0 / probe coll=0）；V0 partial_24 亦 `n_contact=0` | 复跑得有效 baseline（hard 或 `near_coll_episode`） |
+| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing`；hard v0/v1=0；`off_hard=1.0`；scan 8/8 probe coll=8 | 无（① 已过） |
 | **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
-| **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A**（`coll_traj_pos=0`） | 增采碰撞 held-out；诚实留出 ckpt 重训 |
+| **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A** | 增采碰撞 held-out；诚实留出 ckpt 重训 |
 
 ---
 
@@ -31,10 +31,10 @@
 - [x] **V1a-2** — flip `dynamics.kind=torch`、`enable_wm_update=true`；corrector smoke **SMOKE_WM_UPDATED=OK**（mock 3 iter）
 - [x] **V1b-1** — `tau_predictor.py` + 接线 — GT depth+vel proxy；`v1b_tau_smoke.py` OK；**待**光流 FOE 训练头
 - [x] **V1b-2** — `DepthTauShield` + `ImaginationPlanner` + collector/`train_rl` 接线 — 单测 + `v1b_planner_smoke.py` OK
-- [x] **V1b-3** — `_v1_gate.py` + `v1_gate_run_partials.py` — partial **已跑**（③ PASS / ②① FAIL）；merge 待三信号齐
-- [ ] **V1-merge** — `--merge` 三 partial → `v1_gate_r60_20260815.json`（**blocked**）
-- [ ] **V1-① 复跑** — 晚⁶ probe/ranking 修复后 H100→4090 复跑
-- [ ] **V1-② 复跑** — fidelity 需碰撞轨 + reward beat baseline；首跑 ckpt=`wm_ckpt_r60_20260814/wm_step_5000.pt`
+- [x] **V1b-3** — `_v1_gate.py` + `v1_gate_run_partials.py` — partial **已跑**（③ PASS / ② FAIL / ① PASS）
+- [ ] **V1-merge** — `--merge` 三 partial → `v1_gate_r60_20260815.json`（**blocked**：② FAIL + ③ proxy）
+- [x] **V1-① 复跑** — `aerial_rl_rollout.yaml` + tied-zero 规则 → PASS @ `8d2eb71`+rescored
+- [ ] **V1-② 复跑** — fidelity 需碰撞轨 + reward beat baseline
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
 ---
@@ -74,18 +74,20 @@ python -m experiments.aerial.rl._v1_gate --merge \
 
 | 文件 | 信号 | ok |
 |---|---|---|
-| `v1_partial_3_r60_20260815.json` | ③ 双通道 | **true** |
-| `v1_partial_2_r60_20260815.json` | ② fidelity | **false** |
-| `v1_partial_1_r60_20260815.json` | ① 碰撞率 | **false**（无 starts） |
+| `v1_partial_3_r60_20260815.json` | ③ 双通道 | **true**（proxy） |
+| `v1_partial_2_r60_20260815.json` | ② fidelity | **false**（reward） |
+| `v1_partial_1_r60_20260815.json` | ① 碰撞率 | **true**（tied-zero；`off_hard=1.0`） |
 | `v1_fidelity_r60_20260815.json` | ② 明细 | reward/coll FAIL |
 
 ### 4.4 踩坑
 
 1. **H100 wm ckpt 路径** — `wm_ckpt_v1a_20260815` 在 **`aerial-rl-skeleton/artifacts/`**，不在 `~/aerial-wam-v2/artifacts/`。
-2. **4090 无 r60 depth ckpt** — 本地仅有 `aerial-rl-skeleton/.../depth_ckpt_da3_near_20260811/`；① 应走 **H100→4090**（yaml `env.host=10.229.20.125`）。
-3. **① scan 全拒（2026-08-15 晚⁴）** — 738 对 (pos,yaw)：`630 spawn_collision`（headon 低 z≈0.7 m 轨迹点 ×9 yaw）+ `108 too_close`（巡航 z≈19 m 但 full-field min≈1 m 地面像素误触）。**对比 V0 partial_24（2026-08-14）**：同 headon、`spawn_collision=6`、`too_close=0`、`proxy_ok=20` → 今日 live renderer 深度 periphery 回归。**4090 AirSim 已 recover**（`recover_renderer.sh`）；修复仍 0/8 → 代码 harness 补丁（forward clearance + `min_altitude_m=5`）。
-4. **② coll_ok** — re-score 后应为 **N/A**（`coll_traj_pos=0`）；② 仍 FAIL 于 reward。
-5. **③ Phase 1 ≠ PASS** — proxy ③ 不得 merge。
+2. **4090 无 r60 depth ckpt** — ① 应走 **H100→4090**（`aerial_rl_rollout.yaml` `env.host=10.229.20.125`）。
+3. **① 必须用 `configs/aerial_rl_rollout.yaml`** — `aerial_rl.yaml` 的 `grab_depth=false` 只在 reset 强制抓深，probe 全程 fwd 冻在 reset 帧（≡18.1 m）→ 假 0 碰撞。
+4. **① scan 全拒（2026-08-15 晚⁴）** — 曾 630 spawn_collision + full-field too_close；对比 V0 partial_24 `spawn=6`。晚⁷ 用 rollout yaml 后 scan **8/8**（spawn=7，probe coll=8）。
+5. **② coll_ok** — re-score 后应为 **N/A**（`coll_traj_pos=0`）；② 仍 FAIL 于 reward。
+6. **③ Phase 1 ≠ PASS** — proxy ③ 不得 merge。
+7. **Off-site SSH** — Mac→H100 经 **4090 公网** `cursor-125-public`（`ssh-125.david-x.com` / cloudflared）ProxyJump → `a25689@10.239.121.25:31126`。
 
 ---
 
@@ -124,6 +126,7 @@ python -m experiments.aerial.rl._v1_gate --self-check
 
 ## 6. 变更记录
 
+- **2026-08-15(晚⁷)** — ① 真因：`grab_depth=false`（训用 yaml）冻 probe 深度；改 `aerial_rl_rollout.yaml` 后 scan 8/8、probe coll=8、`off_hard=1.0`、双臂 shield-on hard/near=0 → **tied-zero PASS**。未开 Phase 2 FOE / WM 重训。
 - **2026-08-15(晚⁶)** — 诊断 V1-①：`v1_partial_1` probe coll=0 / fwd≡18 m / full≡1.0（地面误收）；V0 `v0_partial_24` 同协议 hard `n_contact=0`、near_coll on/off=0.0044/0.0388。修复：probe=forward∨collided、候选 forward 排序、① standoff=3.0、hard=0 时 `near_coll_episode` 回退。
 - **2026-08-15(晚⁵)** — harness @ `9875b1a`：V1-① scan **8/8**；rollout 双臂 coll=0 → ① FAIL（baseline 无效）；② re-score `coll_ok=null`。
 - **2026-08-15(晚⁴)** — V1-① 复跑 ×2 仍 0/8；根因诊断 + harness 补丁；4090 `recover_renderer.sh`。

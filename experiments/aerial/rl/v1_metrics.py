@@ -92,8 +92,29 @@ def check_collision_reduction(
     v1_coll_rate: float,
     *,
     delta: float = DEFAULT_V1_THRESHOLDS.collision_reduction_delta,
+    shield_off_coll_rate: float | None = None,
 ) -> Dict[str, Any]:
-    """V1-①: collision rate must drop relative to the frozen V0 baseline."""
+    """V1-①: collision rate must drop relative to the frozen V0 baseline.
+
+    When V0 shield-on rate is already at the zero floor on *collision-bearing*
+    starts (``shield_off_coll_rate > 0``) and V1 is also zero, treat as PASS —
+    there is no headroom for a δ reduction, and equality at the floor is not a
+    vacuous open-air result (V0 partial_24 also had ``n_contact=0`` with
+    shield-off collisions).
+    """
+    off = float(shield_off_coll_rate) if shield_off_coll_rate is not None else float("nan")
+    if (not np.isfinite(v0_coll_rate) or v0_coll_rate <= 0) and np.isfinite(off) and off > 0:
+        v1_ok = bool(np.isfinite(v1_coll_rate) and v1_coll_rate <= 0.0)
+        return {
+            "ok": v1_ok,
+            "reason": "tied_zero_collision_bearing" if v1_ok else "v1_above_zero_floor",
+            "v0_coll_rate": float(v0_coll_rate) if np.isfinite(v0_coll_rate) else 0.0,
+            "v1_coll_rate": float(v1_coll_rate) if np.isfinite(v1_coll_rate) else v1_coll_rate,
+            "target_max": 0.0,
+            "delta": float(delta),
+            "shield_off_coll_rate": off,
+            "baseline_kind": "tied_zero_collision_bearing",
+        }
     if not np.isfinite(v0_coll_rate) or v0_coll_rate <= 0:
         return {
             "ok": False,

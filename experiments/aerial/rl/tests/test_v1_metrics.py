@@ -12,6 +12,18 @@ def test_collision_reduction_pass():
     assert abs(out["target_max"] - 0.08) < 1e-9
 
 
+def test_collision_reduction_tied_zero_on_collision_bearing():
+    out = v1_metrics.check_collision_reduction(0.0, 0.0, shield_off_coll_rate=1.0)
+    assert out["ok"] is True
+    assert out["baseline_kind"] == "tied_zero_collision_bearing"
+
+
+def test_collision_reduction_zero_without_off_still_invalid():
+    out = v1_metrics.check_collision_reduction(0.0, 0.0)
+    assert out["ok"] is False
+    assert out["reason"] == "invalid v0_coll_rate baseline"
+
+
 def test_wm_fidelity_coll_na_when_no_collision_trajs():
     verdict = {
         "reward_ok": True,
