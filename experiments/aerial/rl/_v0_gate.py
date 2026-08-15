@@ -605,7 +605,7 @@ def _signals_2_4_from_rollouts(
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
     if rollout_dataset is not None:
         cand, cand_yaw = _obstacle_candidate_positions(
-            Path(rollout_dataset), min_altitude_m=5.0,
+            Path(rollout_dataset), min_altitude_m=0.0,
         )
         # obstacle_max_m 25 (was 15): the probe is the real filter (rams the wall
         # head-on), so accept mid-range frontal obstacles up to just under the 30 m
