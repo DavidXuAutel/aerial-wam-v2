@@ -19,7 +19,7 @@
 
 | 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁴） | **还差什么** |
 |---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | ❌ **FAIL** — scan **0/8**（738 扫：630 spawn_collision + 108 too_close）；**V0 同 harness 今日亦 0/8** | harness 修复 @ 下一 commit（forward clearance + min_alt 5 m）；复跑 `v1_partial_1` |
+| **V1-①** | 碰撞率相对 V0 ↓20% | 🟡 **scan 8/8 OK**（harness @ `9875b1a`）；**FAIL** — V0/V1 臂均 `coll_rate=0` → baseline 无效 | 需含碰撞 eval 或引用 V0 partial_24 baseline；非 scan 问题 |
 | **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
 | **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A**（`coll_traj_pos=0`） | 增采碰撞 held-out；诚实留出 ckpt 重训 |
 
@@ -33,7 +33,7 @@
 - [x] **V1b-2** — `DepthTauShield` + `ImaginationPlanner` + collector/`train_rl` 接线 — 单测 + `v1b_planner_smoke.py` OK
 - [x] **V1b-3** — `_v1_gate.py` + `v1_gate_run_partials.py` — partial **已跑**（③ PASS / ②① FAIL）；merge 待三信号齐
 - [ ] **V1-merge** — `--merge` 三 partial → `v1_gate_r60_20260815.json`（**blocked**）
-- [ ] **V1-① 复跑** — 解决 rollout scan spawn_collision；4090 缺 `depth_ckpt_da3_r60`（仅 skeleton 有 near head）
+- [ ] **V1-① 复跑** — scan 已通（8/8）；待 collision-bearing eval 或 frozen V0 baseline
 - [ ] **V1-② 复跑** — fidelity 需碰撞轨 + reward beat baseline；首跑 ckpt=`wm_ckpt_r60_20260814/wm_step_5000.pt`
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
@@ -124,7 +124,8 @@ python -m experiments.aerial.rl._v1_gate --self-check
 
 ## 6. 变更记录
 
-- **2026-08-15(晚⁴)** — V1-① 复跑 ×2 仍 0/8；根因诊断 + harness 补丁（forward clearance / min_alt 5 m）；② re-score coll N/A；4090 `recover_renderer.sh`。
+- **2026-08-15(晚⁵)** — harness @ `9875b1a`：V1-① scan **8/8**；rollout 双臂 coll=0 → ① FAIL（baseline 无效）；② re-score `coll_ok=null`。
+- **2026-08-15(晚⁴)** — V1-① 复跑 ×2 仍 0/8；根因诊断 + harness 补丁；4090 `recover_renderer.sh`。
 - **2026-08-15(晚³)** — **§1.2 re-freeze 草案**写入设计 doc；`v1_metrics` 对齐 coll N/A + Phase 标记。
 - **2026-08-15(晚²)** — 首次 V1 partial 执行（③ proxy PASS / ②① FAIL）；见 §4。
 - **2026-08-15(晚)** — **V1b scaffold 合拢**：`DepthTauShield`、`planner.py`、`ImaginationPlanner`、`_v1_gate.py`、`v1_metrics.py`；yaml `safety.kind=depth_tau`；单测 + smoke PASS（Mac）。
