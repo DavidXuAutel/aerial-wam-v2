@@ -6,10 +6,10 @@
 
 ---
 
-## 1. 一句话结论（2026-08-15 晚）
+## 1. 一句话结论（2026-08-15 晚⁴）
 
-**✅ V1a 完成** + **V1b scaffold 已落**（代码 @ `f0b74d9`）。  
-**🟡 首次 V1 partial 跑通（H100 `.25`）**：**V1-③ PASS**；**V1-② FAIL**（fidelity）；**V1-① FAIL**（rollout scan 0/8）。**merge 未做**。
+**✅ V1a 完成** + **V1b scaffold 已落**（`a0a973d` §1.2 re-freeze）。  
+**🟡 V1 partial**：③ proxy PASS；② FAIL（reward）；① **scan 0/8 blocked**（非 δ 问题 — 见 §5）。**merge 未做**。
 
 产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/artifacts/v1_gate_r60_20260815/`
 
@@ -17,11 +17,11 @@
 
 ## 2. 三信号：还差什么
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚） | **还差什么** |
+| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁴） | **还差什么** |
 |---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | ❌ **FAIL** — scan **0/8** accepted；spawn_collision 主导（H100→4090 headon：630/738；4090 local r60：406/1000+594 too_close） | 修复 cross-net spawn / 复用 V0 ②④ 已接受 starts；再跑 `v1_partial_1` |
-| **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred；both_fail≤0.20 |
-| **V1-②** | H=15 想象保真 | ❌ **FAIL**（reward）；coll 应记 **N/A**（见 §1.2.2） | 增采碰撞 held-out；诚实留出 ckpt 重训 |
+| **V1-①** | 碰撞率相对 V0 ↓20% | ❌ **FAIL** — scan **0/8**（738 扫：630 spawn_collision + 108 too_close）；**V0 同 harness 今日亦 0/8** | harness 修复 @ 下一 commit（forward clearance + min_alt 5 m）；复跑 `v1_partial_1` |
+| **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
+| **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A**（`coll_traj_pos=0`） | 增采碰撞 held-out；诚实留出 ckpt 重训 |
 
 ---
 
@@ -83,9 +83,9 @@ python -m experiments.aerial.rl._v1_gate --merge \
 
 1. **H100 wm ckpt 路径** — `wm_ckpt_v1a_20260815` 在 **`aerial-rl-skeleton/artifacts/`**，不在 `~/aerial-wam-v2/artifacts/`。
 2. **4090 无 r60 depth ckpt** — 本地仅有 `aerial-rl-skeleton/.../depth_ckpt_da3_near_20260811/`；① 应走 **H100→4090**（yaml `env.host=10.229.20.125`）。
-3. **① scan 全拒** — `spawn_collision` 暴增（738 扫 630 拒）；与 V0 partial_24（10/16 accepted）对比需查 renderer / 出生高度 / cross-net 健康。
-4. **② coll_auroc=NaN** — held-out 12 ep 无碰撞轨 → 按 re-freeze **coll_ok=N/A**（不单独 FAIL）；② 仍因 `reward_beat_frac=0.53` FAIL。
-5. **③ Phase 1 ≠ PASS** — proxy ③ 不得 merge；见设计 §1.2 Phase 2。
+3. **① scan 全拒（2026-08-15 晚⁴）** — 738 对 (pos,yaw)：`630 spawn_collision`（headon 低 z≈0.7 m 轨迹点 ×9 yaw）+ `108 too_close`（巡航 z≈19 m 但 full-field min≈1 m 地面像素误触）。**对比 V0 partial_24（2026-08-14）**：同 headon、`spawn_collision=6`、`too_close=0`、`proxy_ok=20` → 今日 live renderer 深度 periphery 回归。**4090 AirSim 已 recover**（`recover_renderer.sh`）；修复仍 0/8 → 代码 harness 补丁（forward clearance + `min_altitude_m=5`）。
+4. **② coll_ok** — re-score 后应为 **N/A**（`coll_traj_pos=0`）；② 仍 FAIL 于 reward。
+5. **③ Phase 1 ≠ PASS** — proxy ③ 不得 merge。
 
 ---
 
@@ -124,6 +124,7 @@ python -m experiments.aerial.rl._v1_gate --self-check
 
 ## 6. 变更记录
 
+- **2026-08-15(晚⁴)** — V1-① 复跑 ×2 仍 0/8；根因诊断 + harness 补丁（forward clearance / min_alt 5 m）；② re-score coll N/A；4090 `recover_renderer.sh`。
 - **2026-08-15(晚³)** — **§1.2 re-freeze 草案**写入设计 doc；`v1_metrics` 对齐 coll N/A + Phase 标记。
 - **2026-08-15(晚²)** — 首次 V1 partial 执行（③ proxy PASS / ②① FAIL）；见 §4。
 - **2026-08-15(晚)** — **V1b scaffold 合拢**：`DepthTauShield`、`planner.py`、`ImaginationPlanner`、`_v1_gate.py`、`v1_metrics.py`；yaml `safety.kind=depth_tau`；单测 + smoke PASS（Mac）。

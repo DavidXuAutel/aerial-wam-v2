@@ -511,7 +511,7 @@ def _predict_depth_over_windows(
 # ② / ④ via paired rollouts (mock env by default; airsim for a real ④ pass)   #
 # --------------------------------------------------------------------------- #
 def _obstacle_candidate_positions(
-    dataset_dir: Path, *, stride: int = 5
+    dataset_dir: Path, *, stride: int = 5, min_altitude_m: float = 0.0
 ) -> Tuple[np.ndarray, np.ndarray]:
     """+up world positions (and recorded yaws) sampled from a collection.
 
@@ -542,7 +542,10 @@ def _obstacle_candidate_positions(
     prox: List[float] = []
     for ep in episodes:
         for i in range(0, len(ep), max(1, int(stride))):
-            pts.append(np.asarray(ep[i].obs.position, dtype=np.float64))
+            pos = np.asarray(ep[i].obs.position, dtype=np.float64)
+            if float(pos[2]) < float(min_altitude_m):
+                continue
+            pts.append(pos)
             yaws.append(float(ep[i].obs.yaw))
             d = getattr(ep[i].obs, "depth", None)
             if d is None:
@@ -600,7 +603,9 @@ def _signals_2_4_from_rollouts(
     # dead end where the proxy accepted wide-cone hits the policy threaded past).
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
     if rollout_dataset is not None:
-        cand, cand_yaw = _obstacle_candidate_positions(Path(rollout_dataset))
+        cand, cand_yaw = _obstacle_candidate_positions(
+            Path(rollout_dataset), min_altitude_m=5.0,
+        )
         # obstacle_max_m 25 (was 15): the probe is the real filter (rams the wall
         # head-on), so accept mid-range frontal obstacles up to just under the 30 m
         # goal — sky/max-range artifacts get rejected by the probe anyway.

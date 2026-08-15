@@ -71,6 +71,7 @@ def check_wm_fidelity(
         and coll_ok is not False
     )
     out: Dict[str, Any] = {
+        **dict(signal),
         "ok": overall,
         "reward_ok": reward_ok,
         "done_ok": done_ok,
@@ -78,7 +79,6 @@ def check_wm_fidelity(
         "latent_ok": latent_ok,
         "coll_ok": coll_ok,
         "coll_insufficient": coll_insufficient,
-        **dict(signal),
     }
     if latent_norm_max is not None:
         out["latent_norm_max"] = latent_norm_max

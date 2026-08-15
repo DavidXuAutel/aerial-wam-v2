@@ -13,7 +13,13 @@ def test_collision_reduction_pass():
 
 
 def test_wm_fidelity_coll_na_when_no_collision_trajs():
-    verdict = {"reward_ok": True, "done_ok": True, "recon_growth_ok": True, "passed": False}
+    verdict = {
+        "reward_ok": True,
+        "done_ok": True,
+        "recon_growth_ok": True,
+        "passed": False,
+        "coll_ok": False,
+    }
     agg = {"coll_traj_pos": 0, "coll_auroc": float("nan"), "latent_norm_max": 19.0}
     out = v1_metrics.check_wm_fidelity(verdict, agg=agg, recon_growth_ok=True)
     assert out["coll_ok"] is None

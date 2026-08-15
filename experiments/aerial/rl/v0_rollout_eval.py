@@ -407,10 +407,14 @@ def make_obstacle_facing_episodes(
         if depth is None:
             rej["no_depth"] += 1
             continue
-        if _full_min_depth(depth) < float(start_clearance_m):
+        fwd = _forward_min_depth(depth, center_frac=center_frac)
+        # Clearance uses *forward* min, not full-field: live renderer depth maps
+        # often carry ~1 m ground pixels at the image bottom even at cruise
+        # altitude; full-field min then false-triggers too_close (2026-08-15 scan
+        # regression vs 2026-08-14 V0 partial_24). Forward crop matches flight path.
+        if fwd < float(start_clearance_m):
             rej["too_close"] += 1
             continue
-        fwd = _forward_min_depth(depth, center_frac=center_frac)
         if not (float(obstacle_min_m) <= fwd <= float(obstacle_max_m)):
             rej["open_ahead"] += 1
             continue

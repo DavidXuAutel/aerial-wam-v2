@@ -169,7 +169,7 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
     from experiments.aerial.rl._v0_gate import _obstacle_candidate_positions
 
-    cand, cand_yaw = _obstacle_candidate_positions(rollout_ds)
+    cand, cand_yaw = _obstacle_candidate_positions(rollout_ds, min_altitude_m=5.0)
     starts, scan_diag = rollout.make_obstacle_facing_episodes(
         env, int(args.n_episodes), cand, seed=int(args.seed),
         candidate_yaws=cand_yaw,
