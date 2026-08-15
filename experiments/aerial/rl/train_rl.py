@@ -25,7 +25,7 @@ from experiments.aerial.rl.corrector import CorrectorConfig, SerialCorrectorLoop
 from experiments.aerial.rl.dynamics import StubLatentDynamics
 from experiments.aerial.rl.env.obs import PolicyObservation
 from experiments.aerial.rl.reward import DEFAULT_ONLINE_SUCCESS_DIST_M, RewardConfig
-from experiments.aerial.rl.safety import NullSafetyShield, ThresholdSafetyShield
+from experiments.aerial.rl.safety import DepthTauShield, NullSafetyShield, ThresholdSafetyShield
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,12 @@ def _build_safety(safety_cfg: Any) -> Any:
             min_tau_s=float(_get(safety_cfg, "min_tau_s", 1.0)),
             max_p_coll=float(_get(safety_cfg, "max_p_coll", 0.5)),
         )
+    if kind == "depth_tau":
+        return DepthTauShield(
+            min_depth_m=float(_get(safety_cfg, "min_depth_m", 3.0)),
+            min_tau_s=float(_get(safety_cfg, "min_tau_s", 1.0)),
+            max_p_coll=float(_get(safety_cfg, "max_p_coll", 0.5)),
+        )
     raise ValueError(f"unknown safety kind {kind!r}")
 
 
@@ -187,6 +193,19 @@ def _build_tau_predictor(tau_cfg: Any) -> Optional[Any]:
         min_closing_m_s=float(_get(tau_cfg, "min_closing_m_s", 0.05)),
         max_tau_s=float(_get(tau_cfg, "max_tau_s", 60.0)),
         use_gt_depth=bool(_get(tau_cfg, "use_gt_depth", True)),
+    )
+
+
+def _build_planner(cfg: Any, dynamics: Any, reward_cfg: RewardConfig) -> Optional[Any]:
+    pc = _get(cfg, "planner", {})
+    if not bool(_get(pc, "enable", False)):
+        return None
+    from experiments.aerial.rl.planner import ImaginationPlanner
+
+    return ImaginationPlanner(
+        dynamics,
+        horizon=int(_get(pc, "horizon", 5)),
+        reward_cfg=reward_cfg,
     )
 
 
@@ -249,6 +268,7 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
     )
 
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
+    planner = _build_planner(cfg, dynamics, reward_cfg)
     collector = RolloutCollector(
         env, policy, buffer,
         reward_cfg=reward_cfg,
@@ -257,6 +277,7 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         target_hz=float(_get(_get(cfg, "env", {}), "step_hz", 30.0)),
         depth_predictor=_build_depth_predictor(_get(cfg, "world_model", {})),
         tau_predictor=_build_tau_predictor(_get(cfg, "tau_predictor", {})),
+        planner=planner,
     )
     episodes = _load_episodes(cfg)
     return SerialCorrectorLoop(

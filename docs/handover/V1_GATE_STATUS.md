@@ -9,7 +9,7 @@
 ## 1. 一句话结论（2026-08-15）
 
 **✅ V1a 完成（H100 `.25`）**：`_wm_train_validate` PASS + flags 已翻 + corrector smoke **3/3 `wm=updated`**。  
-**🟡 V1b-1 进行中**：τ scaffold + `train_rl` 接线 + mock smoke；待光流 FOE + 想象规划 + `_v1_gate`。
+**🟡 V1b scaffold 已落（Mac 单测 + smoke）**：τ + `DepthTauShield` + `ImaginationPlanner` + `_v1_gate` CLI；**尚未**跑 4090/H100 三信号 merge PASS。
 
 ---
 
@@ -19,7 +19,7 @@
 |---|---|---|---|
 | **V1-①** | 碰撞率相对 V0 ↓ | — | 4090 rollout + V1 罩/规划器（V1b） |
 | **V1-②** | H=15 想象保真 / 非发散 | ✅ **V1a floor PASS**：loss 14.03→2.10；recon↓；min_ent 0.46；H=15 max norm **17.33** | 正式 `_v1_gate` + 留出 ckpt fidelity 评 |
-| **V1-③** | τ / D̂ 双通道独立验证 | — | τ 头未实现；D̂ 沿用 V0 ③ |
+| **V1-③** | τ / D̂ 双通道独立验证 | — | `_v1_gate --signals 3` 已实现；待 r60 实测 + merge |
 
 ---
 
@@ -27,9 +27,9 @@
 
 - [x] **V1a-1** — H100 `_wm_train_validate` on `dataset_v0_local_depth_r60_20260814` → **`wm_ckpt_v1a_20260815/wm_step_500.pt`** PASS
 - [x] **V1a-2** — flip `dynamics.kind=torch`、`enable_wm_update=true`；corrector smoke **SMOKE_WM_UPDATED=OK**（mock 3 iter）
-- [ ] **V1b-1** — `tau_predictor.py` + collector/`train_rl` 接线 — 🟡 **scaffold 已落**（GT depth+vel；单测 3/3；`v1b_tau_smoke.py`）；待光流 FOE + 训练头
-- [ ] **V1b-2** — `DepthTauShield` + 想象规划器
-- [ ] **V1b-3** — `_v1_gate` 三 partial merge
+- [x] **V1b-1** — `tau_predictor.py` + 接线 — GT depth+vel proxy；`v1b_tau_smoke.py` OK；**待**光流 FOE 训练头
+- [x] **V1b-2** — `DepthTauShield` + `ImaginationPlanner` + collector/`train_rl` 接线 — 单测 + `v1b_planner_smoke.py` OK
+- [x] **V1b-3** — `_v1_gate.py` + `v1_metrics.py` — `--self-check` PASS；**待** H100/4090 partial merge
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
 ---
@@ -57,12 +57,19 @@ python experiments/aerial/scripts/v1a_corrector_smoke.py
 
 # V1b τ 通道 smoke（mock，须 repo 根目录）
 python experiments/aerial/scripts/v1b_tau_smoke.py
+
+# V1b 想象规划 smoke（mock + dynamics.kind=stub override）
+python experiments/aerial/scripts/v1b_planner_smoke.py
+
+# V1 gate self-check
+python -m experiments.aerial.rl._v1_gate --self-check
 ```
 
 ---
 
 ## 5. 变更记录
 
+- **2026-08-15(晚)** — **V1b scaffold 合拢**：`DepthTauShield`、`planner.py`、`ImaginationPlanner`、`_v1_gate.py`、`v1_metrics.py`；yaml `safety.kind=depth_tau`；单测 + smoke PASS（Mac）。
 - **2026-08-15(午³)** — **V1b-1 接线**：`train_rl` 构建 `tau_predictor`/`depth_predictor`；yaml `tau_predictor.enable=true`；`v1b_tau_smoke.py`。
 - **2026-08-15(午²)** — **V1b-1 scaffold**：`tau_predictor.py`（GT depth+closing-vel τ）；collector `tau_predictor` 接线 → `obs.info['tau_pred']`；单测 3/3 pass。
 - **2026-08-15(午)** — **V1a 执行完成**：

@@ -138,3 +138,49 @@ class ThresholdSafetyShield:
         if d_hat is not None and float(d_hat) < float(self.min_depth_m):
             return np.array([-abs(float(self.retreat_step_m)), 0.0, 0.0, 0.0], dtype=np.float64)
         return np.zeros(4, dtype=np.float64)
+
+
+@dataclass
+class DepthTauShield(ThresholdSafetyShield):
+    """τ/D̂ dual-channel hard shield (frozen spec V1).
+
+    Same trigger/override contract as :class:`ThresholdSafetyShield`, but records
+    which independent channel(s) breached for V1-③ diagnostics. Writes
+    ``obs.info['shield_channels']`` on the step the latch engages.
+    """
+
+    _last_channels: tuple[str, ...] = field(default=(), init=False, repr=False)
+
+    @property
+    def last_channels(self) -> tuple[str, ...]:
+        return self._last_channels
+
+    def reset(self) -> None:
+        super().reset()
+        self._last_channels = ()
+
+    def _channels_breached(self, obs: Observation, wm_out: Optional[Any] = None) -> tuple[str, ...]:
+        out: list[str] = []
+        d_hat = obs.info.get("depth_min_pred")
+        tau = obs.info.get("tau_pred")
+        p_coll = None
+        if wm_out is not None:
+            p_coll = getattr(wm_out, "p_coll", None)
+        if d_hat is not None and float(d_hat) < self.min_depth_m:
+            out.append("depth")
+        if tau is not None and float(tau) < self.min_tau_s:
+            out.append("tau")
+        if p_coll is not None and float(p_coll) > self.max_p_coll:
+            out.append("p_coll")
+        return tuple(out)
+
+    def should_override(self, obs: Observation, wm_out: Optional[Any] = None) -> bool:
+        if self._engaged:
+            return True
+        channels = self._channels_breached(obs, wm_out)
+        if channels:
+            self._engaged = True
+            self._last_channels = channels
+            obs.info["shield_channels"] = list(channels)
+            return True
+        return False

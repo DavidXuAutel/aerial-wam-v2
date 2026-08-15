@@ -95,6 +95,7 @@ class RolloutCollector:
         skip_reset_collision: bool = True,
         depth_predictor: Optional[Any] = None,
         tau_predictor: Optional[Any] = None,
+        planner: Optional[Any] = None,
     ) -> None:
         self.env = env
         self.policy = policy
@@ -116,6 +117,8 @@ class RolloutCollector:
         self.depth_predictor = depth_predictor
         # V1b [1d]: τ independent of D̂ — ``predict_tau(obs)`` → obs.info['tau_pred'].
         self.tau_predictor = tau_predictor
+        # V1b: optional short-horizon imagination planner (scores candidates).
+        self.planner = planner
 
     def collect_episode(self, episode: Optional[Dict[str, Any]] = None) -> tuple[Episode, CollectStats]:
         instruction = str((episode or {}).get("gpt_instruction", ""))
@@ -149,6 +152,14 @@ class RolloutCollector:
 
         for _ in range(self.max_steps):
             action = act_delta(self.policy, obs, instruction, limits)
+            if self.planner is not None:
+                set_goal = getattr(self.planner, "set_goal", None)
+                if callable(set_goal):
+                    set_goal(getattr(self.env, "goal", None))
+                action = np.asarray(
+                    self.planner.plan(obs, action), dtype=np.float64
+                ).reshape(4)
+                action = clip_body_delta(action, limits)
             intervened = False
             # Safety shield sits ABOVE the learned policy (spec §2#6). Stub
             # returns no-override today; when wired it swaps in a safe action.

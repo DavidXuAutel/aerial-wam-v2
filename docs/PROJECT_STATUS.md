@@ -27,7 +27,7 @@
 
 **✅ V0 四信号已在同一 r60 ft-head + 一次 merge 下合拢 PASS**（`v0_gate_r60_20260814.json`，H100 `.25`）。
 
-**当前阶段：V1a ✅ / V1b-1 🟡** — WM 在线环已通；τ scaffold（GT depth+vel）已接线；想象规划 + 双通道罩 + `_v1_gate` 待做。
+**当前阶段：V1a ✅ / V1b scaffold ✅** — τ + 双通道罩 + 想象规划 + `_v1_gate` CLI 已落；待 H100/4090 三信号 merge PASS。
 
 ---
 
@@ -147,7 +147,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 |---|---|
 | ~~**V1a-1**~~ | ✅ `_wm_train_validate` → `wm_ckpt_v1a_20260815` |
 | ~~**V1a-2**~~ | ✅ `kind=torch` + `enable_wm_update=true` + corrector smoke |
-| **V1b** | τ 头 + 想象规划 + `DepthTauShield` + `_v1_gate` 三信号 |
+| **V1b** | τ + 想象规划 + `DepthTauShield` + `_v1_gate` — **scaffold ✅**；merge PASS 待跑 |
 | **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
 | **n re-freeze** | `n_eval_episodes` 8 vs 16（V0 遗留） |
 | **V4** | V1b PASS 后：DreamerV3 λ-return AC + `enable_policy_update` |
