@@ -16,7 +16,7 @@ observation ``t``, the action taken from it, and the resulting reward/done):
     action    [B, L, 4]       float32 body delta
     reward    [B, L]          float32
     done      [B, L]          bool
-    collided  [B, L]          bool    contact GT (reward/termination signal)
+    collided  [B, L]          bool    post-step contact GT (next_obs, else obs)
     depth     [B, L, H, W]    float32 ONLY if every frame carries it (else absent)
 
 ``depth`` follows ``dataset.episode_arrays``: present only when *every* frame in
@@ -77,8 +77,15 @@ def windows_to_arrays(windows: List[Episode]) -> Dict[str, np.ndarray]:
     done = np.asarray(
         [[bool(w[t].done) for t in range(length)] for w in windows], dtype=np.bool_
     )
+    def _collided(w: Episode, t: int) -> bool:
+        # Post-step contact lives on next_obs (dataset load); obs.collided alone
+        # is the pre-step latch and is all-False on first-contact terminals.
+        tr = w[t]
+        post = tr.next_obs if tr.next_obs is not None else tr.obs
+        return bool(getattr(post, "collided", False) or tr.obs.collided)
+
     collided = np.asarray(
-        [[bool(_obs(w, t).collided) for t in range(length)] for w in windows], dtype=np.bool_
+        [[_collided(w, t) for t in range(length)] for w in windows], dtype=np.bool_
     )
 
     out: Dict[str, np.ndarray] = {

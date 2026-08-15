@@ -6,137 +6,145 @@
 
 ---
 
-## 1. 一句话结论（2026-08-15 晚⁷）
+## 1. 一句话结论（2026-08-15 晚⁸）
 
-**✅ V1a 完成** + **V1b scaffold 已落**。  
-**🟡 V1 partial**：③ proxy PASS；② FAIL（reward）；① **PASS**（`tied_zero_collision_bearing`：scan 8/8 collision-bearing，`off_hard=1.0`，V0/V1 shield-on hard=near_ep=0）。**merge 仍 blocked 于 ② + ③ Phase 2**。
+**✅ V1a 完成** + **V1b scaffold 已落** + **① PASS**。  
+**🟡 V1 partial**：③ proxy PASS；② **仍 FAIL**（`reward_beat_frac≈0.53`，需 ≥0.80）；**coll_ok=N/A**（`coll_traj_pos` 曾被 pre-step 标签误计为 0）。  
+**merge 仍 blocked 于 ② + ③ Phase 2**。诚实留出 WM 重训已开跑（见 §7）。
 
 产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/artifacts/v1_gate_r60_20260815/`
+
+| 主机 | HEAD |
+|---|---|
+| Mac | `00a1e4b`+（本轮 held-out train / coll-label 修补） |
+| H100 | 同步至同 SHA（via bastion ProxyJump） |
 
 ---
 
 ## 2. 三信号：还差什么
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁷） | **还差什么** |
+| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁸） | **还差什么** |
 |---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing`；hard v0/v1=0；`off_hard=1.0`；scan 8/8 probe coll=8 | 无（① 已过） |
+| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing` | 无（① 已过） |
 | **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
-| **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A** | 增采碰撞 held-out；诚实留出 ckpt 重训 |
+| **V1-②** | H=15 想象保真 | ❌ **FAIL**（`reward_beat_frac=0.53`）；**coll_ok=N/A** | 诚实留出 ckpt 重训 + 复评；**勿**再评 all-ep `wm_step_5000` |
 
 ---
 
 ## 3. 待办（按依赖）
 
 - [x] **V1a-1** — H100 `_wm_train_validate` on `dataset_v0_local_depth_r60_20260814` → **`wm_ckpt_v1a_20260815/wm_step_500.pt`** PASS
-- [x] **V1a-2** — flip `dynamics.kind=torch`、`enable_wm_update=true`；corrector smoke **SMOKE_WM_UPDATED=OK**（mock 3 iter）
-- [x] **V1b-1** — `tau_predictor.py` + 接线 — GT depth+vel proxy；`v1b_tau_smoke.py` OK；**待**光流 FOE 训练头
-- [x] **V1b-2** — `DepthTauShield` + `ImaginationPlanner` + collector/`train_rl` 接线 — 单测 + `v1b_planner_smoke.py` OK
-- [x] **V1b-3** — `_v1_gate.py` + `v1_gate_run_partials.py` — partial **已跑**（③ PASS / ② FAIL / ① PASS）
-- [ ] **V1-merge** — `--merge` 三 partial → `v1_gate_r60_20260815.json`（**blocked**：② FAIL + ③ proxy）
-- [x] **V1-① 复跑** — `aerial_rl_rollout.yaml` + tied-zero 规则 → PASS @ `8d2eb71`+rescored
-- [ ] **V1-② 复跑** — fidelity 需碰撞轨 + reward beat baseline
+- [x] **V1a-2** — flip `dynamics.kind=torch`、`enable_wm_update=true`；corrector smoke **SMOKE_WM_UPDATED=OK**
+- [x] **V1b-1..3** — τ / shield / planner / `_v1_gate` scaffold + partial 首跑
+- [x] **V1-①** — tied-zero PASS @ `00a1e4b`
+- [ ] **V1-② 诚实留出重训** — `_wm_train_validate --heldout-frac 0.25 --steps 5000` → `wm_ckpt_v1_heldout_20260815/`（进行中，见 §7）
+- [ ] **V1-② 复评** — `_wm_fidelity_eval` / partial_2 对上新 ckpt；目标 `reward_beat_frac≥0.80`
+- [ ] **V1-merge** — `--merge` 三 partial（**blocked**：② FAIL + ③ proxy）
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
 ---
 
-## 4. V1 gate partial 跑法（2026-08-15 实测）
+## 4. V1-② 诊断（2026-08-15 晚⁸）
 
-### 4.1 同步
+### 4.1 当前产物（H100）
 
-| 主机 | 方式 | 结果 |
-|---|---|---|
-| Mac → github/origin | `git push` | `f0b74d9` |
-| H100 | `git bundle` → `git pull /tmp/aerial-wam-v2-main.bundle main` | `4a6f606`→`f0b74d9`（需 `git reset --hard` 清本地 yaml 脏改） |
-| 4090 | `git pull origin main` | OK |
+| 文件 | 要点 |
+|---|---|
+| `v1_partial_2_r60_20260815.json` | `ok=false`；`reward_beat_frac=0.533…`；`reward_growth_ok=true`；`done_ok`/`latent_ok`/`recon_growth_ok`=true；`coll_ok=null`（N/A） |
+| `v1_fidelity_r60_20260815.json` | **ckpt=`wm_ckpt_r60_20260814/wm_step_5000.pt`**；`heldout_frac=0.25`；`n_traj=12`；`coll_traj_pos=0` |
 
-### 4.2 命令
+### 4.2 根因（按优先级）
+
+1. **错误 ckpt / 无诚实留出** — `wm_step_5000` 与 `wm_ckpt_v1a` 均在 **全部 48 ep** 上训（`heldout_frac` 未写入 meta / 未排除尾部）。设计 §1.2.2 **禁止**用该 ckpt 做 authoritative ②。首跑 summary 也曾因错误路径找不到 `wm_ckpt_v1a` 而回落到 r60-5000。
+2. **模型在短程 reward 上弱于 constant-mean** — 即便存在泄漏（ckpt 见过 held-out），`reward_beat_frac` 仍仅 **0.53**；h0–h5 的 WM MAE **高于** baseline（1-step `0.86` vs base `0.65` → `one_step_ok` 亦 FAIL）。done/recon/latent 已过 → **不是** eval 整体坏掉，而是 **reward 头开环跟踪不够**。诚实留出重训不会「靠去掉泄漏 magically 过线」；需要在 **未见过尾部** 的数据上认真训够（默认 5000 step，与 r60 同量级）。
+3. **coll 标签 bug（已修，非 ② 主阻塞）** — r60 碰撞只在 **`next_obs.collided`**；`wm_eval` / `wm_data` 曾读 **`obs.collided`** → held-out 实际有 2 条碰撞 ep，但 fidelity 记 `coll_traj_pos=0`。已改为 post-step（与 `v0_rollout_eval` / `dataset` 一致）。N/A 规则下 1–2 条仍不单独 FAIL；② 仍由 reward 决定。
+4. **非 Phase-2 FOE 阻塞** — ② 不依赖 τ FOE。
+
+### 4.3 最小诚实路径（不改阈值）
+
+1. `_wm_train_validate --heldout-frac 0.25 --steps 5000 --save-ckpt` → dated dir `wm_ckpt_v1_heldout_20260815`（**禁止** warm-start 自曾见过 held-out 的 ckpt）。
+2. 用同一 `heldout_frac=0.25` 复跑 fidelity → 写 `v1_partial_2` / `v1_fidelity`。
+3. 若 reward 仍 <0.80：加长 steps / 查 reward 头与对齐，**不得**下调 `REWARD_BEAT_FRAC`。
+
+---
+
+## 5. V1 gate partial 跑法
+
+### 5.1 同步
+
+| 主机 | 方式 |
+|---|---|
+| Mac → origin | `git push` |
+| H100 | bastion `cursor-125-public` ProxyJump → `a25689@10.239.121.25:31126`；`git pull` / bundle |
+
+### 5.2 命令
 
 ```bash
-# H100 — offline ② + ③
+# H100 — 诚实留出 WM 重训（② 前置）
 cd ~/aerial-wam-v2 && source .venv/bin/activate && export PYTHONPATH=.
+python -m experiments.aerial.rl._wm_train_validate \
+  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
+  --steps 5000 --wm-batch 8 --window 8 --horizon 15 \
+  --heldout-frac 0.25 --save-ckpt --device cuda \
+  --checkpoint-dir ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_20260815
+
+# H100 — ② fidelity（同一 heldout_frac）
+python -m experiments.aerial.rl._wm_fidelity_eval \
+  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
+  --ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_20260815/wm_step_5000.pt \
+  --config configs/aerial_rl.yaml --heldout-frac 0.25 --horizon 15
+
+# 或 partials runner
 python experiments/aerial/scripts/v1_gate_run_partials.py h100 \
   --dataset ~/aerial-rl-skeleton/.../dataset_v0_local_depth_r60_20260814 \
-  --wm-ckpt ~/aerial-rl-skeleton/.../wm_ckpt_r60_20260814/wm_step_5000.pt \
+  --wm-ckpt ~/aerial-rl-skeleton/.../wm_ckpt_v1_heldout_20260815/wm_step_5000.pt \
   --out-dir experiments/aerial/rl/artifacts/v1_gate_r60_20260815
-
-# H100 → 4090 renderer — ①（与 V0 ②④ 同 harness）
-python experiments/aerial/scripts/v1_gate_run_partials.py rollout4090 \
-  --rollout-dataset ~/aerial-rl-skeleton/.../dataset_v0_headon_20260811 \
-  --depth-ckpt ~/aerial-rl-skeleton/.../depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt \
-  --n-episodes 8 --device cuda
-
-# merge（三 partial ok 后）
-python -m experiments.aerial.rl._v1_gate --merge \
-  v1_partial_1_r60_20260815.json v1_partial_2_r60_20260815.json v1_partial_3_r60_20260815.json
 ```
 
-### 4.3 落盘 partial
+### 5.3 落盘 partial
 
 | 文件 | 信号 | ok |
 |---|---|---|
 | `v1_partial_3_r60_20260815.json` | ③ 双通道 | **true**（proxy） |
-| `v1_partial_2_r60_20260815.json` | ② fidelity | **false**（reward） |
-| `v1_partial_1_r60_20260815.json` | ① 碰撞率 | **true**（tied-zero；`off_hard=1.0`） |
-| `v1_fidelity_r60_20260815.json` | ② 明细 | reward/coll FAIL |
+| `v1_partial_2_r60_20260815.json` | ② fidelity | **false**（reward；待诚实 ckpt 复评） |
+| `v1_partial_1_r60_20260815.json` | ① 碰撞率 | **true**（tied-zero） |
+| `v1_fidelity_r60_20260815.json` | ② 明细 | reward FAIL；coll N/A |
 
-### 4.4 踩坑
+### 5.4 踩坑
 
-1. **H100 wm ckpt 路径** — `wm_ckpt_v1a_20260815` 在 **`aerial-rl-skeleton/artifacts/`**，不在 `~/aerial-wam-v2/artifacts/`。
-2. **4090 无 r60 depth ckpt** — ① 应走 **H100→4090**（`aerial_rl_rollout.yaml` `env.host=10.229.20.125`）。
-3. **① 必须用 `configs/aerial_rl_rollout.yaml`** — `aerial_rl.yaml` 的 `grab_depth=false` 只在 reset 强制抓深，probe 全程 fwd 冻在 reset 帧（≡18.1 m）→ 假 0 碰撞。
-4. **① scan 全拒（2026-08-15 晚⁴）** — 曾 630 spawn_collision + full-field too_close；对比 V0 partial_24 `spawn=6`。晚⁷ 用 rollout yaml 后 scan **8/8**（spawn=7，probe coll=8）。
-5. **② coll_ok** — re-score 后应为 **N/A**（`coll_traj_pos=0`）；② 仍 FAIL 于 reward。
-6. **③ Phase 1 ≠ PASS** — proxy ③ 不得 merge。
-7. **Off-site SSH** — Mac→H100 经 **4090 公网** `cursor-125-public`（`ssh-125.david-x.com` / cloudflared）ProxyJump → `a25689@10.239.121.25:31126`。
+1. **H100 wm ckpt 路径** — 权威在 **`aerial-rl-skeleton/artifacts/`**，不在 `~/aerial-wam-v2/artifacts/`。
+2. **② 禁评** all-ep `wm_step_5000.pt` / 未带 `--heldout-frac` 的训产物。
+3. **①** 必须用 `configs/aerial_rl_rollout.yaml`（`grab_depth`）。
+4. **③ Phase 1 ≠ PASS** — proxy 不得 merge。
+5. **Off-site SSH** — Mac→H100 经 **4090 公网** `cursor-125-public` ProxyJump。
+6. **coll 标签** — 必须读 post-step `next_obs.collided`。
 
 ---
 
-## 5. V1a 资产与命令（H100）
+## 6. V1a 资产与命令（H100）
 
 | 项 | 路径 / 值 |
 |---|---|
-| 语料 | `~/aerial-rl-skeleton/.../dataset_v0_local_depth_r60_20260814` |
-| V1a ckpt | `.../wm_ckpt_v1a_20260815/wm_step_500.pt` |
-| 训练日志 | `.../wm_ckpt_v1a_20260815/wm_train.jsonl` |
-| meta | `.../wm_ckpt_v1a_20260815/wm_train_meta.json`（authoritative=true） |
-| yaml | `dynamics.kind=torch`, `enable_wm_update=true`, `checkpoint_dir=wm_ckpt_v1a_20260815` |
-
-```bash
-# 复现 V1a validate
-python -m experiments.aerial.rl._wm_train_validate \
-  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --steps 500 --wm-batch 8 --window 8 --horizon 15 \
-  --checkpoint-dir experiments/aerial/rl/artifacts/wm_ckpt_v1a_20260815 \
-  --save-ckpt --device cuda
-
-# corrector smoke（无 Hydra）
-python experiments/aerial/scripts/v1a_corrector_smoke.py
-
-# V1b τ 通道 smoke（mock，须 repo 根目录）
-python experiments/aerial/scripts/v1b_tau_smoke.py
-
-# V1b 想象规划 smoke（mock + dynamics.kind=stub override）
-python experiments/aerial/scripts/v1b_planner_smoke.py
-
-# V1 gate self-check
-python -m experiments.aerial.rl._v1_gate --self-check
-```
+| 语料 | `~/aerial-rl-skeleton/.../dataset_v0_local_depth_r60_20260814`（48 usable / 36 train + 12 held @ 0.25） |
+| V1a ckpt（地板，非 ②） | `.../wm_ckpt_v1a_20260815/wm_step_500.pt` |
+| r60 all-ep ckpt（**非** ②） | `.../wm_ckpt_r60_20260814/wm_step_5000.pt` |
+| ② 目标 ckpt | `.../wm_ckpt_v1_heldout_20260815/wm_step_5000.pt` |
 
 ---
 
-## 6. 变更记录
+## 7. 诚实留出重训（进行中）
 
-- **2026-08-15(晚⁷)** — ① 真因：`grab_depth=false`（训用 yaml）冻 probe 深度；改 `aerial_rl_rollout.yaml` 后 scan 8/8、probe coll=8、`off_hard=1.0`、双臂 shield-on hard/near=0 → **tied-zero PASS**。未开 Phase 2 FOE / WM 重训。
-- **2026-08-15(晚⁶)** — 诊断 V1-①：`v1_partial_1` probe coll=0 / fwd≡18 m / full≡1.0（地面误收）；V0 `v0_partial_24` 同协议 hard `n_contact=0`、near_coll on/off=0.0044/0.0388。修复：probe=forward∨collided、候选 forward 排序、① standoff=3.0、hard=0 时 `near_coll_episode` 回退。
-- **2026-08-15(晚⁵)** — harness @ `9875b1a`：V1-① scan **8/8**；rollout 双臂 coll=0 → ① FAIL（baseline 无效）；② re-score `coll_ok=null`。
-- **2026-08-15(晚⁴)** — V1-① 复跑 ×2 仍 0/8；根因诊断 + harness 补丁；4090 `recover_renderer.sh`。
-- **2026-08-15(晚³)** — **§1.2 re-freeze 草案**写入设计 doc；`v1_metrics` 对齐 coll N/A + Phase 标记。
-- **2026-08-15(晚²)** — 首次 V1 partial 执行（③ proxy PASS / ②① FAIL）；见 §4。
-- **2026-08-15(晚)** — **V1b scaffold 合拢**：`DepthTauShield`、`planner.py`、`ImaginationPlanner`、`_v1_gate.py`、`v1_metrics.py`；yaml `safety.kind=depth_tau`；单测 + smoke PASS（Mac）。
-- **2026-08-15(午³)** — **V1b-1 接线**：`train_rl` 构建 `tau_predictor`/`depth_predictor`；yaml `tau_predictor.enable=true`；`v1b_tau_smoke.py`。
-- **2026-08-15(午²)** — **V1b-1 scaffold**：`tau_predictor.py`（GT depth+closing-vel τ）；collector `tau_predictor` 接线 → `obs.info['tau_pred']`；单测 3/3 pass。
-- **2026-08-15(午)** — **V1a 执行完成**：
-  1. `_wm_train_validate` 500 steps PASS（learning + non-divergence H=15）
-  2. `configs/aerial_rl.yaml`：`kind=torch`、`enable_wm_update=true`、`checkpoint_dir=wm_ckpt_v1a_20260815`
-  3. `v1a_corrector_smoke.py`：3 iter mock，`wm=updated` ×3，`rl=skipped`（V4 仍 OFF）
-- **2026-08-15** — 建本文件；V0 合拢后 V1 起步状态。
+| 项 | 值 |
+|---|---|
+| 命令 | §5.2 `_wm_train_validate --heldout-frac 0.25 --steps 5000` |
+| 输出 | `wm_ckpt_v1_heldout_20260815/`（jsonl + meta + `wm_step_5000.pt`） |
+| ETA | 约 **5–15 min**（既往 r60 5000-step ≈ meta→ckpt ~5 min；H100 空闲） |
+| 完成后 | 立即 `_wm_fidelity_eval` / 刷新 `v1_partial_2`；更新本文件 §1–2 |
+
+---
+
+## 8. 变更记录
+
+- **2026-08-15(晚⁸)** — ② 诊断：all-ep `wm_step_5000` + 泄漏评仍 `reward_beat_frac=0.53`（短程弱于 mean baseline）；修 `wm_eval`/`wm_data` post-step coll；`_wm_train_validate --heldout-frac`；启动诚实留出 5000-step 重训。未开 Phase 2 FOE。
+- **2026-08-15(晚⁷)** — ① tied-zero PASS（`grab_depth`/rollout yaml）。
+- **2026-08-15(晚⁶…午)** — ① harness 诊断、§1.2 re-freeze、V1b scaffold、V1a 执行；见既往条目。

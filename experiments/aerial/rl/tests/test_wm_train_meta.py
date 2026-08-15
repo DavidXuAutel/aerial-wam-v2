@@ -30,7 +30,7 @@ class _FakeBuf:
 def _args(**over) -> argparse.Namespace:
     base = dict(
         allow_v0_desync=False, steps=500, window=8, wm_batch=16,
-        config="configs/aerial_rl.yaml",
+        config="configs/aerial_rl.yaml", heldout_frac=0.0,
     )
     base.update(over)
     return argparse.Namespace(**base)
@@ -59,6 +59,21 @@ def test_meta_records_dataset_and_marks_authoritative(tmp_path: Path) -> None:
     assert meta["authoritative"] is True
     assert meta["episodes"] == 7 and meta["transitions"] == 913
     assert meta["steps"] == 500 and meta["window"] == 8
+    assert meta["heldout_frac"] == 0.0
+
+
+def test_meta_records_heldout_frac(tmp_path: Path) -> None:
+    root = tmp_path / "dataset_v1_rgb"
+    _write_manifest(root, step_hz=5.0, grab_depth=True)
+    ckpt = tmp_path / "wm_ckpt_heldout"
+    ckpt.mkdir()
+
+    path = wmv._write_train_meta(
+        ckpt, root=root, args=_args(heldout_frac=0.25), buf=_FakeBuf(), image_size=224
+    )
+    meta = json.loads(path.read_text())
+    assert meta["heldout_frac"] == 0.25
+    assert meta["authoritative"] is True
 
 
 def test_allow_v0_desync_disqualifies_as_authoritative(tmp_path: Path) -> None:

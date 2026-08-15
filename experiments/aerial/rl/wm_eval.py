@@ -24,10 +24,12 @@ H100 so the metric math has a single source of truth.
 
 ALIGNMENT: rollout step ``t`` calls ``step(z_t, a_t)`` with the recorded action
 ``window[t].action`` and its heads are compared to the recorded consequence at
-``window[t]`` (reward ``r_t``, ``obs.collided``, ``done``). There is a ±1-step
-ambiguity in exactly when a contact is *labeled* vs *predicted*; the p_coll
-metric is deliberately trajectory-level (max over the horizon) so it is robust
-to that timing, and the ambiguity is noted in the fidelity doc.
+``window[t]`` (reward ``r_t``, post-step ``next_obs.collided``, ``done``).
+Contact is a *post-step* event (same as ``v0_rollout_eval`` / ``dataset``):
+reading pre-step ``obs.collided`` alone yields all-False labels on r60 and
+silently zeros ``coll_traj_pos``. There remains a ±1-step ambiguity in exactly
+when a contact is *labeled* vs *predicted*; the p_coll metric is deliberately
+trajectory-level (max over the horizon) so it is robust to that timing.
 """
 from __future__ import annotations
 
@@ -116,7 +118,12 @@ def open_loop_rollout(
         p_coll_pred[t] = float(out.p_coll)
         done_pred[t] = bool(out.done)
         reward_real[t] = float(tr.reward)
-        collided_real[t] = bool(getattr(tr.obs, "collided", False))
+        # Post-step contact (next_obs), with obs fallback for stub fixtures that
+        # only set obs.collided. Matches dataset.episode_arrays / v0_rollout_eval.
+        post = tr.next_obs if getattr(tr, "next_obs", None) is not None else tr.obs
+        collided_real[t] = bool(
+            getattr(post, "collided", False) or getattr(tr.obs, "collided", False)
+        )
         done_real[t] = bool(tr.done)
         latent_norm[t + 1] = float(np.linalg.norm(z))
         if first_done is None and bool(tr.done):

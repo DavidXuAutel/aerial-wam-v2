@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -121,6 +122,9 @@ def _write_train_meta(
         "config": str(Path(args.config).resolve()),
         "image_size": int(image_size),
         "git_sha": _git_sha(),
+        # Tail fraction excluded from the train buffer so V1-② fidelity
+        # (--heldout-frac matching) is an honest gate, not in-sample leakage.
+        "heldout_frac": float(getattr(args, "heldout_frac", 0.0) or 0.0),
     }
     path = ckpt_dir / "wm_train_meta.json"
     path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
@@ -140,12 +144,35 @@ def _git_sha() -> Optional[str]:
     return out.stdout.strip() or None
 
 
-def _load_buffer(root: Path, window: int) -> ReplayBuffer:
+def _load_buffer(root: Path, window: int, heldout_frac: float = 0.0) -> ReplayBuffer:
     episodes = ds.load_dataset(root, skip_quarantined=True)
     episodes = [ep for ep in episodes if len(ep) >= window]
     if not episodes:
         print(f"[wm-validate] FAIL: no episode >= {window} steps", file=sys.stderr)
         raise SystemExit(1)
+    n = len(episodes)
+    frac = float(heldout_frac or 0.0)
+    if frac > 0.0:
+        # Deterministic tail split — MUST match ``_wm_fidelity_eval._heldout_split``.
+        k = max(1, math.ceil(frac * n))
+        train = episodes[: n - k]
+        print(
+            f"[wm-validate] held-out exclude: train={len(train)}/{n} "
+            f"(tail {k} reserved for fidelity; frac={frac})"
+        )
+        episodes = train
+        if not episodes:
+            print("[wm-validate] FAIL: held-out frac left empty train set", file=sys.stderr)
+            raise SystemExit(1)
+    elif frac < 0.0:
+        print(f"[wm-validate] FAIL: --heldout-frac={frac} must be >= 0", file=sys.stderr)
+        raise SystemExit(2)
+    else:
+        print(
+            "[wm-validate] heldout_frac=0 → training on ALL episodes "
+            "(in-sample only; not an honest V1-② ckpt)",
+            file=sys.stderr,
+        )
     buf = ReplayBuffer(capacity_episodes=len(episodes) + 1, seed=0)
     for ep in episodes:
         buf.add_episode(ep)
@@ -255,11 +282,18 @@ def main(argv: List[str] | None = None) -> int:
         "saved ckpt. Point at a dated dir (e.g. artifacts/wm_ckpt_v2clean_<date>) "
         "to keep a clean retrain from clobbering the invalidated wm_ckpt/ log+ckpt.",
     )
+    p.add_argument(
+        "--heldout-frac",
+        type=float,
+        default=0.0,
+        help="tail fraction of episodes excluded from training (must match "
+        "_wm_fidelity_eval --heldout-frac for an honest V1-② gate; 0 = all eps)",
+    )
     args = p.parse_args(argv)
 
     root = Path(args.dataset)
     _refuse_v0(root, args.allow_v0_desync)
-    buf = _load_buffer(root, args.window)
+    buf = _load_buffer(root, args.window, heldout_frac=float(args.heldout_frac))
 
     wm_cfg = _load_world_model_cfg(Path(args.config))
     wm_cfg.setdefault("device", args.device)
