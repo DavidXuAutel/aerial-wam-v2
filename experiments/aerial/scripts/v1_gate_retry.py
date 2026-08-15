@@ -43,7 +43,11 @@ def retry_h100_signal2(repo: Path, wm_ckpt: Path, dataset: Path, out_dir: Path) 
         "heldout_frac": 0.25,
     }
     (out_dir / "v1_fidelity_r60_20260815.json").write_text(json.dumps(blob, indent=2, default=str) + "\n")
-    s2 = v1_metrics.check_wm_fidelity(blob["verdict"])
+    s2 = v1_metrics.check_wm_fidelity(
+        blob["verdict"],
+        agg=blob.get("agg"),
+        recon_growth_ok=blob["verdict"].get("recon_growth_ok"),
+    )
     s2["fidelity_json"] = str(out_dir / "v1_fidelity_r60_20260815.json")
     partial = {"partial": True, "signals_requested": ["2"], "ok": bool(s2.get("ok")), "signals": {"2": s2}}
     (out_dir / "v1_partial_2_r60_20260815.json").write_text(json.dumps(partial, indent=2, default=str) + "\n")

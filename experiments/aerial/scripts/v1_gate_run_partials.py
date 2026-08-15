@@ -106,7 +106,11 @@ def run_h100(args: argparse.Namespace) -> int:
         _emit(out_dir / "v1_fidelity_r60_20260815.json", fidelity_blob)
         from experiments.aerial.rl import v1_metrics
 
-        s2 = v1_metrics.check_wm_fidelity(fidelity_blob["verdict"])
+        s2 = v1_metrics.check_wm_fidelity(
+            fidelity_blob["verdict"],
+            agg=fidelity_blob.get("agg"),
+            recon_growth_ok=fidelity_blob["verdict"].get("recon_growth_ok"),
+        )
         s2["fidelity_json"] = str(out_dir / "v1_fidelity_r60_20260815.json")
     except Exception as exc:
         s2 = {"ok": False, "reason": f"fidelity eval failed: {exc}"}

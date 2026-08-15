@@ -9,14 +9,82 @@ import numpy as np
 
 @dataclass(frozen=True)
 class V1GateThresholds:
-    """Draft thresholds — re-freeze before declaring authoritative V1 PASS."""
+    """Re-freeze draft (design doc §1.2, 2026-08-15)."""
 
     collision_reduction_delta: float = 0.20
-    dual_channel_max_both_fail_frac: float = 0.35
+    dual_channel_max_both_fail_frac_proxy: float = 0.35
+    dual_channel_max_both_fail_frac_auth: float = 0.20
     tau_mae_max_s: float = 2.0
+    tau_only_min_frac: float = 0.005
+    latent_norm_max: float = 25.0
+    coll_auroc_min: float = 0.65
+    coll_traj_min_for_auroc: int = 3
+    n_eval_episodes: int = 8
 
 
 DEFAULT_V1_THRESHOLDS = V1GateThresholds()
+
+
+def check_wm_fidelity(
+    signal: Mapping[str, Any],
+    *,
+    agg: Optional[Mapping[str, Any]] = None,
+    recon_growth_ok: Optional[bool] = None,
+    thr: V1GateThresholds = DEFAULT_V1_THRESHOLDS,
+) -> Dict[str, Any]:
+    """V1-②: wrap ``wm_eval.fidelity_verdict`` with coll N/A + latent cap (§1.2.2)."""
+    reward_ok = signal.get("reward_ok") is True
+    done_ok = signal.get("done_ok") is True
+    recon_ok = (
+        bool(recon_growth_ok)
+        if recon_growth_ok is not None
+        else signal.get("recon_growth_ok") is True
+    )
+
+    coll_ok: Optional[bool]
+    coll_insufficient = False
+    coll_traj_pos = None
+    if agg is not None:
+        coll_traj_pos = int(agg.get("coll_traj_pos", 0) or 0)
+        au = agg.get("coll_auroc")
+        if coll_traj_pos >= thr.coll_traj_min_for_auroc:
+            coll_ok = bool(np.isfinite(au) and float(au) >= thr.coll_auroc_min)
+        else:
+            coll_ok = None
+            coll_insufficient = coll_traj_pos < thr.coll_traj_min_for_auroc
+    else:
+        # Back-compat: raw verdict without agg — trust coll_ok if finite.
+        raw = signal.get("coll_ok")
+        coll_ok = bool(raw) if raw is not None else None
+
+    latent_ok = True
+    latent_norm_max = None
+    if agg is not None and "latent_norm_max" in agg:
+        latent_norm_max = float(agg["latent_norm_max"])
+        latent_ok = bool(latent_norm_max <= thr.latent_norm_max)
+
+    overall = bool(
+        reward_ok
+        and done_ok
+        and recon_ok
+        and latent_ok
+        and coll_ok is not False
+    )
+    out: Dict[str, Any] = {
+        "ok": overall,
+        "reward_ok": reward_ok,
+        "done_ok": done_ok,
+        "recon_growth_ok": recon_ok,
+        "latent_ok": latent_ok,
+        "coll_ok": coll_ok,
+        "coll_insufficient": coll_insufficient,
+        **dict(signal),
+    }
+    if latent_norm_max is not None:
+        out["latent_norm_max"] = latent_norm_max
+    if coll_traj_pos is not None:
+        out["coll_traj_pos"] = coll_traj_pos
+    return out
 
 
 def check_collision_reduction(
@@ -44,17 +112,12 @@ def check_collision_reduction(
     }
 
 
-def check_wm_fidelity(signal: Mapping[str, Any]) -> Dict[str, Any]:
-    """V1-②: wrap ``wm_eval.fidelity_verdict`` output."""
-    ok = signal.get("ok") is True
-    return {"ok": ok, **dict(signal)}
-
-
 def check_dual_channel_independence(
     depth_breach: np.ndarray,
     tau_breach: np.ndarray,
     *,
-    max_both_fail_frac: float = DEFAULT_V1_THRESHOLDS.dual_channel_max_both_fail_frac,
+    max_both_fail_frac: float = DEFAULT_V1_THRESHOLDS.dual_channel_max_both_fail_frac_proxy,
+    phase: str = "proxy",
 ) -> Dict[str, Any]:
     """V1-③: τ and D̂ triggers must not collapse to the same failure set."""
     d = np.asarray(depth_breach, dtype=bool).reshape(-1)
@@ -73,6 +136,8 @@ def check_dual_channel_independence(
     ok = bool(both_frac <= max_both_fail_frac and (depth_only.any() or tau_only.any()))
     return {
         "ok": ok,
+        "phase": phase,
+        "authoritative": phase == "auth",
         "n": n,
         "both_fail_frac": both_frac,
         "both_fail_max": float(max_both_fail_frac),
@@ -97,9 +162,18 @@ def aggregate_v1_verdict(results: Mapping[str, Mapping[str, Any]]) -> Dict[str, 
             "reason": f"signals {bad_type} have a non-bool 'ok'",
         }
     passed = {k: results[k].get("ok") is True for k in keys}
-    return {
-        "ok": all(passed.values()),
+    s3 = results.get("3", {})
+    proxy_blocks_merge = (
+        s3.get("ok") is True
+        and s3.get("authoritative") is False
+    )
+    overall_ok = all(passed.values()) and not proxy_blocks_merge
+    out: Dict[str, Any] = {
+        "ok": overall_ok,
         "passed": passed,
         "thresholds": asdict(DEFAULT_V1_THRESHOLDS),
         "details": dict(results),
     }
+    if proxy_blocks_merge:
+        out["reason"] = "signal 3 proxy PASS is not merge-eligible (Phase 2 required)"
+    return out

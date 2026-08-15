@@ -118,6 +118,7 @@ def _signal3_from_dataset(
     return metrics.check_dual_channel_independence(
         np.asarray(depth_breach, dtype=bool),
         np.asarray(tau_breach, dtype=bool),
+        phase="proxy",
     )
 
 
@@ -163,7 +164,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             signals["2"] = {"ok": False, "reason": "need --fidelity-json from _wm_fidelity_eval"}
         else:
             blob = json.loads(Path(args.fidelity_json).read_text())
-            signals["2"] = metrics.check_wm_fidelity(blob.get("verdict") or blob)
+            signals["2"] = metrics.check_wm_fidelity(
+                blob.get("verdict") or blob,
+                agg=blob.get("agg"),
+                recon_growth_ok=(blob.get("verdict") or blob).get("recon_growth_ok"),
+            )
 
     if "3" in wanted:
         if not args.dataset:

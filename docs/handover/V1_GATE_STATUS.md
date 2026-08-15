@@ -2,7 +2,7 @@
 
 > **用途**：V1 三信号 merge 进度与待办（镜像 `V0_GATE_STATUS.md` 治理模型）。  
 > **前置**：V0 merge PASS — `v0_gate_r60_20260814.json`（2026-08-14）。  
-> **设计**：[V1/V4 设计](../design/2026-08-15-v1-v4-design.md)。
+> **设计（re-freeze 草案）**：[V1/V4 设计 §1.2](../design/2026-08-15-v1-v4-design.md#12-v1-三个同权过关信号re-freeze-草案2026-08-15)。
 
 ---
 
@@ -20,8 +20,8 @@
 | 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚） | **还差什么** |
 |---|---|---|---|
 | **V1-①** | 碰撞率相对 V0 ↓20% | ❌ **FAIL** — scan **0/8** accepted；spawn_collision 主导（H100→4090 headon：630/738；4090 local r60：406/1000+594 too_close） | 修复 cross-net spawn / 复用 V0 ②④ 已接受 starts；再跑 `v1_partial_1` |
-| **V1-②** | H=15 想象保真（留出 ckpt） | ❌ **FAIL** — `wm_step_5000.pt` held-out 25%（12 ep）：`reward_beat_frac=0.53`（需≥0.8）、`coll_auroc=NaN`（held-out **0** 碰撞轨）；`done_ok=true`，`recon_growth_ok=true`，`latent_norm_max=19.85` | 增采含碰撞 held-out / 长训 WM；或评 V1a ckpt + 诚实留出重训 |
-| **V1-③** | τ / D̂ 双通道独立 | ✅ **PASS** — r60 5000 frames：`both_fail_frac=**0.002**`（≪0.35）；`tau_only=0.94%`；`depth_only=0%`（GT depth proxy） | 无 — partial 已落盘；待 D̂ 预测头接入 ③ 正式版 |
+| **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred；both_fail≤0.20 |
+| **V1-②** | H=15 想象保真 | ❌ **FAIL**（reward）；coll 应记 **N/A**（见 §1.2.2） | 增采碰撞 held-out；诚实留出 ckpt 重训 |
 
 ---
 
@@ -84,7 +84,8 @@ python -m experiments.aerial.rl._v1_gate --merge \
 1. **H100 wm ckpt 路径** — `wm_ckpt_v1a_20260815` 在 **`aerial-rl-skeleton/artifacts/`**，不在 `~/aerial-wam-v2/artifacts/`。
 2. **4090 无 r60 depth ckpt** — 本地仅有 `aerial-rl-skeleton/.../depth_ckpt_da3_near_20260811/`；① 应走 **H100→4090**（yaml `env.host=10.229.20.125`）。
 3. **① scan 全拒** — `spawn_collision` 暴增（738 扫 630 拒）；与 V0 partial_24（10/16 accepted）对比需查 renderer / 出生高度 / cross-net 健康。
-4. **② coll_auroc=NaN** — held-out 12 ep 无碰撞轨 → p_coll 分离不可评（非 WM 发散）。
+4. **② coll_auroc=NaN** — held-out 12 ep 无碰撞轨 → 按 re-freeze **coll_ok=N/A**（不单独 FAIL）；② 仍因 `reward_beat_frac=0.53` FAIL。
+5. **③ Phase 1 ≠ PASS** — proxy ③ 不得 merge；见设计 §1.2 Phase 2。
 
 ---
 
@@ -123,12 +124,8 @@ python -m experiments.aerial.rl._v1_gate --self-check
 
 ## 6. 变更记录
 
-- **2026-08-15(晚²)** — **首次 V1 partial 执行**（H100 `.25` + 4090 RPC OK）：
-  - 跑 `v1_gate_run_partials.py`；bundle 同步 H100
-  - **V1-③ PASS**：`both_fail_frac=0.002`，`n=5000`
-  - **V1-② FAIL**：`wm_step_5000` held-out；`reward_beat_frac=0.53`；`coll_traj_pos=0`
-  - **V1-① FAIL**：obstacle scan 0/8（spawn_collision）
-  - merge **未执行**
+- **2026-08-15(晚³)** — **§1.2 re-freeze 草案**写入设计 doc；`v1_metrics` 对齐 coll N/A + Phase 标记。
+- **2026-08-15(晚²)** — 首次 V1 partial 执行（③ proxy PASS / ②① FAIL）；见 §4。
 - **2026-08-15(晚)** — **V1b scaffold 合拢**：`DepthTauShield`、`planner.py`、`ImaginationPlanner`、`_v1_gate.py`、`v1_metrics.py`；yaml `safety.kind=depth_tau`；单测 + smoke PASS（Mac）。
 - **2026-08-15(午³)** — **V1b-1 接线**：`train_rl` 构建 `tau_predictor`/`depth_predictor`；yaml `tau_predictor.enable=true`；`v1b_tau_smoke.py`。
 - **2026-08-15(午²)** — **V1b-1 scaffold**：`tau_predictor.py`（GT depth+closing-vel τ）；collector `tau_predictor` 接线 → `obs.info['tau_pred']`；单测 3/3 pass。
