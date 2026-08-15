@@ -167,7 +167,7 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.safety import DepthTauShield, ThresholdSafetyShield
-    from experiments.aerial.rl.tau_predictor import TauPredictor
+    from experiments.aerial.rl.tau_predictor import make_tau_predictor
     from experiments.aerial.rl.train_rl import HeuristicPolicy, _build_env
 
     out_dir = Path(args.out_dir).expanduser()
@@ -180,8 +180,8 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     env = _build_env(cfg.get("env", {}) or {})
     reward_cfg = RewardConfig(**(cfg.get("reward", {}) or {})) if cfg.get("reward") else None
     thr = v0m.DEFAULT_THRESHOLDS
-    # Match V0 ②④ reaction standoff (frozen-spec ④a re-freeze); yaml may still
-    # carry min_depth_m=1.5 for dual-channel scaffolding — do not use that for ①.
+    # Authoritative ①: trigger at metric-band by default so V0 hard/near can
+    # leave the zero floor (standoff=3.0 often tied-zero's both arms).
     shield_trigger_m = float(args.shield_trigger_m)
 
     rollout_ds = Path(args.rollout_dataset).expanduser()
@@ -190,6 +190,15 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     depth_ckpt = Path(args.depth_ckpt).expanduser()
     if not depth_ckpt.is_absolute():
         depth_ckpt = root / depth_ckpt
+
+    tau_cfg = cfg.get("tau_predictor", {}) or {}
+    tau_kind = str(args.tau_kind or tau_cfg.get("kind") or "foe_calibrated")
+    tau_ckpt = args.tau_ckpt or tau_cfg.get("ckpt")
+    if tau_ckpt:
+        tau_ckpt = Path(str(tau_ckpt)).expanduser()
+        if not tau_ckpt.is_absolute():
+            tau_ckpt = root / tau_ckpt
+    allow_tied_zero = bool(args.allow_tied_zero)
 
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
     from experiments.aerial.rl._v0_gate import _obstacle_candidate_positions
@@ -223,7 +232,16 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         return 1
 
     predictor = DepthMinPredictor.from_checkpoint(depth_ckpt, device=args.device)
-    tau_pred = TauPredictor()
+    tau_pred = make_tau_predictor(
+        kind=tau_kind,
+        ckpt=tau_ckpt,
+        device=str(args.device),
+        center_frac=float(tau_cfg.get("center_frac", 0.5)),
+        min_closing_m_s=float(tau_cfg.get("min_closing_m_s", 0.05)),
+        max_tau_s=float(tau_cfg.get("max_tau_s", 60.0)),
+        dt_s=float(tau_cfg.get("dt_s", 0.1)),
+        use_gt_depth=False,
+    )
 
     def _run_v1_shield(shield_kind: str) -> Dict[str, Any]:
         collided_on: List[List[bool]] = []
@@ -232,6 +250,8 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         for epi in starts:
             if hasattr(policy, "reset"):
                 policy.reset()
+            if hasattr(tau_pred, "reset"):
+                tau_pred.reset()
             if shield_kind == "depth_tau":
                 shield = DepthTauShield(
                     min_depth_m=shield_trigger_m,
@@ -272,10 +292,8 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     v1_stats = _run_v1_shield("depth_tau")
     off_stats = _run_v1_shield("off")
 
-    # Prefer hard episode coll_rate (design §1.2.1). Working ThresholdSafetyShield
-    # often yields hard coll_rate=0 on probe-verified starts (V0 partial_24
-    # n_contact=0); then fall back to episode-level any-near-collision. If both
-    # shield-on rates are still 0 but shield-off collides, tied-zero PASS.
+    # Prefer hard episode coll_rate (design §1.2.1). If hard_v0==0, fall back to
+    # episode near-coll. Tied-zero is diagnostic only unless --allow-tied-zero.
     baseline_kind = "hard_collision"
     v0_rate = float(v0_stats["collision_rate"])
     v1_rate = float(v1_stats["collision_rate"])
@@ -286,40 +304,48 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         s1 = v1_metrics.check_collision_reduction(v0_rate, v1_rate)
     elif v0_rate > 0:
         s1 = v1_metrics.check_collision_reduction(v0_rate, v1_rate)
+        baseline_kind = str(s1.get("baseline_kind") or "delta_reduction")
     elif float(v0_stats["near_coll_episode_rate"]) > 0:
         v0_rate = float(v0_stats["near_coll_episode_rate"])
         v1_rate = float(v1_stats["near_coll_episode_rate"])
         baseline_kind = "near_coll_episode"
         s1 = v1_metrics.check_collision_reduction(v0_rate, v1_rate)
+        s1["baseline_kind"] = baseline_kind
     else:
         baseline_kind = "tied_zero_collision_bearing"
         s1 = v1_metrics.check_collision_reduction(
-            v0_rate, v1_rate, shield_off_coll_rate=off_hard,
+            v0_rate, v1_rate,
+            shield_off_coll_rate=off_hard,
+            allow_tied_zero=allow_tied_zero,
         )
         baseline_kind = str(s1.get("baseline_kind") or baseline_kind)
     s1["baseline_kind"] = baseline_kind
+    s1["tau_kind"] = tau_kind
+    s1["tau_ckpt"] = str(tau_ckpt) if tau_ckpt else None
     s1["v0_measured"] = v0_stats
     s1["v1_measured"] = v1_stats
     s1["shield_off_measured"] = off_stats
     s1["scan"] = scan_diag
     if baseline_kind == "near_coll_episode":
         s1["note"] = (
-            "hard coll_rate_v0==0 (matches V0 partial_24 n_contact=0); "
-            "compared episode near-coll rates under same starts / standoff=3.0"
+            "hard coll_rate_v0==0; compared episode near-coll rates under "
+            f"same starts / trigger={shield_trigger_m:.2f}m / tau={tau_kind}"
         )
     elif baseline_kind == "tied_zero_collision_bearing":
         s1["note"] = (
             "V0/V1 shield-on hard and near-ep rates are 0 on starts with "
-            f"shield-off coll_rate={off_hard:.3f}; tied at zero floor is PASS"
+            f"shield-off coll_rate={off_hard:.3f}; tied-zero "
+            f"{'soft PASS' if allow_tied_zero else 'NOT authoritative (FAIL)'}"
         )
 
     partial1 = {"partial": True, "signals_requested": ["1"], "ok": bool(s1.get("ok")), "signals": {"1": s1}}
     _emit(out_dir / "v1_partial_1_r60_20260815.json", partial1)
     print(
         f"[v1-run] 4090 signal1 ok={s1.get('ok')} kind={baseline_kind} "
+        f"auth={s1.get('authoritative')} tau={tau_kind} "
         f"v0={v0_rate:.4f} v1={v1_rate:.4f} "
         f"hard_v0={v0_stats['collision_rate']:.4f} hard_v1={v1_stats['collision_rate']:.4f} "
-        f"off_hard={off_stats['collision_rate']:.4f}"
+        f"off_hard={off_stats['collision_rate']:.4f} trigger={shield_trigger_m}"
     )
     return 0 if s1.get("ok") else 1
 
@@ -380,7 +406,7 @@ def main() -> int:
         choices=("proxy", "auth"),
         help="V1-③: proxy=GT (Phase 1) or auth=FOE+D̂_pred (Phase 2)",
     )
-    p.add_argument("--tau-kind", default="foe", help="auth τ: foe | foe_calibrated")
+    p.add_argument("--tau-kind", default="foe_calibrated", help="①/③ τ: foe | foe_calibrated | gt_proxy")
     p.add_argument("--tau-ckpt", default=None, help="optional FOE calibrator ckpt")
     p.add_argument("--rollout-dataset", default="experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814")
     p.add_argument("--depth-ckpt", default="experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt")
@@ -391,8 +417,13 @@ def main() -> int:
     p.add_argument(
         "--shield-trigger-m",
         type=float,
-        default=3.0,
-        help="V0/V1 shield reaction standoff (match V0 ②④; default 3.0)",
+        default=1.5,
+        help="V0/V1 shield reaction depth (authoritative ① default=1.5 metric band; 3.0 often tied-zero)",
+    )
+    p.add_argument(
+        "--allow-tied-zero",
+        action="store_true",
+        help="soft PASS when V0/V1 both 0 on collision-bearing starts (NOT merge-eligible)",
     )
     args = p.parse_args()
     if args.config is None:

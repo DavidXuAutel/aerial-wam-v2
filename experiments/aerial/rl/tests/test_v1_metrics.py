@@ -12,8 +12,17 @@ def test_collision_reduction_pass():
     assert abs(out["target_max"] - 0.08) < 1e-9
 
 
-def test_collision_reduction_tied_zero_on_collision_bearing():
+def test_collision_reduction_tied_zero_not_authoritative_by_default():
     out = v1_metrics.check_collision_reduction(0.0, 0.0, shield_off_coll_rate=1.0)
+    assert out["ok"] is False
+    assert out["reason"] == "tied_zero_not_authoritative"
+    assert out["authoritative"] is False
+
+
+def test_collision_reduction_tied_zero_soft_opt_in():
+    out = v1_metrics.check_collision_reduction(
+        0.0, 0.0, shield_off_coll_rate=1.0, allow_tied_zero=True,
+    )
     assert out["ok"] is True
     assert out["baseline_kind"] == "tied_zero_collision_bearing"
 
@@ -22,6 +31,13 @@ def test_collision_reduction_zero_without_off_still_invalid():
     out = v1_metrics.check_collision_reduction(0.0, 0.0)
     assert out["ok"] is False
     assert out["reason"] == "invalid v0_coll_rate baseline"
+
+
+def test_collision_reduction_delta_is_authoritative():
+    out = v1_metrics.check_collision_reduction(0.50, 0.30, delta=0.20)
+    assert out["ok"] is True
+    assert out["authoritative"] is True
+    assert out["baseline_kind"] == "delta_reduction"
 
 
 def test_wm_fidelity_coll_na_when_no_collision_trajs():
@@ -46,8 +62,17 @@ def test_wm_fidelity_fails_on_reward():
     assert out["ok"] is False
 
 
+def test_aggregate_rejects_non_authoritative_signal1():
+    s1 = {"ok": True, "authoritative": False, "baseline_kind": "tied_zero_collision_bearing"}
+    s2 = {"ok": True}
+    s3 = {"ok": True, "authoritative": True, "phase": "auth"}
+    out = v1_metrics.aggregate_v1_verdict({"1": s1, "2": s2, "3": s3})
+    assert out["ok"] is False
+    assert "signal 1" in out["reason"]
+
+
 def test_aggregate_rejects_proxy_signal3_for_merge():
-    s1 = {"ok": True}
+    s1 = {"ok": True, "authoritative": True}
     s2 = {"ok": True}
     s3 = {"ok": True, "authoritative": False, "phase": "proxy"}
     out = v1_metrics.aggregate_v1_verdict({"1": s1, "2": s2, "3": s3})

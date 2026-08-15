@@ -93,27 +93,37 @@ def check_collision_reduction(
     *,
     delta: float = DEFAULT_V1_THRESHOLDS.collision_reduction_delta,
     shield_off_coll_rate: float | None = None,
+    allow_tied_zero: bool = False,
 ) -> Dict[str, Any]:
     """V1-①: collision rate must drop relative to the frozen V0 baseline.
 
-    When V0 shield-on rate is already at the zero floor on *collision-bearing*
-    starts (``shield_off_coll_rate > 0``) and V1 is also zero, treat as PASS —
-    there is no headroom for a δ reduction, and equality at the floor is not a
-    vacuous open-air result (V0 partial_24 also had ``n_contact=0`` with
-    shield-off collisions).
+    Authoritative gate requires ``v0_coll_rate > 0`` and
+    ``v1 ≤ v0 × (1 − δ)``. Tied-zero on collision-bearing starts
+    (``shield_off_coll_rate > 0`` and both on-arms at 0) is only a
+    *diagnostic* outcome — pass it solely when ``allow_tied_zero=True``
+    (legacy / soft). Merge must use ``allow_tied_zero=False``.
     """
     off = float(shield_off_coll_rate) if shield_off_coll_rate is not None else float("nan")
     if (not np.isfinite(v0_coll_rate) or v0_coll_rate <= 0) and np.isfinite(off) and off > 0:
         v1_ok = bool(np.isfinite(v1_coll_rate) and v1_coll_rate <= 0.0)
         return {
-            "ok": v1_ok,
-            "reason": "tied_zero_collision_bearing" if v1_ok else "v1_above_zero_floor",
+            "ok": bool(allow_tied_zero and v1_ok),
+            "reason": (
+                "tied_zero_collision_bearing"
+                if (allow_tied_zero and v1_ok)
+                else (
+                    "tied_zero_not_authoritative"
+                    if v1_ok
+                    else "v1_above_zero_floor"
+                )
+            ),
             "v0_coll_rate": float(v0_coll_rate) if np.isfinite(v0_coll_rate) else 0.0,
             "v1_coll_rate": float(v1_coll_rate) if np.isfinite(v1_coll_rate) else v1_coll_rate,
             "target_max": 0.0,
             "delta": float(delta),
             "shield_off_coll_rate": off,
             "baseline_kind": "tied_zero_collision_bearing",
+            "authoritative": False,
         }
     if not np.isfinite(v0_coll_rate) or v0_coll_rate <= 0:
         return {
@@ -121,6 +131,7 @@ def check_collision_reduction(
             "reason": "invalid v0_coll_rate baseline",
             "v0_coll_rate": v0_coll_rate,
             "v1_coll_rate": v1_coll_rate,
+            "authoritative": False,
         }
     target = float(v0_coll_rate * (1.0 - delta))
     ok = bool(np.isfinite(v1_coll_rate) and v1_coll_rate <= target)
@@ -130,6 +141,8 @@ def check_collision_reduction(
         "v1_coll_rate": float(v1_coll_rate),
         "target_max": target,
         "delta": float(delta),
+        "authoritative": True,
+        "baseline_kind": "delta_reduction",
     }
 
 
@@ -230,18 +243,26 @@ def aggregate_v1_verdict(results: Mapping[str, Mapping[str, Any]]) -> Dict[str, 
             "reason": f"signals {bad_type} have a non-bool 'ok'",
         }
     passed = {k: results[k].get("ok") is True for k in keys}
+    s1 = results.get("1", {})
     s3 = results.get("3", {})
     proxy_blocks_merge = (
         s3.get("ok") is True
         and s3.get("authoritative") is False
     )
-    overall_ok = all(passed.values()) and not proxy_blocks_merge
+    # V1-① tied-zero / non-delta passes are not merge-eligible.
+    s1_blocks_merge = (
+        s1.get("ok") is True
+        and s1.get("authoritative") is False
+    )
+    overall_ok = all(passed.values()) and not proxy_blocks_merge and not s1_blocks_merge
     out: Dict[str, Any] = {
         "ok": overall_ok,
         "passed": passed,
         "thresholds": asdict(DEFAULT_V1_THRESHOLDS),
         "details": dict(results),
     }
-    if proxy_blocks_merge:
+    if s1_blocks_merge:
+        out["reason"] = "signal 1 non-authoritative (need v0>0 δ reduction, not tied-zero)"
+    elif proxy_blocks_merge:
         out["reason"] = "signal 3 proxy PASS is not merge-eligible (Phase 2 required)"
     return out
