@@ -70,8 +70,9 @@ def backfill(
         goal = goals[j].astype(np.float32)
         if not dry_run:
             raw["goal"] = goal
-            # np.savez_compressed needs a rewrite; preserve all existing keys.
-            tmp = path.with_suffix(".npz.tmp")
+            # np.savez_compressed appends ``.npz`` if missing — keep a real
+            # ``*.npz`` temp name so replace is atomic and finds the file.
+            tmp = path.with_name(path.stem + ".goalbackfill.npz")
             np.savez_compressed(tmp, **raw)
             tmp.replace(path)
         matched += 1
