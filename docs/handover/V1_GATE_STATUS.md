@@ -6,65 +6,76 @@
 
 ---
 
-## 1. 一句话结论（2026-08-15 晚⁸）
+## 1. 一句话结论（2026-08-15 晚⁹）
 
 **✅ V1a 完成** + **V1b scaffold 已落** + **① PASS**。  
-**🟡 V1 partial**：③ proxy PASS；② **仍 FAIL** — 诚实留出 ckpt 复评后 `reward_beat_frac≈0.00–0.07`（需 ≥0.80）；**coll_ok=N/A**（`coll_traj_pos=1`）。  
-**merge 仍 blocked 于 ② + ③ Phase 2**。泄漏评 0.53 是虚高；真实短板是 reward 开环跟踪。
+**🟡 V1 partial**：③ proxy PASS；② **仍 FAIL** — 但 reward 开环已从诚实 `beat_frac≈0` **抬到 0.60**（需 ≥0.80）。  
+**根因**：非语料多日问题；`step()` 相对训练 **+1 头对齐错误** + **reward CE 被 recon MSE 淹没**。修对齐 + `loss_scales.reward=10` 后 5k 诚实留出即 0→0.60；卡在 **h=0..5**（1-step 仍高于 constant）。  
+**merge 仍 blocked 于 ② + ③ Phase 2**。泄漏 0.53 仍不可用。
 
 产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/artifacts/v1_gate_r60_20260815/`
 
 | 主机 | HEAD |
 |---|---|
-| Mac / H100 | `08dc2c7`（held-out train + post-step coll） |
+| Mac / H100 | `5d85ca2`（reward 对齐 + βreward=10） |
 
 ---
 
 ## 2. 三信号：还差什么
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁸） | **还差什么** |
+| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚⁹） | **还差什么** |
 |---|---|---|---|
 | **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing` | 无（① 已过） |
 | **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
-| **V1-②** | H=15 想象保真 | ❌ **FAIL**（honest `reward_beat_frac≈0.0–0.07`）；**coll_ok=N/A**（pos=1） | 加长/加碰撞语料 + reward 头改进；**勿**下调阈值 |
+| **V1-②** | H=15 想象保真 | ❌ **FAIL**（honest `reward_beat_frac=0.60`）；done/recon/latent OK | 加长训（15k 进行中）/ 再抬 βreward；**勿**下调阈值 |
 
 ---
 
 ## 3. 待办（按依赖）
 
-- [x] **V1a-1** — H100 `_wm_train_validate` on `dataset_v0_local_depth_r60_20260814` → **`wm_ckpt_v1a_20260815/wm_step_500.pt`** PASS
-- [x] **V1a-2** — flip `dynamics.kind=torch`、`enable_wm_update=true`；corrector smoke **SMOKE_WM_UPDATED=OK**
-- [x] **V1b-1..3** — τ / shield / planner / `_v1_gate` scaffold + partial 首跑
-- [x] **V1-①** — tied-zero PASS @ `00a1e4b`
-- [x] **V1-② 诚实留出重训** — `wm_ckpt_v1_heldout_20260815/wm_step_5000.pt`（36 train eps，PASS learning+non-div）
-- [x] **V1-② 复评** — FAIL：`reward_beat_frac≈0.0–0.07`（见 §7）
-- [ ] **V1-② 下一跳** — 更长训 / 更多含碰撞 held-out / reward 头对齐诊断（**不**改 `REWARD_BEAT_FRAC`）
-- [ ] **V1-merge** — `--merge` 三 partial（**blocked**：② FAIL + ③ proxy）
+- [x] **V1a-1..2** / **V1b scaffold** / **V1-①** — 见既往
+- [x] **V1-② 诚实留出重训** — `wm_ckpt_v1_heldout_20260815` → beat≈0
+- [x] **V1-② 诊断** — 对齐 bug + reward 权重；**非** Phase-2 FOE / **非** 多日采数阻塞
+- [x] **V1-② 最小实验** — 对齐修复 + `reward: 10` → `wm_ckpt_v1_heldout_rew10_20260815` → **beat_frac=0.60**（仍 FAIL）
+- [ ] **V1-② 下一跳** — 15k 诚实留出（`wm_ckpt_v1_heldout_rew10_15k_20260815`，H100 已开）或 βreward↑；盯 h=0..5
+- [ ] **V1-merge** — blocked：② FAIL + ③ proxy
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
 ---
 
-## 4. V1-② 诊断（2026-08-15 晚⁸）
+## 4. V1-② 诊断（2026-08-15 晚⁹）
 
 ### 4.1 当前产物（H100）
 
 | 文件 | 要点 |
 |---|---|
-| `v1_partial_2_r60_20260815.json` | `ok=false`；**honest** `reward_beat_frac=0.0`；done/recon/latent OK；`coll_ok=null`（pos=1） |
-| `v1_fidelity_r60_20260815.json` | **ckpt=`wm_ckpt_v1_heldout_20260815/wm_step_5000.pt`**；`heldout_frac=0.25`；`coll_traj_pos=1`；`coll_auroc=1.0` |
+| `v1_partial_2_r60_20260815.json` | `ok=false`；**honest rew10** `reward_beat_frac=0.60`；done/recon OK |
+| `v1_fidelity_r60_20260815.json` | ckpt=`wm_ckpt_v1_heldout_rew10_20260815/wm_step_5000.pt`；`heldout_frac=0.25` |
+| `v1_fidelity_rew10_20260815.out` | 全 horizon 表；growth_ok；1-step 仍输 constant |
 
-### 4.2 根因（按优先级）— 已用诚实 ckpt 证实
+### 4.2 根因（已证实）
 
-1. **模型弱点（主因）** — 诚实留出 5000-step 训完后，held-out `reward_beat_frac` **跌至 ~0.0–0.07**（泄漏 all-ep 评曾虚高至 0.53）。几乎所有 horizon 的 WM MAE **高于** constant-mean；done/recon/latent 仍过 → **reward 开环跟踪不够**，不是 harness 整坏。
-2. **曾用错误 ckpt** — 首跑评的是 all-ep `wm_ckpt_r60_20260814/wm_step_5000.pt`（设计禁止作 authoritative ②）。已替换。
-3. **coll 标签 bug（已修）** — 曾读 pre-step `obs.collided` → 假 `coll_traj_pos=0`。现 `pos=1`；N/A（<3）不单独 FAIL。
-4. **非 Phase-2 FOE 阻塞**。
+1. **`step()` +1 偏移（构造 bug）** — `training_loss` 用 **pre-action** `[h_t‖z_t]` 拟合 `reward_t`；旧 `step()` 在 **post-action prior** 上读头再比 `reward_t`。仅改对齐：held-out beat **0→0.27**（仍 FAIL）。
+2. **reward 梯度被 recon 淹没** — `loss_pred = recon + reward + …` 无独立权重；jsonl 原先甚至不记 `loss_reward`。设 `loss_scales.reward=10` 后 raw CE **3.58→0.70**（5k）。
+3. **非 held-out 泛化主因** — 同旧 ckpt 上 **train 集 open-loop beat_frac 也 ≈0**；teacher-forced 仅弱过 constant（corr≈0.28）。
+4. **非阈值/泄漏问题** — 禁止下调 `REWARD_BEAT_FRAC`；泄漏 all-ep 0.53 作废。
+5. **非多日数据阻塞** — 现有 36 train ep 在修对齐+权重后即可从 0→0.60；余量在早 horizon 拟合。
 
-### 4.3 下一跳（仍不改阈值）
+### 4.3 最小实验结果
 
-1. 诊断 reward 头：1-step MAE vs mean baseline 差距、训练 `loss_reward` 曲线、±1 对齐。
-2. 更长诚实留出训（e.g. 15k–50k）或增采含碰撞 / 多样 reward 的 held-out 语料后再训。
-3. **禁止**下调 `REWARD_BEAT_FRAC` / 改用泄漏 ckpt 过门。
+| 设置 | `reward_beat_frac` | 备注 |
+|---|---|---|
+| 旧诚实 5k（错对齐，βreward=1） | ≈0.00–0.07 | `wm_ckpt_v1_heldout_20260815` |
+| 仅对齐（同旧权重，诊断脚本） | ≈0.27 | 未单独落盘 ckpt |
+| **对齐 + βreward=10，诚实 5k** | **0.60** | `wm_ckpt_v1_heldout_rew10_20260815`；FAIL（需≥0.80）；h=0..5 仍输 mean |
+
+`loss_reward` 曲线（rew10）：first100≈3.58 → last100≈0.70。
+
+### 4.4 下一跳（仍不改阈值）
+
+1. 诚实留出 **15k**（已启动）或 βreward 再抬（如 20–50），专盯 **1-step / h≤5**。
+2. 若 15k 仍 <0.80：再考虑 prior-path reward 辅助损失或增采；**仍不是**先开 Phase-2 FOE。
+3. **禁止**下调阈值 / 用泄漏 ckpt 过门。
 
 ---
 
@@ -80,25 +91,19 @@
 ### 5.2 命令
 
 ```bash
-# H100 — 诚实留出 WM 重训（② 前置）
+# H100 — 诚实留出 WM 重训（②；现默认 βreward=10 @ configs/aerial_rl.yaml）
 cd ~/aerial-wam-v2 && source .venv/bin/activate && export PYTHONPATH=.
 python -m experiments.aerial.rl._wm_train_validate \
   --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
   --steps 5000 --wm-batch 8 --window 8 --horizon 15 \
   --heldout-frac 0.25 --save-ckpt --device cuda \
-  --checkpoint-dir ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_20260815
+  --checkpoint-dir ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_rew10_20260815
 
-# H100 — ② fidelity（同一 heldout_frac）
+# H100 — ② fidelity
 python -m experiments.aerial.rl._wm_fidelity_eval \
   --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_20260815/wm_step_5000.pt \
+  --ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_rew10_20260815/wm_step_5000.pt \
   --config configs/aerial_rl.yaml --heldout-frac 0.25 --horizon 15
-
-# 或 partials runner
-python experiments/aerial/scripts/v1_gate_run_partials.py h100 \
-  --dataset ~/aerial-rl-skeleton/.../dataset_v0_local_depth_r60_20260814 \
-  --wm-ckpt ~/aerial-rl-skeleton/.../wm_ckpt_v1_heldout_20260815/wm_step_5000.pt \
-  --out-dir experiments/aerial/rl/artifacts/v1_gate_r60_20260815
 ```
 
 ### 5.3 落盘 partial
@@ -106,46 +111,47 @@ python experiments/aerial/scripts/v1_gate_run_partials.py h100 \
 | 文件 | 信号 | ok |
 |---|---|---|
 | `v1_partial_3_r60_20260815.json` | ③ 双通道 | **true**（proxy） |
-| `v1_partial_2_r60_20260815.json` | ② fidelity | **false**（honest reward≈0） |
+| `v1_partial_2_r60_20260815.json` | ② fidelity | **false**（rew10 beat=0.60） |
 | `v1_partial_1_r60_20260815.json` | ① 碰撞率 | **true**（tied-zero） |
-| `v1_fidelity_r60_20260815.json` | ② 明细 | reward FAIL；coll N/A（pos=1） |
+| `v1_fidelity_r60_20260815.json` | ② 明细 | reward FAIL @ 0.60 |
 
 ### 5.4 踩坑
 
-1. **H100 wm ckpt 路径** — 权威在 **`aerial-rl-skeleton/artifacts/`**，不在 `~/aerial-wam-v2/artifacts/`。
+1. **H100 wm ckpt 路径** — 权威在 **`aerial-rl-skeleton/artifacts/`**。
 2. **② 禁评** all-ep `wm_step_5000.pt` / 未带 `--heldout-frac` 的训产物。
 3. **①** 必须用 `configs/aerial_rl_rollout.yaml`（`grab_depth`）。
 4. **③ Phase 1 ≠ PASS** — proxy 不得 merge。
 5. **Off-site SSH** — Mac→H100 经 **4090 公网** `cursor-125-public` ProxyJump。
 6. **coll 标签** — 必须读 post-step `next_obs.collided`。
+7. **reward 头** — `step()` 必须在 **pre-action** feature 上读头（与 `training_loss` 一致）。
 
 ---
 
-## 6. V1a 资产与命令（H100）
+## 6. V1a / ② 资产（H100）
 
 | 项 | 路径 / 值 |
 |---|---|
-| 语料 | `~/aerial-rl-skeleton/.../dataset_v0_local_depth_r60_20260814`（48 usable / 36 train + 12 held @ 0.25） |
-| V1a ckpt（地板，非 ②） | `.../wm_ckpt_v1a_20260815/wm_step_500.pt` |
-| r60 all-ep ckpt（**非** ②） | `.../wm_ckpt_r60_20260814/wm_step_5000.pt` |
-| ② 目标 ckpt | `.../wm_ckpt_v1_heldout_20260815/wm_step_5000.pt` |
+| 语料 | `dataset_v0_local_depth_r60_20260814`（48 usable / 36 train + 12 held @ 0.25） |
+| 旧诚实 5k（β=1，错对齐） | `wm_ckpt_v1_heldout_20260815/wm_step_5000.pt` — beat≈0 |
+| **当前最佳 ② ckpt** | `wm_ckpt_v1_heldout_rew10_20260815/wm_step_5000.pt` — beat=0.60 |
+| 15k 进行中 | `wm_ckpt_v1_heldout_rew10_15k_20260815/` |
+| r60 all-ep（**非** ②） | `wm_ckpt_r60_20260814/wm_step_5000.pt` |
 
 ---
 
-## 7. 诚实留出重训 + 复评（完成）
+## 7. 诚实留出 + rew10 实验（完成）
 
 | 项 | 值 |
 |---|---|
-| 训 | `heldout_frac=0.25` → 36/48 train；`steps=5000`；wall ~5 min；**PASS** learning+non-div |
-| ckpt | `~/aerial-rl-skeleton/.../wm_ckpt_v1_heldout_20260815/wm_step_5000.pt` |
-| meta | `heldout_frac=0.25`，`episodes=36`，`git_sha=08dc2c7`，`authoritative=true` |
-| 复评 | `reward_beat_frac≈0.0–0.07` → **② FAIL**；`coll_traj_pos=1` → N/A；done/recon/latent OK |
-| 对照 | 旧泄漏评 all-ep ckpt：`reward_beat_frac=0.53`（虚高，不可作 gate） |
+| 代码 | `5d85ca2`：pre-action `step()` + `loss_scales.reward=10` + jsonl `loss_reward` |
+| 训 | heldout 0.25；5k；PASS learning+non-div；`loss_reward` 3.58→0.70 |
+| 复评 | **beat_frac=0.60** → ② 仍 FAIL；growth/done/recon/latent OK |
+| 对照 | 修前诚实 ≈0；泄漏 0.53 作废 |
 
 ---
 
 ## 8. 变更记录
 
-- **2026-08-15(晚⁸)** — ②：修 coll 标签 + `--heldout-frac` 训；诚实 5000-step PASS 后 fidelity 仍 FAIL（reward≈0）；确认泄漏 0.53 虚高。未开 Phase 2 FOE / 未改阈值。
-- **2026-08-15(晚⁷)** — ① tied-zero PASS（`grab_depth`/rollout yaml）。
-- **2026-08-15(晚⁶…午)** — ① harness 诊断、§1.2 re-freeze、V1b scaffold、V1a 执行；见既往条目。
+- **2026-08-15(晚⁹)** — ②：证实 step/+1 与 reward 权重根因；rew10 诚实 5k → beat 0.60；启动 15k；未开 Phase 2 FOE / 未改阈值。
+- **2026-08-15(晚⁸)** — ②：修 coll 标签 + held-out 训；诚实 5k 后 beat≈0；确认泄漏 0.53 虚高。
+- **2026-08-15(晚⁷…午)** — ① PASS、re-freeze、V1b/V1a；见既往。
