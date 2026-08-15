@@ -27,7 +27,7 @@
 
 **✅ V0 四信号已在同一 r60 ft-head + 一次 merge 下合拢 PASS**（`v0_gate_r60_20260814.json`，H100 `.25`）。
 
-**当前阶段：V1 partial 首跑完成（③ PASS / ②① FAIL）** — merge blocked；待 rollout spawn 修复 + fidelity 碰撞轨。
+**当前阶段：V1 merge PASS（严谨口径，2026-08-15 晚¹⁵）** — ① δ 实证（0.75→0.50）+ ② goalvel 0.93 + ③ FOE auth；yaml `tau_predictor.kind` 未 auto-flip。详见 [V1_GATE_STATUS.md](handover/V1_GATE_STATUS.md)。
 
 ---
 
@@ -147,7 +147,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 |---|---|
 | ~~**V1a-1**~~ | ✅ `_wm_train_validate` → `wm_ckpt_v1a_20260815` |
 | ~~**V1a-2**~~ | ✅ `kind=torch` + `enable_wm_update=true` + corrector smoke |
-| **V1b** | τ + 想象规划 + `DepthTauShield` + `_v1_gate` — **scaffold ✅**；merge PASS 待跑 |
+| **V1b** | τ + 想象规划 + `DepthTauShield` + `_v1_gate` — **merge PASS（严谨）**；部署 flip FOE yaml 待人工 |
 | **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
 | **n re-freeze** | `n_eval_episodes` 8 vs 16（V0 遗留） |
 | **V4** | V1b PASS 后：DreamerV3 λ-return AC + `enable_policy_update` |

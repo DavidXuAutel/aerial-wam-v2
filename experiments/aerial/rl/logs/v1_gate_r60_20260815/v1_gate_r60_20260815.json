@@ -19,86 +19,89 @@
   "details": {
     "1": {
       "ok": true,
-      "reason": "tied_zero_collision_bearing",
-      "v0_coll_rate": 0.0,
-      "v1_coll_rate": 0.0,
-      "target_max": 0.0,
+      "v0_coll_rate": 0.75,
+      "v1_coll_rate": 0.5,
+      "target_max": 0.6000000000000001,
       "delta": 0.2,
-      "shield_off_coll_rate": 1.0,
-      "baseline_kind": "tied_zero_collision_bearing",
+      "authoritative": true,
+      "baseline_kind": "delta_reduction",
+      "tau_kind": "foe_calibrated",
+      "tau_ckpt": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt",
       "v0_measured": {
-        "collision_rate": 0.0,
-        "near_coll_episode_rate": 0.0,
-        "near_coll_rate": 0.0,
+        "collision_rate": 0.75,
+        "near_coll_episode_rate": 0.625,
+        "near_coll_rate": 0.010893246187363835,
         "n_episodes": 8,
         "drop_stats": {},
         "shield_kind": "threshold",
-        "shield_trigger_m": 3.0
+        "shield_trigger_m": 1.5
       },
       "v1_measured": {
-        "collision_rate": 0.0,
-        "near_coll_episode_rate": 0.0,
-        "near_coll_rate": 0.0,
+        "collision_rate": 0.5,
+        "near_coll_episode_rate": 0.875,
+        "near_coll_rate": 0.02035928143712575,
         "n_episodes": 8,
         "drop_stats": {},
         "shield_kind": "depth_tau",
-        "shield_trigger_m": 3.0
+        "shield_trigger_m": 1.5
       },
       "shield_off_measured": {
         "collision_rate": 1.0,
-        "near_coll_episode_rate": 0.5,
-        "near_coll_rate": 0.0945945945945946,
-        "n_episodes": 8,
-        "drop_stats": {},
+        "near_coll_episode_rate": 0.5714285714285714,
+        "near_coll_rate": 0.06060606060606061,
+        "n_episodes": 7,
+        "drop_stats": {
+          "spawn_collision": 1
+        },
         "shield_kind": "off",
         "shield_trigger_m": null
       },
       "scan": {
         "requested": 8,
         "accepted": 8,
-        "scanned": 28,
+        "scanned": 32,
         "candidates": 82,
         "rejections": {
           "no_depth": 0,
-          "spawn_collision": 7,
+          "spawn_collision": 8,
           "too_close": 0,
-          "open_ahead": 9,
-          "proxy_ok": 12,
-          "probe_no_hit": 4,
+          "open_ahead": 13,
+          "proxy_ok": 11,
+          "probe_no_hit": 3,
           "obstacle_ok": 8,
           "reset_error": 0
         },
         "accepted_fwd_depth_m": {
-          "min": 5.859375,
-          "max": 10.1328125,
-          "mean": 7.74462890625
+          "min": 5.83203125,
+          "max": 10.125,
+          "mean": 7.53857421875
         },
         "probe": {
           "enabled": true,
           "near_m": 1.5,
           "steps": 40,
           "hits": 8,
-          "n_probed": 12,
+          "n_probed": 11,
           "collided": 8,
           "reached_fwd_m": {
-            "min": 1.9755859375,
-            "p50": 2.3818359375,
-            "max": 13.6953125
+            "min": 1.841796875,
+            "p50": 2.328125,
+            "max": 13.6875
           },
           "reached_full_m": {
-            "min": 1.0498046875,
-            "p50": 1.42431640625,
-            "max": 4.11328125
+            "min": 1.087890625,
+            "p50": 1.33984375,
+            "max": 4.0859375
           },
           "travel_m": {
-            "min": 5.4089221032011645,
-            "p50": 10.540996694215977,
-            "max": 28.220838209241997
+            "min": 4.567605201868366,
+            "p50": 8.758336590856375,
+            "max": 26.910137627990622
           },
           "hit_depth_m": {
-            "min": 1.9755859375,
-            "max": 2.93359375,
-            "mean": 2.301513671875
+            "min": 1.841796875,
+            "max": 2.890625,
+            "mean": 2.304443359375
           }
         },
         "params": {
@@ -108,17 +111,27 @@
           "start_clearance_m": 3.0,
           "center_frac": 0.3
         }
-      },
-      "note": "V0/V1 shield-on hard and near-ep rates are 0 on starts with shield-off coll_rate=1.000; tied at zero floor is PASS"
+      }
     },
     "2": {
-      "ok": true,
       "reward_ok": true,
       "done_ok": true,
       "recon_growth_ok": true,
-      "coll_ok": true,
-      "reward_beat_frac": 0.93,
-      "fidelity_log": "experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_fidelity_goalvel_20260815.out"
+      "reward_beat_frac": 0.9333333333333333,
+      "ok": true,
+      "latent_ok": true,
+      "coll_ok": null,
+      "coll_insufficient": true,
+      "latent_norm_max": 21.3,
+      "coll_traj_pos": 1,
+      "fidelity_log": "experiments/aerial/rl/artifacts/v1_gate_r60_20260815/v1_fidelity_goalvel_20260815.out",
+      "ckpt": "wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt",
+      "heldout": {
+        "n_train_eps": 36,
+        "n_heldout_eps": 12,
+        "heldout_frac": 0.25
+      },
+      "rigor_note": "coll_traj_pos=1 < 3 \u2192 coll_ok=N/A (AUROC not authoritative); reward/done/recon/latent decide PASS"
     },
     "3": {
       "ok": true,
@@ -141,7 +154,17 @@
       "depth_ckpt": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt",
       "heldout_frac": 0.25,
       "n_tau_mae_frames": 717,
-      "v0_reproj_note": "D\u0302 median reproj must still satisfy V0 \u2462 \u22640.25 on same depth ckpt (cite v0_gate_r60_20260814 / depth_ckpt_da3_r60_20260814)"
+      "v0_reproj_note": "D\u0302 median reproj must still satisfy V0 \u2462 \u22640.25 on same depth ckpt (cite v0_gate_r60_20260814 / depth_ckpt_da3_r60_20260814)",
+      "v0_reproj_evidence": {
+        "source": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/v0_partial_3_r60_20260814.json",
+        "median_rel_err": 0.21151669323444366,
+        "n_valid": 90,
+        "threshold_max": 0.25,
+        "ok": true,
+        "depth_ckpt": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt",
+        "same_r60_ft_head": true
+      },
+      "v0_reproj_ok": true
     }
   },
   "merged_from": [

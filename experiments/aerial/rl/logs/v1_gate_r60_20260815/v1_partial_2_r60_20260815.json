@@ -1,19 +1,32 @@
 {
   "partial": true,
-  "signals_requested": ["2"],
+  "signals_requested": [
+    "2"
+  ],
   "ok": true,
-  "head": "0257b90",
+  "head": "86dd457",
   "ckpt": "wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt",
-  "notes": "goalvel honest 5k; reward_aux(body_vel)+feat_proj; beat_frac=0.93 PASS (>=0.80). Prior goalrel raw concat=0.53.",
+  "notes": "honest held-out goalvel 5k; beat=0.93; coll N/A (pos=1); rigor rescored 2026-08-15",
   "signals": {
     "2": {
-      "ok": true,
       "reward_ok": true,
       "done_ok": true,
       "recon_growth_ok": true,
-      "coll_ok": true,
-      "reward_beat_frac": 0.93,
-      "fidelity_log": "experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_fidelity_goalvel_20260815.out"
+      "reward_beat_frac": 0.9333333333333333,
+      "ok": true,
+      "latent_ok": true,
+      "coll_ok": null,
+      "coll_insufficient": true,
+      "latent_norm_max": 21.3,
+      "coll_traj_pos": 1,
+      "fidelity_log": "experiments/aerial/rl/artifacts/v1_gate_r60_20260815/v1_fidelity_goalvel_20260815.out",
+      "ckpt": "wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt",
+      "heldout": {
+        "n_train_eps": 36,
+        "n_heldout_eps": 12,
+        "heldout_frac": 0.25
+      },
+      "rigor_note": "coll_traj_pos=1 < 3 \u2192 coll_ok=N/A (AUROC not authoritative); reward/done/recon/latent decide PASS"
     }
   }
 }

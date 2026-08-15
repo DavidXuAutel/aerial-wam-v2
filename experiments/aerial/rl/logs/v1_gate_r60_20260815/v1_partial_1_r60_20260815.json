@@ -1,0 +1,105 @@
+{
+  "partial": true,
+  "signals_requested": [
+    "1"
+  ],
+  "ok": true,
+  "signals": {
+    "1": {
+      "ok": true,
+      "v0_coll_rate": 0.75,
+      "v1_coll_rate": 0.5,
+      "target_max": 0.6000000000000001,
+      "delta": 0.2,
+      "authoritative": true,
+      "baseline_kind": "delta_reduction",
+      "tau_kind": "foe_calibrated",
+      "tau_ckpt": "/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt",
+      "v0_measured": {
+        "collision_rate": 0.75,
+        "near_coll_episode_rate": 0.625,
+        "near_coll_rate": 0.010893246187363835,
+        "n_episodes": 8,
+        "drop_stats": {},
+        "shield_kind": "threshold",
+        "shield_trigger_m": 1.5
+      },
+      "v1_measured": {
+        "collision_rate": 0.5,
+        "near_coll_episode_rate": 0.875,
+        "near_coll_rate": 0.02035928143712575,
+        "n_episodes": 8,
+        "drop_stats": {},
+        "shield_kind": "depth_tau",
+        "shield_trigger_m": 1.5
+      },
+      "shield_off_measured": {
+        "collision_rate": 1.0,
+        "near_coll_episode_rate": 0.5714285714285714,
+        "near_coll_rate": 0.06060606060606061,
+        "n_episodes": 7,
+        "drop_stats": {
+          "spawn_collision": 1
+        },
+        "shield_kind": "off",
+        "shield_trigger_m": null
+      },
+      "scan": {
+        "requested": 8,
+        "accepted": 8,
+        "scanned": 32,
+        "candidates": 82,
+        "rejections": {
+          "no_depth": 0,
+          "spawn_collision": 8,
+          "too_close": 0,
+          "open_ahead": 13,
+          "proxy_ok": 11,
+          "probe_no_hit": 3,
+          "obstacle_ok": 8,
+          "reset_error": 0
+        },
+        "accepted_fwd_depth_m": {
+          "min": 5.83203125,
+          "max": 10.125,
+          "mean": 7.53857421875
+        },
+        "probe": {
+          "enabled": true,
+          "near_m": 1.5,
+          "steps": 40,
+          "hits": 8,
+          "n_probed": 11,
+          "collided": 8,
+          "reached_fwd_m": {
+            "min": 1.841796875,
+            "p50": 2.328125,
+            "max": 13.6875
+          },
+          "reached_full_m": {
+            "min": 1.087890625,
+            "p50": 1.33984375,
+            "max": 4.0859375
+          },
+          "travel_m": {
+            "min": 4.567605201868366,
+            "p50": 8.758336590856375,
+            "max": 26.910137627990622
+          },
+          "hit_depth_m": {
+            "min": 1.841796875,
+            "max": 2.890625,
+            "mean": 2.304443359375
+          }
+        },
+        "params": {
+          "goal_dist_m": 30.0,
+          "obstacle_min_m": 5.0,
+          "obstacle_max_m": 25.0,
+          "start_clearance_m": 3.0,
+          "center_frac": 0.3
+        }
+      }
+    }
+  }
+}
