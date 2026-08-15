@@ -17,7 +17,7 @@
 
 | 主机 | HEAD |
 |---|---|
-| Mac / H100 | `477de66`（action-cond reward_head） |
+| Mac / H100 | `96daacd`（action-cond + 文档晚¹¹） |
 
 ---
 
