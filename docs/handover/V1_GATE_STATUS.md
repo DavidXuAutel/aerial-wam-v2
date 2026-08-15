@@ -9,7 +9,7 @@
 ## 1. 一句话结论（2026-08-15）
 
 **✅ V1a 完成（H100 `.25`）**：`_wm_train_validate` PASS + flags 已翻 + corrector smoke **3/3 `wm=updated`**。  
-**V1b 未开始**（τ + 想象规划 + 双通道罩 + `_v1_gate` 三信号）。
+**🟡 V1b-1 进行中**：τ scaffold + `train_rl` 接线 + mock smoke；待光流 FOE + 想象规划 + `_v1_gate`。
 
 ---
 
@@ -27,7 +27,7 @@
 
 - [x] **V1a-1** — H100 `_wm_train_validate` on `dataset_v0_local_depth_r60_20260814` → **`wm_ckpt_v1a_20260815/wm_step_500.pt`** PASS
 - [x] **V1a-2** — flip `dynamics.kind=torch`、`enable_wm_update=true`；corrector smoke **SMOKE_WM_UPDATED=OK**（mock 3 iter）
-- [ ] **V1b-1** — `tau_predictor.py` + collector 接线 — 🟡 **scaffold 已落**（GT depth+vel proxy；单测 3/3）；待光流 FOE + 训练头
+- [ ] **V1b-1** — `tau_predictor.py` + collector/`train_rl` 接线 — 🟡 **scaffold 已落**（GT depth+vel；单测 3/3；`v1b_tau_smoke.py`）；待光流 FOE + 训练头
 - [ ] **V1b-2** — `DepthTauShield` + 想象规划器
 - [ ] **V1b-3** — `_v1_gate` 三 partial merge
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
@@ -54,12 +54,16 @@ python -m experiments.aerial.rl._wm_train_validate \
 
 # corrector smoke（无 Hydra）
 python experiments/aerial/scripts/v1a_corrector_smoke.py
+
+# V1b τ 通道 smoke（mock，须 repo 根目录）
+python experiments/aerial/scripts/v1b_tau_smoke.py
 ```
 
 ---
 
 ## 5. 变更记录
 
+- **2026-08-15(午³)** — **V1b-1 接线**：`train_rl` 构建 `tau_predictor`/`depth_predictor`；yaml `tau_predictor.enable=true`；`v1b_tau_smoke.py`。
 - **2026-08-15(午²)** — **V1b-1 scaffold**：`tau_predictor.py`（GT depth+closing-vel τ）；collector `tau_predictor` 接线 → `obs.info['tau_pred']`；单测 3/3 pass。
 - **2026-08-15(午)** — **V1a 执行完成**：
   1. `_wm_train_validate` 500 steps PASS（learning + non-divergence H=15）

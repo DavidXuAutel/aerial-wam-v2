@@ -27,7 +27,7 @@
 
 **✅ V0 四信号已在同一 r60 ft-head + 一次 merge 下合拢 PASS**（`v0_gate_r60_20260814.json`，H100 `.25`）。
 
-**当前阶段：V1a ✅ / V1b 待做** — WM 已接入 corrector 在线环；τ + 想象规划 + 双通道罩待实现。
+**当前阶段：V1a ✅ / V1b-1 🟡** — WM 在线环已通；τ scaffold（GT depth+vel）已接线；想象规划 + 双通道罩 + `_v1_gate` 待做。
 
 ---
 

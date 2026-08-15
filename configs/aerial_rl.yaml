@@ -113,6 +113,15 @@ safety:
   min_tau_s: 1.0
   max_p_coll: 0.5
 
+# V1b [1d] time-to-contact head. Phase 1: GT depth + closing-velocity proxy
+# (sim / collect with grab_depth). Phase 2: optical-flow FOE (trainable head).
+tau_predictor:
+  enable: true               # V1b-1 scaffold 2026-08-15 — independent of depth_head
+  use_gt_depth: true
+  center_frac: 0.5
+  min_closing_m_s: 0.05
+  max_tau_s: 60.0
+
 corrector:
   iterations: 10
   episodes_per_iter: 1

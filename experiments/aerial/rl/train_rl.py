@@ -158,6 +158,38 @@ def _build_safety(safety_cfg: Any) -> Any:
     raise ValueError(f"unknown safety kind {kind!r}")
 
 
+def _build_depth_predictor(wm_cfg: Any) -> Optional[Any]:
+    dh = _get(wm_cfg, "depth_head", {}) if wm_cfg else {}
+    if not bool(_get(dh, "enable", False)):
+        return None
+    from experiments.aerial.rl.depth_predictor import DepthMinPredictor
+
+    ckpt_path = _get(dh, "checkpoint_path", None)
+    if ckpt_path is None:
+        ckpt_dir = _get(dh, "checkpoint_dir", None)
+        if ckpt_dir:
+            candidates = sorted(Path(str(ckpt_dir)).glob("depth_step_*.pt"))
+            if candidates:
+                ckpt_path = str(candidates[-1])
+    if ckpt_path:
+        device = str(_get(wm_cfg, "device", "cpu"))
+        return DepthMinPredictor.from_checkpoint(ckpt_path, device=device)
+    return DepthMinPredictor(n_frames=int(_get(dh, "n_frames", 4)))
+
+
+def _build_tau_predictor(tau_cfg: Any) -> Optional[Any]:
+    if not bool(_get(tau_cfg, "enable", False)):
+        return None
+    from experiments.aerial.rl.tau_predictor import TauPredictor
+
+    return TauPredictor(
+        center_frac=float(_get(tau_cfg, "center_frac", 0.5)),
+        min_closing_m_s=float(_get(tau_cfg, "min_closing_m_s", 0.05)),
+        max_tau_s=float(_get(tau_cfg, "max_tau_s", 60.0)),
+        use_gt_depth=bool(_get(tau_cfg, "use_gt_depth", True)),
+    )
+
+
 def _load_episodes(cfg: Any) -> Optional[List[Dict[str, Any]]]:
     ann = _get(cfg, "annotation", None)
     if not ann:
@@ -223,6 +255,8 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         safety=_build_safety(_get(cfg, "safety", {})),
         max_steps=int(_get(cc, "max_steps", 200)),
         target_hz=float(_get(_get(cfg, "env", {}), "step_hz", 30.0)),
+        depth_predictor=_build_depth_predictor(_get(cfg, "world_model", {})),
+        tau_predictor=_build_tau_predictor(_get(cfg, "tau_predictor", {})),
     )
     episodes = _load_episodes(cfg)
     return SerialCorrectorLoop(
