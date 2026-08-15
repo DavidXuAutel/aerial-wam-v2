@@ -68,6 +68,8 @@ world_model:
     pred: 1.0
     dyn: 1.0
     rep: 0.1
+    # V1-②: uplift two-hot reward inside βpred (recon MSE otherwise dominates)
+    reward: 10.0
   decoder:
     train_only: true       # RGB reconstruction supervises training; not stepped online
   lr: 1.0e-4

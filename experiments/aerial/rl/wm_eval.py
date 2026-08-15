@@ -22,14 +22,15 @@ harness + verdict logic are unit-testable on the GPU-less dev host. The torch
 checkpoint eval (``_wm_fidelity_eval``) imports these same functions on the
 H100 so the metric math has a single source of truth.
 
-ALIGNMENT: rollout step ``t`` calls ``step(z_t, a_t)`` with the recorded action
-``window[t].action`` and its heads are compared to the recorded consequence at
-``window[t]`` (reward ``r_t``, post-step ``next_obs.collided``, ``done``).
-Contact is a *post-step* event (same as ``v0_rollout_eval`` / ``dataset``):
-reading pre-step ``obs.collided`` alone yields all-False labels on r60 and
-silently zeros ``coll_traj_pos``. There remains a ±1-step ambiguity in exactly
-when a contact is *labeled* vs *predicted*; the p_coll metric is deliberately
-trajectory-level (max over the horizon) so it is robust to that timing.
+ALIGNMENT: rollout step ``t`` calls ``step(z_t, a_t)``; heads are read from the
+*pre-action* feature (matching ``TorchRSSMDynamics.training_loss``) and compared
+to the recorded consequence at ``window[t]`` (reward ``r_t``, post-step
+``next_obs.collided``, ``done``). Contact is a *post-step* event (same as
+``v0_rollout_eval`` / ``dataset``): reading pre-step ``obs.collided`` alone
+yields all-False labels on r60 and silently zeros ``coll_traj_pos``. There
+remains a ±1-step ambiguity in exactly when a contact is *labeled* vs
+*predicted*; the p_coll metric is deliberately trajectory-level (max over the
+horizon) so it is robust to that timing.
 """
 from __future__ import annotations
 

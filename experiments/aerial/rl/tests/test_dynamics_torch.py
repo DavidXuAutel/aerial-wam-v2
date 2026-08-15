@@ -133,13 +133,14 @@ def test_from_config_reads_world_model_block():
     cfg = {
         "recurrent_dim": 16, "stoch_dim": 4, "stoch_classes": 4, "num_bins": 41,
         "bin_lo": -10.0, "bin_hi": 10.0, "free_bits": 1.0,
-        "loss_scales": {"pred": 1.0, "dyn": 1.0, "rep": 0.1},
+        "loss_scales": {"pred": 1.0, "dyn": 1.0, "rep": 0.1, "reward": 10.0},
         "lr": 1e-4, "grad_clip": 1000.0, "image_size": 16,
         "decoder": {"train_only": True}, "device": "cpu",
     }
     m = TorchRSSMDynamics.from_config(cfg)
     assert m.recurrent_dim == 16 and m.stoch_dim == 4 and m.stoch_classes == 4
     assert m.beta_rep == pytest.approx(0.1)
+    assert m.beta_reward == pytest.approx(10.0)
     assert m.latent_dim == 16 + 4 * 4
 
 

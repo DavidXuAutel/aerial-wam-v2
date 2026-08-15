@@ -204,13 +204,15 @@ def _check_learning(model: TorchRSSMDynamics, buf: ReplayBuffer,
                 "post_entropy_frac": float(out.get("post_entropy_frac", 1.0)),
                 "loss_dyn": float(out.get("loss_dyn", float("nan"))),
                 "loss_rep": float(out.get("loss_rep", float("nan"))),
+                "loss_reward": float(out.get("loss_reward", float("nan"))),
                 "grad_norm": float(out.get("grad_norm", float("nan"))),
             }
             with log_path.open("a") as f:
                 f.write(json.dumps(row) + "\n")
         if i % max(1, steps // 10) == 0:
             print(f"[wm-validate] step {i:4d} | loss={out['loss']:.4f} "
-                  f"recon={out['recon_err']:.4f} dyn={out['loss_dyn']:.3f} "
+                  f"recon={out['recon_err']:.4f} rew={out.get('loss_reward', float('nan')):.3f} "
+                  f"dyn={out['loss_dyn']:.3f} "
                   f"rep={out['loss_rep']:.3f} ent={ent_fracs[-1]:.2f} "
                   f"|g|={out['grad_norm']:.1f}")
 

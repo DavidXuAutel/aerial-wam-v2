@@ -796,6 +796,7 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         beta_pred: float = BETA_PRED,
         beta_dyn: float = BETA_DYN,
         beta_rep: float = BETA_REP,
+        beta_reward: float = 1.0,
         unimix: float = 0.01,
         lr: float = 1e-4,
         grad_clip: float = 1000.0,
@@ -825,6 +826,7 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         self.beta_pred = float(beta_pred)
         self.beta_dyn = float(beta_dyn)
         self.beta_rep = float(beta_rep)
+        self.beta_reward = float(beta_reward)
         self.grad_clip = float(grad_clip)
         self.train_steps_per_update = int(train_steps_per_update)
         self.decoder_train_only = bool(decoder_train_only)
@@ -878,6 +880,7 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             beta_pred=float(scales.get("pred", BETA_PRED)) if isinstance(scales, dict) else BETA_PRED,
             beta_dyn=float(scales.get("dyn", BETA_DYN)) if isinstance(scales, dict) else BETA_DYN,
             beta_rep=float(scales.get("rep", BETA_REP)) if isinstance(scales, dict) else BETA_REP,
+            beta_reward=float(scales.get("reward", 1.0)) if isinstance(scales, dict) else 1.0,
             lr=float(g("lr", 1e-4)),
             grad_clip=float(g("grad_clip", 1000.0)),
             train_steps_per_update=int(g("train_steps_per_update", 1)),
@@ -900,9 +903,11 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         ``self.device``): ``rgb`` NHWC uint8 or normalized NCHW, ``proprio`` [B,L,4],
         ``action`` [B,L,4], ``reward`` [B,L], ``done`` [B,L], ``collided`` [B,L].
 
-        Loss = βpred·(recon + reward + continue + collision) + βdyn·fb(KL(sg(post)‖prior))
-        + βrep·fb(KL(post‖sg(prior))), with free-bits and KL-balancing matching
-        :func:`dreamer_recipe.kl_balance`.
+        Loss = βpred·(recon + βreward·reward + continue + collision)
+        + βdyn·fb(KL(sg(post)‖prior)) + βrep·fb(KL(post‖sg(prior))), with
+        free-bits and KL-balancing matching :func:`dreamer_recipe.kl_balance`.
+        ``βreward`` (``loss_scales.reward``, default 1) up-weights the two-hot
+        reward term when pixel recon would otherwise dominate.
         """
         rgb, proprio, action = sample["rgb"], sample["proprio"], sample["action"]
         reward, done, collided = sample["reward"], sample["done"], sample["collided"]
@@ -943,7 +948,11 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         loss_coll = F.binary_cross_entropy_with_logits(
             self.coll_head(feature).squeeze(-1), collided.to(self.torch_dtype))
 
-        loss_pred = loss_recon + loss_reward + loss_cont + loss_coll
+        # ``beta_reward`` up-weights the two-hot reward term inside βpred (recon
+        # MSE on 224² frames otherwise dwarfs reward CE; V1-② fidelity needs it).
+        loss_pred = (
+            loss_recon + self.beta_reward * loss_reward + loss_cont + loss_coll
+        )
 
         # -- dynamics / representation KL (βdyn / βrep) ---------------------
         kl_dyn = _categorical_kl(post_p.detach(), prior_p).sum(-1)   # KL(sg(post)‖prior)
@@ -1036,9 +1045,14 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
     def step(self, z: np.ndarray, action: np.ndarray) -> DynamicsOutput:
         """One imagined RSSM prior transition from packed latent ``[h ‖ z]``.
 
-        V4 note: ``progress`` here is the reward head's symexp readout (the WM's
-        learned per-step reward), and goal-conditioned progress / arrival are
-        finalized at V4 — for V1 the imagination path is unused (gated OFF).
+        Head alignment (V1-②): ``training_loss`` scores reward/cont/coll from the
+        *pre-action* feature ``[h_t ‖ z_t]`` against ``reward_t`` / ``done_t`` /
+        ``collided_t``. Imagination must do the same — read heads on the current
+        feature, *then* advance with ``action``. Predicting from the post-action
+        prior was a +1 offset vs training and sank open-loop reward beat_frac.
+
+        V4 note: ``progress`` is the reward head's symexp readout (per-step
+        reward); goal-conditioned progress / arrival finalize at V4.
         """
         self.eval()
         packed = torch.from_numpy(np.ascontiguousarray(z)).to(
@@ -1048,15 +1062,15 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         a = torch.from_numpy(np.ascontiguousarray(action)).to(
             self.device, self.torch_dtype).reshape(1, self.action_dim)
 
-        h_next = self.rssm.advance_h(h, z_flat, a)
-        z_next = self.rssm._sample(self.rssm.prior_probs(h_next))
-        feature = torch.cat([h_next, z_next], dim=-1)
-
+        feature = torch.cat([h, z_flat], dim=-1)
         reward_probs = F.softmax(self.reward_head(feature), dim=-1)
         progress = float(_symexp(_twohot_decode(reward_probs, self.bins)).item())
         p_coll = float(torch.sigmoid(self.coll_head(feature)).item())
         cont = float(torch.sigmoid(self.continue_head(feature)).item())
         done = bool(cont < 0.5 or p_coll >= 1.0)
+
+        h_next = self.rssm.advance_h(h, z_flat, a)
+        z_next = self.rssm._sample(self.rssm.prior_probs(h_next))
         packed_next = torch.cat([h_next, z_next], dim=-1).squeeze(0).float().cpu().numpy()
         return DynamicsOutput(
             z_next=packed_next, p_coll=p_coll, progress=progress, done=done, arrived=False,
