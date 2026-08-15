@@ -8,13 +8,11 @@ Usage (H100, from repo root with venv + cuda):
     --wm-ckpt experiments/aerial/rl/artifacts/wm_ckpt_v1a_20260815/wm_step_500.pt \\
     --out-dir experiments/aerial/rl/artifacts/v1_gate_r60_20260815
 
-Usage (4090, renderer @ 127.0.0.1:41451):
+Usage (4090 / H100→4090 renderer @ configs/aerial_rl_rollout.yaml):
   python experiments/aerial/scripts/v1_gate_run_partials.py rollout4090 \\
     --repo ~/aerial-wam-v2 \\
-    --config configs/aerial_rl.yaml \\
-    --rollout-dataset experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \\
+    --rollout-dataset experiments/aerial/rl/artifacts/dataset_v0_headon_20260811 \\
     --depth-ckpt experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt \\
-    --v0-coll-rate 0.125 \\
     --out-dir experiments/aerial/rl/artifacts/v1_gate_r60_20260815
 """
 from __future__ import annotations
@@ -333,7 +331,11 @@ def main() -> int:
     p.add_argument("--out-dir", default="experiments/aerial/rl/artifacts/v1_gate_r60_20260815")
     p.add_argument("--dataset", default="~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814")
     p.add_argument("--wm-ckpt", default="experiments/aerial/rl/artifacts/wm_ckpt_v1a_20260815/wm_step_500.pt")
-    p.add_argument("--config", default="configs/aerial_rl.yaml")
+    p.add_argument(
+        "--config",
+        default=None,
+        help="yaml config; default aerial_rl.yaml (h100) / aerial_rl_rollout.yaml (rollout4090)",
+    )
     p.add_argument("--device", default="cuda")
     p.add_argument("--heldout-frac", type=float, default=0.25)
     p.add_argument("--horizon", type=int, default=15)
@@ -353,6 +355,12 @@ def main() -> int:
         help="V0/V1 shield reaction standoff (match V0 ②④; default 3.0)",
     )
     args = p.parse_args()
+    if args.config is None:
+        args.config = (
+            "configs/aerial_rl_rollout.yaml"
+            if args.mode == "rollout4090"
+            else "configs/aerial_rl.yaml"
+        )
     if args.mode == "h100":
         return run_h100(args)
     if args.mode == "rollout4090":
