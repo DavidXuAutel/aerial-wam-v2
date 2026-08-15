@@ -6,152 +6,88 @@
 
 ---
 
-## 1. 一句话结论（2026-08-15 晚¹³）
+## 1. 一句话结论（2026-08-15 晚¹⁴）
 
-**✅ V1a 完成** + **V1b scaffold 已落** + **① PASS** + **② PASS**（goalvel 诚实 5k → `beat_frac=0.93` ≥0.80）。  
-**🟡 V1 partial**：③ 仍为 Phase 1 **proxy** PASS（非 authoritative）→ **merge 仍 blocked 于 ③ Phase 2**。  
-**路径**：goalrel raw concat 仍 0.53（oracle=1.0 证伪缺特征）→ `reward_aux(û, log1p(d), body_vel, analytic)` + feature proj（`39ead6b`）→ **0.93**。  
-**禁止**下调 `REWARD_BEAT_FRAC`。**未开 FOE**。
+**✅ V1a 完成** + **① PASS** + **② PASS**（goalvel `beat_frac=0.93`）。  
+**🟡 V1-③**：Phase 1 proxy PASS 仍在；**Phase 2 代码已落**（FOE τ + auth gate path）— **authoritative ③ 尚未跑通** → **merge 仍 blocked**。  
+**禁止**凭 proxy ③ / 未过 auth ③ 做 `--merge` PASS。
 
 产物目录（H100）：`~/aerial-wam-v2/experiments/aerial/rl/logs/v1_gate_r60_20260815/`
 
 | 主机 | HEAD |
 |---|---|
-| Mac / 4090 bare / H100 | `0257b90`+（gate docs；② 代码自 `39ead6b`） |
+| Mac / H100 | 见本节提交后 SHA（FOE Phase 2 scaffold） |
 
 ---
 
 ## 2. 三信号：还差什么
 
-| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚¹³） | **还差什么** |
+| 信号 | 判据（草案） | 最后已知结果（2026-08-15 晚¹⁴） | **还差什么** |
 |---|---|---|---|
-| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing` | 无（① 已过） |
-| **V1-②** | H=15 想象保真 | ✅ **PASS**（goalvel 5k `reward_beat_frac=0.93`；done/recon/coll OK） | 无（② 已过） |
-| **V1-③** | τ / D̂ 双通道独立 | ✅ **Phase 1 proxy PASS**（非 authoritative） | Phase 2：FOE τ + D̂_pred |
+| **V1-①** | 碰撞率相对 V0 ↓20% | ✅ **PASS** — `baseline_kind=tied_zero_collision_bearing` | 无 |
+| **V1-②** | H=15 想象保真 | ✅ **PASS**（goalvel 5k `reward_beat_frac=0.93`） | 无 |
+| **V1-③** | τ / D̂ 双通道独立 | proxy PASS；**auth 未评** | H100：训 calibrator（可选）→ `--phase3 auth` 评 FOE+D̂_pred |
 
 ---
 
 ## 3. 待办（按依赖）
 
-- [x] **V1a-1..2** / **V1b scaffold** / **V1-①** — 见既往
-- [x] **V1-② 诚实留出重训** — `wm_ckpt_v1_heldout_20260815` → beat≈0
-- [x] **V1-② 诊断** — 对齐 bug + reward 权重；**非** Phase-2 FOE / **非** 多日采数阻塞
-- [x] **V1-② 最小实验** — 对齐 + `reward: 10` → beat **0.60**（5k）
-- [x] **V1-② 15k 对照** — 同设置 15k → beat **仍 0.60**
-- [x] **V1-② action-cond reward** — beat **0.53**（回归；a 近常数）
-- [x] **V1-② goal-rel** — beat **0.53**（仍 FAIL；oracle=1.0）
-- [x] **V1-② body_vel analytic aux** — `39ead6b` / ckpt `goalvel` → beat **0.93** ✅
-- [ ] **V1-③ Phase 2** — FOE τ + D̂_pred（**下一阻塞**；现仍禁止为 ② 开 FOE 的旧禁令已随 ② PASS 解除，但启动需单独拍板）
-- [ ] **V1-merge** — blocked：**仅** ③ Phase 2
+- [x] **V1a / V1b scaffold / ① / ②** — 见既往
+- [x] **V1-③ Phase 2 代码** — FOE Farneback + τ；`phase=auth` gate；`train_tau_foe`；单测
+- [ ] **V1-③ Phase 2 实测** — H100 auth partial（`both_fail≤0.20`、τ MAE≤2.0、`tau_only≥0.005`）
+- [ ] **V1-merge** — blocked：**仅** auth ③
 - [ ] **P0b**（可选）— shield 消费 `predict_cones()`
 
 ---
 
-## 4. V1-② 诊断（累计）
+## 4. V1-③ Phase 2（本轮）
 
-### 4.1 当前产物（H100）
+### 4.1 已落代码
 
-| 文件 | 要点 |
+| 项 | 路径 |
 |---|---|
-| `v1_partial_2_r60_20260815.json` | `ok=true`；**goalvel 5k** `reward_beat_frac=0.93` |
-| `v1_fidelity_goalvel_20260815.out` | ckpt=`wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt`；**PASS** |
-| `v1_fidelity_goalrel_20260815.out` | 对照：raw goal_rel beat=**0.53** |
-| goals | backfill **51/51**；kinematic oracle **beat=1.0** |
+| FOE τ | `tau_predictor.py` — `kind=foe` / `foe_calibrated`；**推理禁 GT depth** |
+| 伪标签训 | `train_tau_foe.py` — r60 GT τ → MLP calibrator |
+| auth ③ | `_v1_gate --phase3 auth --depth-ckpt ... [--tau-ckpt ...]` |
+| 阈值 | `v1_metrics`：auth both_fail≤0.20；τ MAE≤2.0；tau_only≥0.005 |
+| yaml | `tau_predictor.kind` 仍默认 `gt_proxy`（**未 flip**） |
 
-### 4.2 根因（已证实）
-
-1. **`step()` +1 偏移** — 已修；beat 0→0.27。
-2. **reward 梯度被 recon 淹没** — `loss_scales.reward=10` → beat 0.60。
-3. **非 held-out / 非阈值 / 非缺步数** — 见晚⁹–¹⁰。
-4. **早 H 动作近常数且过冲** — a-concat / raw `goal_rel` 信息量不足（均 0.53）。
-5. **goal-rel 未学会** — 特征齐（oracle=1.0）；raw metre-scale 4-D 被 1536-D feature 淹没；早 H 指令动作 ≫ `body_vel×dt`。
-6. **修复（已验证）** — scale-stable `reward_aux` + `reward_feat_proj(64)` → beat **0.93**。
-
-### 4.3 最小实验结果
-
-| 设置 | `reward_beat_frac` | 备注 |
-|---|---|---|
-| 旧诚实 5k（错对齐，β=1） | ≈0.00–0.07 | |
-| 对齐 + βreward=10，5k / 15k | **0.60** | 平台 |
-| + action-cond / + raw goal_rel | **0.53** | 回归 |
-| **+ body_vel analytic aux，5k** | **0.93** ✅ | `wm_ckpt_v1_heldout_goalvel_20260815` |
-
-### 4.4 下一跳
-
-1. **② 已过** — 勿再改 reward 头阈值。
-2. **优先**：V1-③ Phase 2（FOE），单独拍板后启动。
-3. **禁止**下调 `REWARD_BEAT_FRAC` / 泄漏 ckpt。
-
----
-
-## 5. V1 gate partial 跑法
-
-### 5.1 同步
-
-| 主机 | 方式 |
-|---|---|
-| Mac → 4090 bare | bastion `cursor-125-public` + `git bundle`（直连 22 / GitHub 443 常挂） |
-| H100 | 同 bastion → `sshpass` → `a25689@10.239.121.25:31126`；`git fetch` bundle |
-
-### 5.2 命令（② 已过；复现）
+### 4.2 H100 下一步（auth 实测）
 
 ```bash
 cd ~/aerial-wam-v2 && source .venv/bin/activate && export PYTHONPATH=.
-# 已训 ckpt：wm_ckpt_v1_heldout_goalvel_20260815
-python -m experiments.aerial.rl._wm_fidelity_eval \
-  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt \
-  --config configs/aerial_rl.yaml --heldout-frac 0.25 --horizon 15
 
-python experiments/aerial/scripts/v1_gate_run_partials.py h100 \
-  --repo ~/aerial-wam-v2 \
+# 可选：calibrator（伪标签；古典 FOE 也可先盲跑 auth）
+python -m experiments.aerial.rl.train_tau_foe \
   --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --wm-ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt \
-  --out-dir experiments/aerial/rl/logs/v1_gate_r60_20260815
+  --out-dir ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815 \
+  --steps 2000 --device cuda
+# ETA：harvest ~数分钟（Farneback 全语料）+ train 2000 step ≪5 min on H100
+
+# auth ③（古典 FOE 或 +calibrator）
+python -m experiments.aerial.rl._v1_gate --signals 3 \
+  --phase3 auth --device cuda \
+  --dataset ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
+  --depth-ckpt ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt \
+  --tau-kind foe \
+  --emit experiments/aerial/rl/logs/v1_gate_r60_20260815/v1_partial_3_auth_r60_20260815.json
 ```
 
-### 5.3 落盘 partial
-
-| 文件 | 信号 | ok |
-|---|---|---|
-| `v1_partial_3_r60_20260815.json` | ③ 双通道 | **true**（proxy） |
-| `v1_partial_2_r60_20260815.json` | ② fidelity | **true**（goalvel 5k beat=0.93） |
-| `v1_partial_1_r60_20260815.json` | ① 碰撞率 | **true**（tied-zero） |
-| `v1_fidelity_goalvel_20260815.out` | ② 明细 | **PASS** @ 0.93 |
-
-### 5.4 踩坑
-
-1. **H100 wm ckpt 路径** — 权威在 **`aerial-rl-skeleton/artifacts/`**。
-2. **② 禁评** all-ep / 未带 `--heldout-frac` 的训产物。
-3. **reward 头** — `proj(h‖z) ‖ a ‖ reward_aux(goal_rel, body_vel, a)`；旧 ckpt 形状不兼容。
-4. **Off-site SSH** — Mac→H100 经 `cursor-125-public` + `sshpass`（Cloudflare 偶发 timeout）。
+**未 flip merge**：auth JSON `ok=true` 且 `authoritative=true` 后才可与 ①② 合并。
 
 ---
 
-## 6. V1a / ② 资产（H100）
+## 5. V1-② 资产（仍有效）
 
 | 项 | 路径 / 值 |
 |---|---|
-| 语料 | `dataset_v0_local_depth_r60_20260814`（goals 51/51） |
-| rew10 对照 | beat=**0.60** |
-| goalrel 对照 | beat=**0.53** |
-| **当前 ② ckpt（PASS）** | `wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt` — beat=**0.93** |
+| **② ckpt** | `wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt` — beat=**0.93** |
+| partial_2 | `v1_partial_2_r60_20260815.json` `ok=true` |
 
 ---
 
-## 7. goalvel 实验（完成；PASS）
+## 6. 变更记录
 
-| 项 | 值 |
-|---|---|
-| 代码 | `39ead6b`：`reward_aux` + `reward_feat_proj`；train/`step` 对齐 |
-| 5k held-out | beat_frac=**0.93**；learning+non-div PASS；仅 h=4 输 mean-baseline |
-| 对照 | goalrel raw concat = 0.53；oracle = 1.0 |
-| 结论 | body_vel×dt analytic 是升到 ≥0.80 的杠杆 |
-
----
-
-## 8. 变更记录
-
-- **2026-08-15(晚¹³)** — ②：**goalvel 5k → beat=0.93 PASS**；partial_2 刷新；merge 仅剩 ③ Phase 2；未开 FOE / 未改阈值。
-- **2026-08-15(晚¹²)** — ②：goalrel 5k → 0.53；oracle=1.0；代码 body_vel aux。
-- **2026-08-15(晚¹¹…午)** — actrew / rew10 / 对齐诊断；见既往。
+- **2026-08-15(晚¹⁴)** — V1-③ Phase 2：**FOE τ + auth gate + train_tau_foe 落地**；Mac 单测 PASS；**未**跑 auth 实测 / **未** merge。
+- **2026-08-15(晚¹³)** — ②：goalvel 5k → beat=0.93 PASS；merge 仅剩 ③ Phase 2。
+- **2026-08-15(晚¹²…午)** — 见既往。

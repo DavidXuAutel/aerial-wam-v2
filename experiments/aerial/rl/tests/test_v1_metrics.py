@@ -61,3 +61,31 @@ def test_dual_channel_proxy_marks_phase():
     out = v1_metrics.check_dual_channel_independence(d, t, phase="proxy")
     assert out["phase"] == "proxy"
     assert out["authoritative"] is False
+
+
+def test_dual_channel_auth_requires_tau_only_and_mae():
+    # mostly independent channels, low co-trigger
+    d = np.array([True, True, False, False, False, False, False, False] * 20)
+    t = np.array([False, False, True, False, False, False, False, False] * 20)
+    out = v1_metrics.check_dual_channel_independence(
+        d, t, phase="auth", tau_mae_s=1.5, depth_pred_vs_gt_both_fail_frac=0.1
+    )
+    assert out["authoritative"] is True
+    assert out["both_fail_max"] == 0.20
+    assert out["ok"] is True
+
+
+def test_dual_channel_auth_fails_high_mae():
+    d = np.array([True, False, False, False] * 50)
+    t = np.array([False, True, False, False] * 50)
+    out = v1_metrics.check_dual_channel_independence(d, t, phase="auth", tau_mae_s=3.5)
+    assert out["ok"] is False
+    assert "tau_mae" in out.get("fail_reasons", [])
+
+
+def test_aggregate_accepts_auth_signal3():
+    s1 = {"ok": True}
+    s2 = {"ok": True}
+    s3 = {"ok": True, "authoritative": True, "phase": "auth"}
+    out = v1_metrics.aggregate_v1_verdict({"1": s1, "2": s2, "3": s3})
+    assert out["ok"] is True

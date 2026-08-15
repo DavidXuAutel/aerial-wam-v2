@@ -52,10 +52,27 @@ def run_h100(args: argparse.Namespace) -> int:
     # --- Signal 3: dual-channel independence (offline) ---
     from experiments.aerial.rl._v1_gate import _signal3_from_dataset
 
+    depth_ckpt = None
+    if getattr(args, "depth_ckpt", None):
+        depth_ckpt = Path(args.depth_ckpt).expanduser()
+        if not depth_ckpt.is_absolute():
+            depth_ckpt = root / depth_ckpt
+    tau_ckpt = None
+    if getattr(args, "tau_ckpt", None):
+        tau_ckpt = Path(args.tau_ckpt).expanduser()
+        if not tau_ckpt.is_absolute():
+            tau_ckpt = root / tau_ckpt
+
     s3 = _signal3_from_dataset(
         dataset,
         min_depth_m=float(args.min_depth_m),
         min_tau_s=float(args.min_tau_s),
+        phase=str(getattr(args, "phase3", "proxy")),
+        depth_ckpt=depth_ckpt,
+        tau_kind=str(getattr(args, "tau_kind", "foe")),
+        tau_ckpt=tau_ckpt,
+        heldout_frac=float(getattr(args, "heldout_frac", 0.25)),
+        device=str(args.device),
     )
     partial3 = {"partial": True, "signals_requested": ["3"], "ok": bool(s3.get("ok")), "signals": {"3": s3}}
     _emit(out_dir / "v1_partial_3_r60_20260815.json", partial3)
@@ -357,6 +374,14 @@ def main() -> int:
     p.add_argument("--n-starts", type=int, default=1)
     p.add_argument("--min-depth-m", type=float, default=1.5)
     p.add_argument("--min-tau-s", type=float, default=1.0)
+    p.add_argument(
+        "--phase3",
+        default="proxy",
+        choices=("proxy", "auth"),
+        help="V1-③: proxy=GT (Phase 1) or auth=FOE+D̂_pred (Phase 2)",
+    )
+    p.add_argument("--tau-kind", default="foe", help="auth τ: foe | foe_calibrated")
+    p.add_argument("--tau-ckpt", default=None, help="optional FOE calibrator ckpt")
     p.add_argument("--rollout-dataset", default="experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814")
     p.add_argument("--depth-ckpt", default="experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt")
     p.add_argument("--n-episodes", type=int, default=8)

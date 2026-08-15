@@ -137,10 +137,18 @@ def check_dual_channel_independence(
     depth_breach: np.ndarray,
     tau_breach: np.ndarray,
     *,
-    max_both_fail_frac: float = DEFAULT_V1_THRESHOLDS.dual_channel_max_both_fail_frac_proxy,
+    max_both_fail_frac: Optional[float] = None,
     phase: str = "proxy",
+    tau_mae_s: Optional[float] = None,
+    thr: V1GateThresholds = DEFAULT_V1_THRESHOLDS,
+    depth_pred_vs_gt_both_fail_frac: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """V1-③: τ and D̂ triggers must not collapse to the same failure set."""
+    """V1-③: τ and D̂ triggers must not collapse to the same failure set.
+
+    Phase ``proxy`` (GT τ / GT depth): both_fail ≤ 0.35; either-only non-empty.
+    Phase ``auth`` (FOE τ + D̂_pred): both_fail ≤ 0.20; ``tau_only_frac ≥ 0.005``;
+    optional ``tau_mae_s ≤ 2.0``; optional D̂-vs-GT both_fail ≤ 0.35.
+    """
     d = np.asarray(depth_breach, dtype=bool).reshape(-1)
     t = np.asarray(tau_breach, dtype=bool).reshape(-1)
     if d.shape != t.shape:
@@ -149,24 +157,63 @@ def check_dual_channel_independence(
     if n == 0:
         return {"ok": False, "reason": "empty breach arrays"}
 
+    if max_both_fail_frac is None:
+        max_both_fail_frac = (
+            thr.dual_channel_max_both_fail_frac_auth
+            if phase == "auth"
+            else thr.dual_channel_max_both_fail_frac_proxy
+        )
+
     both = d & t
     depth_only = d & ~t
     tau_only = t & ~d
     neither = ~d & ~t
     both_frac = float(np.mean(both))
-    ok = bool(both_frac <= max_both_fail_frac and (depth_only.any() or tau_only.any()))
-    return {
+    depth_only_frac = float(np.mean(depth_only))
+    tau_only_frac = float(np.mean(tau_only))
+
+    reasons: list[str] = []
+    ok = bool(both_frac <= float(max_both_fail_frac))
+    if not ok:
+        reasons.append("both_fail")
+
+    if phase == "auth":
+        if tau_only_frac < thr.tau_only_min_frac:
+            ok = False
+            reasons.append("tau_only")
+        if tau_mae_s is not None:
+            if not (np.isfinite(tau_mae_s) and float(tau_mae_s) <= thr.tau_mae_max_s):
+                ok = False
+                reasons.append("tau_mae")
+        if depth_pred_vs_gt_both_fail_frac is not None:
+            if float(depth_pred_vs_gt_both_fail_frac) > thr.dual_channel_max_both_fail_frac_proxy:
+                ok = False
+                reasons.append("depth_pred_vs_gt")
+    else:
+        if not (depth_only.any() or tau_only.any()):
+            ok = False
+            reasons.append("no_independent_channel")
+
+    out: Dict[str, Any] = {
         "ok": ok,
         "phase": phase,
         "authoritative": phase == "auth",
         "n": n,
         "both_fail_frac": both_frac,
         "both_fail_max": float(max_both_fail_frac),
-        "depth_only_frac": float(np.mean(depth_only)),
-        "tau_only_frac": float(np.mean(tau_only)),
+        "depth_only_frac": depth_only_frac,
+        "tau_only_frac": tau_only_frac,
         "neither_frac": float(np.mean(neither)),
         "both_fail_indices": np.flatnonzero(both).tolist()[:32],
     }
+    if reasons:
+        out["fail_reasons"] = reasons
+    if tau_mae_s is not None:
+        out["tau_mae_s"] = float(tau_mae_s) if np.isfinite(tau_mae_s) else tau_mae_s
+        out["tau_mae_max_s"] = float(thr.tau_mae_max_s)
+    if depth_pred_vs_gt_both_fail_frac is not None:
+        out["depth_pred_vs_gt_both_fail_frac"] = float(depth_pred_vs_gt_both_fail_frac)
+    return out
 
 
 def aggregate_v1_verdict(results: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:

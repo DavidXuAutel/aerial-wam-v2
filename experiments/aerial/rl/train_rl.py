@@ -186,13 +186,19 @@ def _build_depth_predictor(wm_cfg: Any) -> Optional[Any]:
 def _build_tau_predictor(tau_cfg: Any) -> Optional[Any]:
     if not bool(_get(tau_cfg, "enable", False)):
         return None
-    from experiments.aerial.rl.tau_predictor import TauPredictor
+    from experiments.aerial.rl.tau_predictor import make_tau_predictor
 
-    return TauPredictor(
+    kind = str(_get(tau_cfg, "kind", "gt_proxy"))
+    ckpt = _get(tau_cfg, "ckpt", None)
+    return make_tau_predictor(
+        kind=kind,
         center_frac=float(_get(tau_cfg, "center_frac", 0.5)),
         min_closing_m_s=float(_get(tau_cfg, "min_closing_m_s", 0.05)),
         max_tau_s=float(_get(tau_cfg, "max_tau_s", 60.0)),
         use_gt_depth=bool(_get(tau_cfg, "use_gt_depth", True)),
+        dt_s=float(_get(tau_cfg, "dt_s", 0.1)),
+        ckpt=ckpt,
+        device=str(_get(tau_cfg, "device", "cpu")),
     )
 
 

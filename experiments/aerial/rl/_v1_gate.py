@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from experiments.aerial.rl import v1_metrics as metrics
+from experiments.aerial.rl.env.obs import Observation
 
 _ALL_SIGNALS = ("1", "2", "3")
 
@@ -65,10 +66,16 @@ def _emit(obj: Dict[str, Any], path: Optional[str]) -> None:
 
 def _self_check() -> int:
     s1 = metrics.check_collision_reduction(0.10, 0.07, delta=0.20)
-    s2 = metrics.check_wm_fidelity({"ok": True, "reward_ok": True})
+    s2 = metrics.check_wm_fidelity(
+        {"ok": True, "reward_ok": True, "done_ok": True, "recon_growth_ok": True},
+        agg={"coll_traj_pos": 0, "latent_norm_max": 19.0},
+        recon_growth_ok=True,
+    )
+    # Auth-shaped ③ (Phase 2): low co-trigger + tau_only + MAE within bound.
+    d = np.array([True, False, True, False, False, False, False, False] * 20)
+    t = np.array([False, True, False, False, False, False, False, False] * 20)
     s3 = metrics.check_dual_channel_independence(
-        np.array([True, False, True, False]),
-        np.array([False, True, False, False]),
+        d, t, phase="auth", tau_mae_s=1.0, depth_pred_vs_gt_both_fail_frac=0.05
     )
     verdict = assemble_verdict(s1, s2, s3)
     if not verdict["ok"]:
@@ -85,41 +92,149 @@ def _signal3_from_dataset(
     min_depth_m: float,
     min_tau_s: float,
     max_frames: int = 5000,
+    phase: str = "proxy",
+    depth_ckpt: Optional[Path] = None,
+    tau_kind: str = "gt_proxy",
+    tau_ckpt: Optional[Path] = None,
+    heldout_frac: float = 0.25,
+    device: str = "cpu",
+    nav_band_max_tau_s: float = 10.0,
 ) -> Dict[str, Any]:
+    """Offline V1-③.
+
+    * ``phase=proxy`` — GT depth min + GT τ (Phase 1; not merge-eligible).
+    * ``phase=auth`` — ``DepthMinPredictor`` D̂ + FOE τ (no GT depth at τ
+      inference); MAE vs GT τ on navigation-band frames; both_fail ≤ 0.20.
+    """
     from experiments.aerial.rl import dataset as ds
-    from experiments.aerial.rl.tau_predictor import gt_tau_from_depth_velocity
+    from experiments.aerial.rl.depth_geometry import forward_min_depth
+    from experiments.aerial.rl.tau_predictor import (
+        gt_tau_from_depth_velocity,
+        make_tau_predictor,
+    )
 
     root = dataset_root.expanduser().resolve()
     episodes = ds.load_dataset(root)
-    depth_breach: List[bool] = []
-    tau_breach: List[bool] = []
-    for ep in episodes:
+    phase_l = str(phase).lower()
+    if phase_l not in ("proxy", "auth"):
+        return {"ok": False, "reason": f"unknown phase {phase!r}; use proxy|auth"}
+
+    if phase_l == "proxy":
+        depth_breach: List[bool] = []
+        tau_breach: List[bool] = []
+        for ep in episodes:
+            for tr in ep:
+                obs = tr.obs
+                if obs.depth is None:
+                    continue
+                d_hat = obs.info.get("depth_min_pred")
+                if d_hat is None:
+                    d_hat = forward_min_depth(obs.depth, center_frac=0.5)
+                tau = obs.info.get("tau_pred")
+                if tau is None:
+                    tau = gt_tau_from_depth_velocity(obs.depth, obs)
+                if d_hat is None or tau is None:
+                    continue
+                depth_breach.append(float(d_hat) < min_depth_m)
+                tau_breach.append(float(tau) < min_tau_s)
+                if len(depth_breach) >= max_frames:
+                    break
+            if len(depth_breach) >= max_frames:
+                break
+        if not depth_breach:
+            return {"ok": False, "reason": "no depth frames with τ/D̂ fields"}
+        return metrics.check_dual_channel_independence(
+            np.asarray(depth_breach, dtype=bool),
+            np.asarray(tau_breach, dtype=bool),
+            phase="proxy",
+        )
+
+    # --- Phase 2 authoritative ---
+    if depth_ckpt is None:
+        return {"ok": False, "reason": "auth phase needs --depth-ckpt (DepthMinPredictor)"}
+    from experiments.aerial.rl.depth_predictor import DepthMinPredictor
+
+    predictor = DepthMinPredictor.from_checkpoint(depth_ckpt, device=device)
+    tau_pred = make_tau_predictor(
+        kind=tau_kind if tau_kind != "gt_proxy" else "foe",
+        use_gt_depth=False,
+        ckpt=tau_ckpt,
+        device=device,
+    )
+
+    n_ep = len(episodes)
+    hold_start = int(n_ep * (1.0 - float(heldout_frac))) if n_ep else 0
+    held = episodes[hold_start:] if hold_start < n_ep else episodes
+    if not held:
+        held = episodes
+
+    depth_breach = []
+    tau_breach = []
+    gt_depth_breach: List[bool] = []
+    tau_err: List[float] = []
+    for ep in held:
+        predictor.reset()
+        tau_pred.reset()
         for tr in ep:
             obs = tr.obs
             if obs.depth is None:
                 continue
-            d_hat = obs.info.get("depth_min_pred")
-            if d_hat is None:
-                from experiments.aerial.rl.depth_geometry import forward_min_depth
-                d_hat = forward_min_depth(obs.depth, center_frac=0.5)
-            tau = obs.info.get("tau_pred")
-            if tau is None:
-                tau = gt_tau_from_depth_velocity(obs.depth, obs)
-            if d_hat is None or tau is None:
+            d_pred = predictor.predict_min(obs)
+            # FOE path must not read obs.depth — strip for predict_tau.
+            depth_gt = obs.depth
+            obs_rgb = Observation(
+                rgb=obs.rgb,
+                state=obs.state,
+                collided=obs.collided,
+                depth=None,
+                imu=obs.imu,
+                t=obs.t,
+                info=dict(obs.info),
+            )
+            tau = tau_pred.predict_tau(obs_rgb)
+            if d_pred is None or tau is None:
                 continue
-            depth_breach.append(float(d_hat) < min_depth_m)
+            d_gt = forward_min_depth(depth_gt, center_frac=0.5)
+            depth_breach.append(float(d_pred) < min_depth_m)
             tau_breach.append(float(tau) < min_tau_s)
+            gt_depth_breach.append(float(d_gt) < min_depth_m)
+            tau_gt = gt_tau_from_depth_velocity(depth_gt, obs)
+            if (
+                tau_gt is not None
+                and np.isfinite(tau_gt)
+                and float(tau_gt) <= float(nav_band_max_tau_s)
+            ):
+                tau_err.append(abs(float(tau) - float(tau_gt)))
             if len(depth_breach) >= max_frames:
                 break
         if len(depth_breach) >= max_frames:
             break
+
     if not depth_breach:
-        return {"ok": False, "reason": "no depth frames with τ/D̂ fields"}
-    return metrics.check_dual_channel_independence(
-        np.asarray(depth_breach, dtype=bool),
+        return {"ok": False, "reason": "auth: no frames with D̂_pred + FOE τ"}
+
+    # D̂_pred vs GT-depth trigger both-fail (design §1.2.3 Phase 2 D̂ row).
+    d_pred_arr = np.asarray(depth_breach, dtype=bool)
+    d_gt_arr = np.asarray(gt_depth_breach, dtype=bool)
+    depth_vs_gt_both = float(np.mean(d_pred_arr & d_gt_arr)) if d_pred_arr.size else 1.0
+
+    tau_mae = float(np.mean(tau_err)) if tau_err else float("nan")
+    out = metrics.check_dual_channel_independence(
+        d_pred_arr,
         np.asarray(tau_breach, dtype=bool),
-        phase="proxy",
+        phase="auth",
+        tau_mae_s=tau_mae if tau_err else None,
+        depth_pred_vs_gt_both_fail_frac=depth_vs_gt_both,
     )
+    out["tau_kind"] = tau_pred._resolved_kind()
+    out["depth_ckpt"] = str(Path(depth_ckpt).expanduser().resolve())
+    out["heldout_frac"] = float(heldout_frac)
+    out["n_tau_mae_frames"] = int(len(tau_err))
+    out["v0_reproj_note"] = (
+        "D̂ median reproj must still satisfy V0 ③ ≤0.25 on same depth ckpt "
+        "(cite v0_gate_r60_20260814 / depth_ckpt_da3_r60_20260814)"
+    )
+    return out
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -134,6 +249,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--fidelity-json", default=None, help="wm_eval fidelity verdict blob")
     p.add_argument("--min-depth-m", type=float, default=1.5)
     p.add_argument("--min-tau-s", type=float, default=1.0)
+    p.add_argument(
+        "--phase3",
+        default="proxy",
+        choices=("proxy", "auth"),
+        help="V1-③ Phase 1 proxy (GT) vs Phase 2 auth (FOE + D̂_pred)",
+    )
+    p.add_argument("--depth-ckpt", default=None, help="DepthMinPredictor ckpt (auth ③)")
+    p.add_argument(
+        "--tau-kind",
+        default="foe",
+        help="auth τ kind: foe | foe_calibrated (ignored for proxy)",
+    )
+    p.add_argument("--tau-ckpt", default=None, help="optional FOE calibrator ckpt")
+    p.add_argument("--heldout-frac", type=float, default=0.25)
+    p.add_argument("--device", default="cpu")
     args = p.parse_args(argv)
 
     if args.self_check:
@@ -174,10 +304,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not args.dataset:
             signals["3"] = {"ok": False, "reason": "need --dataset for dual-channel eval"}
         else:
+            depth_ckpt = Path(args.depth_ckpt).expanduser() if args.depth_ckpt else None
+            tau_ckpt = Path(args.tau_ckpt).expanduser() if args.tau_ckpt else None
             signals["3"] = _signal3_from_dataset(
                 Path(args.dataset),
                 min_depth_m=float(args.min_depth_m),
                 min_tau_s=float(args.min_tau_s),
+                phase=str(args.phase3),
+                depth_ckpt=depth_ckpt,
+                tau_kind=str(args.tau_kind),
+                tau_ckpt=tau_ckpt,
+                heldout_frac=float(args.heldout_frac),
+                device=str(args.device),
             )
 
     partial_ok = all(signals[k].get("ok") is True for k in wanted)
