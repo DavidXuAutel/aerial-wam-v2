@@ -61,10 +61,12 @@ class LatentDynamics(abc.ABC):
         z: np.ndarray,
         action: np.ndarray,
         goal_rel: Optional[np.ndarray] = None,
+        body_vel: Optional[np.ndarray] = None,
     ) -> DynamicsOutput:
         """Imagine one step forward from ``z`` under ``action``.
 
-        ``goal_rel`` is optional reward-head conditioning (V1-②); stubs may ignore it.
+        ``goal_rel`` / ``body_vel`` are optional reward-head conditioning (V1-②);
+        stubs may ignore them.
         """
 
     def decode(self, z: np.ndarray) -> np.ndarray:  # pragma: no cover - optional
@@ -118,10 +120,11 @@ class StubLatentDynamics(LatentDynamics):
         z: np.ndarray,
         action: np.ndarray,
         goal_rel: Optional[np.ndarray] = None,
+        body_vel: Optional[np.ndarray] = None,
     ) -> DynamicsOutput:
         from experiments.aerial.eval.run_closed_loop import apply_body_delta
 
-        del goal_rel  # analytic stub uses set_goal(); goal_rel is TorchRSSM-only
+        del goal_rel, body_vel  # analytic stub uses set_goal(); aux is TorchRSSM-only
         z = np.asarray(z, dtype=np.float64).reshape(self.latent_dim)
         pos = z[:3].copy()
         yaw = float(z[3]) if self.latent_dim > 3 else 0.0
@@ -185,8 +188,9 @@ class WanImaginationDynamics(LatentDynamics):
         z: np.ndarray,
         action: np.ndarray,
         goal_rel: Optional[np.ndarray] = None,
+        body_vel: Optional[np.ndarray] = None,
     ) -> DynamicsOutput:  # pragma: no cover
-        del goal_rel
+        del goal_rel, body_vel
         if self.offline_only and self._online_context:
             raise RuntimeError(
                 "Wan2.2 pixel model must not be stepped online (spec §4.4/§11); "

@@ -47,7 +47,13 @@ from experiments.aerial.rl.dreamer_recipe import (
 )
 from experiments.aerial.rl.dynamics import DynamicsOutput, LatentDynamics
 from experiments.aerial.rl.env.obs import Observation
-from experiments.aerial.rl.goal_features import GOAL_REL_DIM
+from experiments.aerial.rl.goal_features import (
+    BODY_VEL_DIM,
+    DEFAULT_MANEUVER_W,
+    DEFAULT_REWARD_DT,
+    GOAL_REL_DIM,
+    REWARD_AUX_DIM,
+)
 from experiments.aerial.rl.wm_data import windows_to_arrays
 
 try:  # FastWAM's distributed-safe logger when available; std logging otherwise.
@@ -806,6 +812,9 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         collapse_entropy_frac: float = 0.10,
         device: str = "cuda",
         torch_dtype: torch.dtype = torch.float32,
+        reward_dt: float = DEFAULT_REWARD_DT,
+        reward_feat_proj_dim: int = 64,
+        w_maneuver: float = DEFAULT_MANEUVER_W,
     ) -> None:
         nn.Module.__init__(self)
         if int(image_size) < 16 or int(image_size) % 16 != 0:
@@ -848,11 +857,23 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             spatial //= 2
         self.decoder = _RGBDecoder(feature_dim, self.encoder.flat_dim, spatial,
                                    out_ch=rgb_channels)
-        # Reward ≈ NavigationReward progress (Δdist to goal) is action- and
-        # goal-dependent; concat [a; goal_rel] so open-loop fidelity can beat a
-        # constant baseline when actions alone are near-constant (r60).
+        # Reward ≈ NavigationReward progress (Δdist to goal) needs goal + *realized*
+        # motion. r60 actions are near-constant and overshoot early-horizon
+        # displacement; body velocity × dt recovers it. Aux features are
+        # scale-stable (unit goal dir, log dist, body vel, analytic progress).
+        # Project the 1536-D RSSM feature so the 8-D aux is not drowned out.
         self.goal_rel_dim = int(GOAL_REL_DIM)
-        self.reward_in_dim = feature_dim + self.action_dim + self.goal_rel_dim
+        self.body_vel_dim = int(BODY_VEL_DIM)
+        self.reward_aux_dim = int(REWARD_AUX_DIM)
+        self.reward_dt = float(reward_dt)
+        self.w_maneuver = float(w_maneuver)
+        self.reward_feat_proj_dim = int(reward_feat_proj_dim)
+        self.reward_feat_proj = nn.Sequential(
+            nn.Linear(feature_dim, self.reward_feat_proj_dim), nn.SiLU(),
+        )
+        self.reward_in_dim = (
+            self.reward_feat_proj_dim + self.action_dim + self.reward_aux_dim
+        )
         self.reward_head = nn.Sequential(
             nn.Linear(self.reward_in_dim, hidden_dim), nn.SiLU(),
             nn.Linear(hidden_dim, int(num_bins)),
@@ -876,6 +897,10 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
 
         scales = g("loss_scales", {}) or {}
         dec = g("decoder", {}) or {}
+        # Prefer explicit world_model.reward_dt; else 1/env.step_hz when nested cfg.
+        reward_dt = g("reward_dt", None)
+        if reward_dt is None:
+            reward_dt = DEFAULT_REWARD_DT
         return cls(
             image_size=int(g("image_size", 224)),
             recurrent_dim=int(g("recurrent_dim", 512)),
@@ -894,7 +919,35 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             train_steps_per_update=int(g("train_steps_per_update", 1)),
             decoder_train_only=bool(dec.get("train_only", True)) if isinstance(dec, dict) else True,
             device=str(g("device", "cuda")),
+            reward_dt=float(reward_dt),
         )
+
+    def _reward_aux_torch(
+        self,
+        goal_rel: torch.Tensor,
+        body_vel: torch.Tensor,
+        action: torch.Tensor,
+    ) -> torch.Tensor:
+        """Batched ``reward_aux_features`` — ``[B, L, REWARD_AUX_DIM]`` or ``[B, D]``."""
+        dist = goal_rel[..., 3:4].clamp_min(1e-6)
+        unit = goal_rel[..., :3] / dist
+        logd = torch.log1p(dist)
+        disp = body_vel * float(self.reward_dt)
+        analytic = dist.squeeze(-1) - (goal_rel[..., :3] - disp).norm(dim=-1)
+        analytic = analytic - float(self.w_maneuver) * action.norm(dim=-1)
+        return torch.cat([unit, logd, body_vel, analytic.unsqueeze(-1)], dim=-1)
+
+    def _reward_logits(
+        self,
+        feature: torch.Tensor,
+        action: torch.Tensor,
+        goal_rel: torch.Tensor,
+        body_vel: torch.Tensor,
+    ) -> torch.Tensor:
+        """Shared train/step reward head: proj(feature) ‖ a ‖ reward_aux."""
+        feat_p = self.reward_feat_proj(feature)
+        aux = self._reward_aux_torch(goal_rel, body_vel, action)
+        return self.reward_head(torch.cat([feat_p, action, aux], dim=-1))
 
     # -- embedding -----------------------------------------------------------
     def _embed(self, rgb: torch.Tensor, proprio: torch.Tensor) -> torch.Tensor:
@@ -909,9 +962,9 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
 
         ``sample`` keys mirror :func:`wm_data.windows_to_arrays` (torch tensors on
         ``self.device``): ``rgb`` NHWC uint8 or normalized NCHW, ``proprio`` [B,L,4],
-        ``action`` [B,L,4], ``goal_rel`` [B,L,4], ``reward`` [B,L], ``done`` [B,L],
-        ``collided`` [B,L]. Missing ``goal_rel`` is treated as zeros (legacy ckpt
-        / fixtures).
+        ``action`` [B,L,4], ``goal_rel`` [B,L,4], ``body_vel`` [B,L,3], ``reward`` [B,L],
+        ``done`` [B,L], ``collided`` [B,L]. Missing ``goal_rel`` / ``body_vel`` are
+        zeros (legacy ckpt / fixtures).
 
         Loss = βpred·(recon + βreward·reward + continue + collision)
         + βdyn·fb(KL(sg(post)‖prior)) + βrep·fb(KL(post‖sg(prior))), with
@@ -929,6 +982,13 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             )
         else:
             goal_rel = goal_rel.to(self.torch_dtype)
+        body_vel = sample.get("body_vel")
+        if body_vel is None:
+            body_vel = torch.zeros(
+                B, L, self.body_vel_dim, device=self.device, dtype=self.torch_dtype,
+            )
+        else:
+            body_vel = body_vel.to(self.torch_dtype)
 
         h = self.rssm.initial_h(B, self.device, self.torch_dtype)
         z = torch.zeros(B, self.z_flat, device=self.device, dtype=self.torch_dtype)
@@ -955,10 +1015,9 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         recon_target = rgb_target.reshape(B * L, *recon.shape[1:])
         loss_recon = F.mse_loss(recon, recon_target)
 
-        # Goal-rel + action-conditioned reward: same concat timing as :meth:`step`.
+        # Goal+velocity-conditioned reward: same concat timing as :meth:`step`.
         act = action.to(self.torch_dtype)
-        reward_in = torch.cat([feature, act, goal_rel], dim=-1)  # [B,L,feat+a+g]
-        reward_logits = self.reward_head(reward_in)         # [B, L, num_bins]
+        reward_logits = self._reward_logits(feature, act, goal_rel, body_vel)
         reward_target = _twohot_targets(_symlog(reward.to(self.torch_dtype)), self.bins)
         loss_reward = -(reward_target * F.log_softmax(reward_logits, dim=-1)).sum(-1).mean()
 
@@ -1037,7 +1096,7 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         out: Dict[str, torch.Tensor] = {}
         for k, v in arrays.items():
             t = torch.from_numpy(np.ascontiguousarray(v))
-            if k in ("proprio", "action", "reward", "depth", "goal_rel"):
+            if k in ("proprio", "action", "reward", "depth", "goal_rel", "body_vel"):
                 t = t.to(self.torch_dtype)
             out[k] = t.to(self.device)
         return out
@@ -1067,20 +1126,19 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         z: np.ndarray,
         action: np.ndarray,
         goal_rel: Optional[np.ndarray] = None,
+        body_vel: Optional[np.ndarray] = None,
     ) -> DynamicsOutput:
         """One imagined RSSM prior transition from packed latent ``[h ‖ z]``.
 
         Head alignment (V1-②): ``training_loss`` scores cont/coll from the
         *pre-action* feature ``[h_t ‖ z_t]`` and reward from
-        ``[h_t ‖ z_t ‖ a_t ‖ goal_rel_t]`` against ``reward_t`` / ``done_t`` /
-        ``collided_t``. Imagination / open-loop fidelity must match — read heads
-        on the current feature (reward also sees ``a`` + ``goal_rel``), *then*
-        advance. Predicting from the post-action prior was a +1 offset vs
-        training and sank open-loop reward beat_frac.
+        ``proj([h_t ‖ z_t]) ‖ a_t ‖ reward_aux(goal_rel, body_vel, a)`` against
+        ``reward_t`` / ``done_t`` / ``collided_t``. Imagination / open-loop
+        fidelity must match — read heads on the current feature, *then* advance.
 
-        ``goal_rel`` is teacher-forced from the recorded pose+goal during
-        fidelity eval (same protocol as recorded actions). When omitted, zeros
-        are used (Stub / imagination paths without a goal).
+        ``goal_rel`` and ``body_vel`` are teacher-forced from the recorded pose
+        during fidelity eval (same protocol as recorded actions). When omitted,
+        zeros are used (Stub / imagination paths without a goal/velocity).
 
         V4 note: ``progress`` is the reward head's symexp readout (per-step
         reward); goal-conditioned progress / arrival finalize at V4.
@@ -1097,10 +1155,14 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         else:
             g = torch.from_numpy(np.ascontiguousarray(goal_rel)).to(
                 self.device, self.torch_dtype).reshape(1, self.goal_rel_dim)
+        if body_vel is None:
+            v = torch.zeros(1, self.body_vel_dim, device=self.device, dtype=self.torch_dtype)
+        else:
+            v = torch.from_numpy(np.ascontiguousarray(body_vel)).to(
+                self.device, self.torch_dtype).reshape(1, self.body_vel_dim)
 
         feature = torch.cat([h, z_flat], dim=-1)
-        reward_in = torch.cat([feature, a, g], dim=-1)
-        reward_probs = F.softmax(self.reward_head(reward_in), dim=-1)
+        reward_probs = F.softmax(self._reward_logits(feature, a, g, v), dim=-1)
         progress = float(_symexp(_twohot_decode(reward_probs, self.bins)).item())
         p_coll = float(torch.sigmoid(self.coll_head(feature)).item())
         cont = float(torch.sigmoid(self.continue_head(feature)).item())

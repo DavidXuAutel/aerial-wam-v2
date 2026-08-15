@@ -20,6 +20,12 @@ import numpy as np
 from experiments.aerial.rl.buffer import Transition
 
 GOAL_REL_DIM = 4  # body-frame fwd, left, up, remaining_dist_m
+BODY_VEL_DIM = 3  # body-frame linear velocity (fwd, left, up)
+# Reward-head aux (not encoder input): unit goal dir + log1p(dist) + body vel +
+# analytic Δdist from vel·dt (action alone ≠ realized displacement on r60 starts).
+REWARD_AUX_DIM = 8
+DEFAULT_REWARD_DT = 0.2  # 1/step_hz for r60 (step_hz=5)
+DEFAULT_MANEUVER_W = 0.01
 
 
 def goal_rel_body(
@@ -49,6 +55,68 @@ def goal_rel_from_obs(obs: Any) -> np.ndarray:
     if goal is None:
         return np.zeros(GOAL_REL_DIM, dtype=np.float32)
     return goal_rel_body(obs.position, float(obs.yaw), goal)
+
+
+def body_vel_from_obs(obs: Any) -> np.ndarray:
+    """World-frame ``obs.velocity`` → body-frame ``[fwd, left, up]`` (m/s)."""
+    v = np.asarray(getattr(obs, "velocity", np.zeros(3)), dtype=np.float64).reshape(3)
+    yaw = float(getattr(obs, "yaw", 0.0))
+    c = float(np.cos(yaw))
+    s = float(np.sin(yaw))
+    fwd = c * v[0] + s * v[1]
+    left = -s * v[0] + c * v[1]
+    up = float(v[2])
+    return np.array([fwd, left, up], dtype=np.float32)
+
+
+def analytic_progress(
+    goal_rel: np.ndarray,
+    body_disp: np.ndarray,
+    action: Optional[np.ndarray] = None,
+    *,
+    w_maneuver: float = DEFAULT_MANEUVER_W,
+) -> float:
+    """``||g|| − ||g − body_disp|| − w‖a‖`` — NavigationReward progress proxy."""
+    g = np.asarray(goal_rel, dtype=np.float64).reshape(GOAL_REL_DIM)
+    disp = np.asarray(body_disp, dtype=np.float64).reshape(3)
+    dist = float(g[3])
+    prog = dist - float(np.linalg.norm(g[:3] - disp))
+    if action is None:
+        return float(prog)
+    man = float(np.linalg.norm(np.asarray(action, dtype=np.float64).reshape(-1)))
+    return float(prog - float(w_maneuver) * man)
+
+
+def reward_aux_features(
+    goal_rel: np.ndarray,
+    body_vel: np.ndarray,
+    action: np.ndarray,
+    *,
+    dt: float = DEFAULT_REWARD_DT,
+    w_maneuver: float = DEFAULT_MANEUVER_W,
+) -> np.ndarray:
+    """Scale-stable reward-head conditioning ``[û, log1p(d), v_body, analytic]``.
+
+    r60 open-loop reward fails when the head sees raw metre-scale ``goal_rel`` and
+    near-constant actions: early-horizon commanded ``a`` ≫ realized displacement
+    (accel from rest). Body velocity × ``dt`` recovers that displacement; the
+    analytic channel alone beats the constant-mean baseline on honest held-out
+    windows (oracle beat_frac=1.0).
+    """
+    g = np.asarray(goal_rel, dtype=np.float64).reshape(GOAL_REL_DIM)
+    v = np.asarray(body_vel, dtype=np.float64).reshape(BODY_VEL_DIM)
+    a = np.asarray(action, dtype=np.float64).reshape(4)
+    dist = max(float(g[3]), 1e-6)
+    unit = (g[:3] / dist).astype(np.float32)
+    logd = np.float32(np.log1p(dist))
+    analytic = np.float32(
+        analytic_progress(g, v * float(dt), a, w_maneuver=float(w_maneuver))
+    )
+    return np.concatenate(
+        [unit, np.array([logd], dtype=np.float32), v.astype(np.float32),
+         np.array([analytic], dtype=np.float32)],
+        axis=0,
+    ).astype(np.float32, copy=False)
 
 
 def _goal_from_info(transitions: Sequence[Transition]) -> Optional[np.ndarray]:

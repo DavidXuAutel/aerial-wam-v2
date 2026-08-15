@@ -45,7 +45,7 @@ from experiments.aerial.rl import dataset as ds
 from experiments.aerial.rl import wm_eval
 from experiments.aerial.rl._wm_train_validate import _refuse_v0, _load_world_model_cfg
 from experiments.aerial.rl.dynamics_torch import TorchRSSMDynamics
-from experiments.aerial.rl.goal_features import goal_rel_from_obs
+from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
 
 
 def _heldout_split(episodes: List[Any], frac: float) -> List[Any]:
@@ -117,6 +117,7 @@ def _recon_curve(model: TorchRSSMDynamics, windows: Sequence[Sequence[Any]],
                 z,
                 np.asarray(w[d - 1].action, dtype=np.float64).reshape(4),
                 goal_rel=goal_rel_from_obs(w[d - 1].obs),
+                body_vel=body_vel_from_obs(w[d - 1].obs),
             )
             z = np.asarray(out.z_next, dtype=np.float64)
             if d < len(w):

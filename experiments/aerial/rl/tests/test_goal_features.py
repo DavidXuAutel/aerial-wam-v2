@@ -7,10 +7,14 @@ from experiments.aerial.rl.buffer import Transition
 from experiments.aerial.rl.env.obs import Observation
 from experiments.aerial.rl.goal_features import (
     GOAL_REL_DIM,
+    REWARD_AUX_DIM,
+    analytic_progress,
     attach_goal,
+    body_vel_from_obs,
     fit_goal_from_progress,
     goal_rel_body,
     resolve_episode_goal,
+    reward_aux_features,
 )
 
 
@@ -55,3 +59,22 @@ def test_attach_goal_stamps_obs_info():
     tr = Transition(obs=obs, action=np.zeros(4, np.float32), reward=0.0, done=True)
     attach_goal([tr], np.array([5.0, 6.0, 7.0]))
     np.testing.assert_allclose(tr.obs.info["goal"], [5.0, 6.0, 7.0])
+
+
+def test_body_vel_and_reward_aux_analytic():
+    obs = Observation(
+        rgb=np.zeros((4, 4, 3), np.uint8),
+        # state: x,y,z, vx,vy,vz, yaw — world vel +x at yaw=0 → body fwd
+        state=np.array([0, 0, 0, 5.0, 0, 0, 0.0], np.float32),
+    )
+    obs.info["goal"] = np.array([10.0, 0.0, 0.0], np.float32)
+    vb = body_vel_from_obs(obs)
+    np.testing.assert_allclose(vb, [5.0, 0.0, 0.0], atol=1e-5)
+    g = goal_rel_body(obs.position, obs.yaw, obs.info["goal"])
+    a = np.array([1.0, 0.0, 0.0, 0.0], np.float32)
+    aux = reward_aux_features(g, vb, a, dt=0.2, w_maneuver=0.01)
+    assert aux.shape == (REWARD_AUX_DIM,)
+    # vel*dt = 1.0 forward → same as moving 1m toward goal at dist=10
+    expect = analytic_progress(g, vb * 0.2, a, w_maneuver=0.01)
+    np.testing.assert_allclose(aux[-1], expect, atol=1e-5)
+    np.testing.assert_allclose(expect, 1.0 - 0.01, atol=1e-4)

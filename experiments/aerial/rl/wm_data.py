@@ -18,12 +18,13 @@ observation ``t``, the action taken from it, and the resulting reward/done):
     done      [B, L]          bool
     collided  [B, L]          bool    post-step contact GT (next_obs, else obs)
     goal_rel  [B, L, 4]       float32 body-frame (fwd, left, up, remaining_dist)
+    body_vel  [B, L, 3]       float32 body-frame linear velocity (fwd, left, up)
     depth     [B, L, H, W]    float32 ONLY if every frame carries it (else absent)
 
 ``depth`` follows ``dataset.episode_arrays``: present only when *every* frame in
 *every* window has it, so a partial-depth batch never yields a ragged channel.
-``goal_rel`` is reward-head conditioning (V1-②); zeros when the episode has no
-resolvable goal. Encoder / policy inputs remain RGB + proprio4 only (§1.2).
+``goal_rel`` / ``body_vel`` are reward-head conditioning only (V1-②); zeros when
+missing. Encoder / policy inputs remain RGB + proprio4 only (§1.2).
 """
 from __future__ import annotations
 
@@ -32,7 +33,12 @@ from typing import Dict, List
 import numpy as np
 
 from experiments.aerial.rl.buffer import Episode, Transition
-from experiments.aerial.rl.goal_features import GOAL_REL_DIM, goal_rel_from_obs
+from experiments.aerial.rl.goal_features import (
+    BODY_VEL_DIM,
+    GOAL_REL_DIM,
+    body_vel_from_obs,
+    goal_rel_from_obs,
+)
 
 
 def _validate(windows: List[Episode]) -> int:
@@ -105,6 +111,20 @@ def windows_to_arrays(windows: List[Episode]) -> Dict[str, np.ndarray]:
         raise ValueError(
             f"goal_rel last dim must be {GOAL_REL_DIM}, got {goal_rel.shape}"
         )
+    body_vel = np.stack(
+        [
+            np.stack(
+                [body_vel_from_obs(_obs(w, t)) for t in range(length)],
+                axis=0,
+            )
+            for w in windows
+        ],
+        axis=0,
+    ).astype(np.float32, copy=False)
+    if body_vel.shape[-1] != BODY_VEL_DIM:
+        raise ValueError(
+            f"body_vel last dim must be {BODY_VEL_DIM}, got {body_vel.shape}"
+        )
 
     out: Dict[str, np.ndarray] = {
         "rgb": rgb,
@@ -114,6 +134,7 @@ def windows_to_arrays(windows: List[Episode]) -> Dict[str, np.ndarray]:
         "done": done,
         "collided": collided,
         "goal_rel": goal_rel,
+        "body_vel": body_vel,
     }
 
     # Depth only when EVERY frame has it (mirror dataset.episode_arrays): a

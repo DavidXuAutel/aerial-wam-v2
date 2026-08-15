@@ -38,7 +38,8 @@ def test_shapes_dtypes_and_keys():
     assert arr["done"].shape == (2, 5) and arr["done"].dtype == np.bool_
     assert arr["collided"].shape == (2, 5) and arr["collided"].dtype == np.bool_
     assert arr["goal_rel"].shape == (2, 5, 4) and arr["goal_rel"].dtype == np.float32
-    # fixtures without goal → zeros
+    assert arr["body_vel"].shape == (2, 5, 3) and arr["body_vel"].dtype == np.float32
+    # fixtures without goal → zeros; velocity from state is present
     assert np.allclose(arr["goal_rel"], 0.0)
     assert "depth" not in arr
 

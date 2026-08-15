@@ -129,18 +129,19 @@ def test_encode_step_latent_packing():
     assert isinstance(out.done, bool)
 
 
-def test_reward_head_is_action_and_goal_conditioned():
-    """V1-②: reward_head input is [feature; action; goal_rel]; train/step share shape."""
+def test_reward_head_is_action_goal_and_vel_conditioned():
+    """V1-②: reward_head input is [proj(feature); a; reward_aux]; train/step share shape."""
     m = _tiny_model()
-    assert m.reward_in_dim == m.latent_dim + m.action_dim + m.goal_rel_dim
+    assert m.reward_in_dim == m.reward_feat_proj_dim + m.action_dim + m.reward_aux_dim
     first = next(m.reward_head.parameters())
     assert first.shape[1] == m.reward_in_dim
     z = m.encode(_obs())
     a = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     g0 = np.zeros(4, dtype=np.float32)
     g1 = np.array([10.0, 0.0, 0.0, 10.0], dtype=np.float32)
-    p0 = m.step(z, a, goal_rel=g0).progress
-    p1 = m.step(z, a, goal_rel=g1).progress
+    v = np.array([5.0, 0.0, 0.0], dtype=np.float32)
+    p0 = m.step(z, a, goal_rel=g0, body_vel=v).progress
+    p1 = m.step(z, a, goal_rel=g1, body_vel=v).progress
     assert np.isfinite(p0) and np.isfinite(p1)
     assert p0 != p1
 

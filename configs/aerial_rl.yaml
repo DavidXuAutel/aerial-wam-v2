@@ -70,6 +70,9 @@ world_model:
     rep: 0.1
     # V1-②: uplift two-hot reward inside βpred (recon MSE otherwise dominates)
     reward: 10.0
+  # Reward-head aux uses body_vel * reward_dt as realized displacement (r60
+  # actions overshoot early-horizon motion). Match env.step_hz (5 → 0.2).
+  reward_dt: 0.2
   decoder:
     train_only: true       # RGB reconstruction supervises training; not stepped online
   lr: 1.0e-4

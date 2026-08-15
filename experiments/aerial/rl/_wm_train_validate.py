@@ -36,7 +36,7 @@ import yaml
 from experiments.aerial.rl import dataset as ds
 from experiments.aerial.rl.buffer import ReplayBuffer
 from experiments.aerial.rl.dynamics_torch import TorchRSSMDynamics
-from experiments.aerial.rl.goal_features import goal_rel_from_obs
+from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
 
 
 def _load_world_model_cfg(config_path: Path) -> Dict[str, Any]:
@@ -242,7 +242,12 @@ def _check_non_divergence(model: TorchRSSMDynamics, buf: ReplayBuffer,
         z = model.encode(w[0].obs)
         norms = [float(np.linalg.norm(z))]
         for t in range(min(horizon, len(w))):
-            out = model.step(z, w[t].action, goal_rel=goal_rel_from_obs(w[t].obs))
+            out = model.step(
+                z,
+                w[t].action,
+                goal_rel=goal_rel_from_obs(w[t].obs),
+                body_vel=body_vel_from_obs(w[t].obs),
+            )
             z = out.z_next
             if not np.all(np.isfinite(z)):
                 print("[wm-validate] FAIL(B): non-finite latent in rollout", file=sys.stderr)
