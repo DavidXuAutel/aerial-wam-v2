@@ -1,13 +1,30 @@
 # V4 M5 STATUS (125 offline)
 
+- **handoff_checked**: 2026-08-16T16:24:16+08:00
+
 - **started**: 2026-08-16T12:35:19+08:00
 - **finished**: 2026-08-16T13:05:19+08:00
-- **agent**: composer-2.5-fast
+- **agent**: composer-2.5-fast (completed; stale hung PIDs 1035845/1043095/1551733 cleaned 2026-08-16T16:24:16+08:00)
 - **prompt**: docs/handover/V4_M5_125_PROMPT.md
-- **HEAD_at_start**: 0816aca
+- **HEAD**: 4ebdfb8
 - **renderer**: 127.0.0.1:41451 ✅ (AirSim RPC up)
 - **python**: `source experiments/aerial/scripts/env_4090.sh` → `/home/yao/sim_verify/.venv/bin/python` (airsim + torch 2.13+cu130 + einops/addict/timm for DA3 depth head)
 - **log**: `artifacts/v4_m5_125_rollout.log`
+
+## Mac sleep
+
+**Yes — Mac may sleep.** M5 gate eval already finished and committed; no live agent required.
+
+## How to check on return
+
+```bash
+ssh cursor-125-public
+cd ~/aerial-wam-v2
+cat docs/handover/V4_M5_125_STATUS.md
+tail -50 artifacts/v4_m5_125_rollout.log
+git log -3 --oneline
+pgrep -af "agent --print" || echo no_agent
+```
 
 ## enable_policy_update
 
