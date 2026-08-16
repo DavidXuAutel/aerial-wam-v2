@@ -1,13 +1,13 @@
 # V4 M5 STATUS (125 offline)
 
-- **started**: 2026-08-16T10:48:49+08:00
-- **finished**: 2026-08-16T11:56:00+08:00
+- **started**: 2026-08-16T12:35:19+08:00
+- **finished**: 2026-08-16T13:05:19+08:00
 - **agent**: composer-2.5-fast
 - **prompt**: docs/handover/V4_M5_125_PROMPT.md
-- **HEAD_at_start**: 01ebfa6
+- **HEAD_at_start**: 0816aca
 - **renderer**: 127.0.0.1:41451 ✅ (AirSim RPC up)
 - **python**: `source experiments/aerial/scripts/env_4090.sh` → `/home/yao/sim_verify/.venv/bin/python` (airsim + torch 2.13+cu130 + einops/addict/timm for DA3 depth head)
-- **log**: `artifacts/v4_m5_rollout.log`
+- **log**: `artifacts/v4_m5_125_rollout.log`
 
 ## enable_policy_update
 
@@ -29,7 +29,7 @@ $PYTHON_BIN experiments/aerial/scripts/v4_gate_run_partials.py rollout4090 \
   --env-host 127.0.0.1 \
   --device cuda \
   --out-dir experiments/aerial/rl/artifacts/v4_gate_r60_20260816 \
-  2>&1 | tee artifacts/v4_m5_rollout.log
+  2>&1 | tee artifacts/v4_m5_125_rollout.log
 
 # merge
 $PYTHON_BIN experiments/aerial/scripts/v4_gate_run_partials.py merge \
@@ -48,8 +48,8 @@ $PYTHON_BIN experiments/aerial/scripts/v4_gate_run_partials.py merge \
 
 | Signal | Criterion | Result | Numbers |
 |---|---|---|---|
-| **V4-①** | actor progress ≥ heuristic × 1.10 | ❌ **FAIL** | actor_mean **−10.94** vs heur **8.07** (target **8.88**); n=6 scored / 8 scan accepted |
-| **V4-④** | v4 hard coll ≤ v1 baseline; near ratio ≤ 0.80 | ✅ **PASS** | v4_hard **0.00** vs v1_hard **0.50** (remeasured same starts); near_ratio **0.00** |
+| **V4-①** | actor progress ≥ heuristic × 1.10 | ❌ **FAIL** | actor_mean **−13.54** vs heur **9.71** (target **10.68**); n=6 scored / 8 scan accepted |
+| **V4-④** | v4 hard coll ≤ v1 baseline; near ratio ≤ 0.80 | ✅ **PASS** | v4_hard **0.00** vs v1_hard **0.00** (remeasured same starts; auth baseline **0.50**); near_ratio **0.00** |
 
 **Merge**: ❌ **FAIL** (`ok=false`; passed `{1: false, 4: true}`)
 
@@ -63,11 +63,11 @@ Artifacts (gitignored, on disk):
 
 | Arm | hard coll | near on | near off | near ratio | n |
 |---|---|---|---|---|---|
-| v4 actor shield-on | 0.00 | 0.000 | 0.028 | 0.00 | 8 |
-| v4 actor shield-off | 0.125 | 0.006 | 0.025 | 0.22 | 8 |
-| v1 heuristic shield-on (remeasured) | 0.50 | 0.017 | 0.105 | 0.17 | 6 |
+| v4 actor shield-on | 0.00 | 0.000 | 0.018 | 0.00 | 8 |
+| v4 actor shield-off | 0.125 | 0.021 | 0.051 | 0.41 | 8 |
+| v1 heuristic shield-on (remeasured) | 0.00 | 0.194 | 0.101 | 1.91 | 5 |
 
-V1-① authoritative baseline **0.50** documented for reference; comparison used **remeasured** heuristic on same starts (0.50).
+V1-① authoritative baseline **0.50** documented for reference; comparison used **remeasured** heuristic on same starts (0.00 this run; 3 spawn drops).
 
 ## Code delivered
 

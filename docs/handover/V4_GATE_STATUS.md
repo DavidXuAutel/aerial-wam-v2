@@ -10,7 +10,7 @@
 
 **V4-MVP M5 4090 eval 完成：merge FAIL（① progress 未达标，④ 安全 PASS）**。  
 `enable_policy_update` **仍 false**（生产 yaml 未翻；M6 禁止）。  
-① actor_mean=**−10.94** vs heur=**8.07** (n=6); ④ v4_hard=**0.00** ≤ v1=**0.50** ✅。  
+① actor_mean=**−13.54** vs heur=**9.71** (n=6); ④ v4_hard=**0.00** ≤ v1=**0.00** ✅。  
 细节见 `docs/handover/V4_M5_125_STATUS.md`。
 
 ---
@@ -24,7 +24,7 @@
 | M2 | corrector 接线 + smoke | ✅ `v4_ac_smoke.py` |
 | M3 | H100 短训 ckpt | ✅ PASS — `v4_ac_ckpt_20260816/v4_ac_latest.pt` |
 | M4 | `_v4_gate` self-check | ✅ |
-| M5 | 4090 ①④ eval | ❌ merge **FAIL** — ① actor_mean=−10.94 vs heur=8.07; ④ v4_hard=0.0≤v1=0.5 ✅ |
+| M5 | 4090 ①④ eval | ❌ merge **FAIL** — ① actor_mean=−13.54 vs heur=9.71; ④ v4_hard=0.0≤v1=0.0 ✅ |
 | M6 | flip yaml | **禁止**（merge 未 PASS） |
 
 ---
