@@ -78,3 +78,10 @@ V1-① authoritative baseline **0.50** documented for reference; comparison used
 
 - M6 flip `enable_policy_update` **blocked** (merge FAIL on ①).
 - Actor negative progress on obstacle-facing starts — needs longer H100 imagination training and/or torch-WM encode deploy path (current rollout uses stub `encode(proprio4)` matching H100 mock short-train).
+
+## Cleanup (2026-08-16 ~16:20+08)
+
+- M5 merge already **DONE** (finished 13:05; gate `ok=false`).
+- Killed leftover detached agents: **1035845 / 1043095 / 1551733** (do not restart).
+- **sleep-safe: yes** — no M5 agent should be running; renderer :41451 unrelated.
+- Gate artifact: `experiments/aerial/rl/artifacts/v4_gate_r60_20260816/v4_gate_r60_20260816.json`
