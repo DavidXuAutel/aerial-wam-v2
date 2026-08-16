@@ -286,3 +286,63 @@ class LatentActorCritic:
             "mean_return": float(rews.sum(axis=1).mean()),
             "mean_entropy": float(ent.mean().item()),
         }
+
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        path: Any,
+        *,
+        device: Optional[str] = None,
+    ) -> "LatentActorCritic":
+        """Restore actor/critic weights saved by ``train_v4_ac``."""
+        _require_torch()
+        payload = torch.load(str(path), map_location="cpu", weights_only=False)
+        raw_cfg = payload.get("config") or {}
+        fields = set(ActorCriticConfig.__dataclass_fields__)
+        ac_cfg = ActorCriticConfig(
+            **{k: raw_cfg[k] for k in fields if k in raw_cfg}
+        )
+        if device is not None:
+            ac_cfg.device = str(device)
+        ac = cls(config=ac_cfg)
+        ac._actor.load_state_dict(payload["actor"])
+        ac._critic.load_state_dict(payload["critic"])
+        ac._log_std.data = payload["log_std"].to(ac._device)
+        return ac
+
+
+class LatentActorDeployPolicy:
+    """Real-env policy: ``encode(obs)`` → ``act_latent(z)`` (V4 M5 rollout)."""
+
+    def __init__(
+        self,
+        dynamics: Any,
+        actor_critic: LatentActorCritic,
+        *,
+        deterministic: bool = True,
+    ) -> None:
+        self._dynamics = dynamics
+        self._ac = actor_critic
+        self.deterministic = bool(deterministic)
+
+    def reset(self) -> None:
+        pass
+
+    def act(self, view: Any) -> np.ndarray:
+        from experiments.aerial.rl.env.obs import Observation
+
+        state = np.array(
+            [
+                view.proprio[0],
+                view.proprio[1],
+                view.proprio[2],
+                0.0,
+                0.0,
+                0.0,
+                view.proprio[3],
+            ],
+            dtype=np.float32,
+        )
+        obs = Observation(rgb=view.rgb, state=state, t=float(view.t))
+        z = self._dynamics.encode(obs)
+        return self._ac.act_latent(z, deterministic=self.deterministic)
