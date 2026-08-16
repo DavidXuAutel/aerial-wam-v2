@@ -1191,8 +1191,34 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
     def load_checkpoint(self, path: str, optimizer: Optional[Any] = None) -> Dict[str, Any]:
         payload = torch.load(path, map_location="cpu")
         if "model" in payload:
-            self.load_state_dict(payload["model"], strict=False)
+            filtered, skipped = _filter_compatible_state_dict(self, payload["model"])
+            missing, unexpected = self.load_state_dict(filtered, strict=False)
+            payload["load_skipped"] = skipped
+            payload["load_missing"] = list(missing)
+            payload["load_unexpected"] = list(unexpected)
         opt = optimizer if optimizer is not None else self.optimizer
         if opt is not None and "optimizer" in payload:
             opt.load_state_dict(payload["optimizer"])
         return payload
+
+
+def _filter_compatible_state_dict(
+    model: nn.Module, state: Dict[str, Any]
+) -> tuple[Dict[str, Any], list[str]]:
+    """Keep only checkpoint tensors whose shapes match the live model.
+
+    PyTorch ``strict=False`` still raises on size mismatch; legacy WM ckpts saved
+    before the V1-② reward-head refactor need encoder/RSSM weights without
+    forcing a full architecture match.
+    """
+    tgt = model.state_dict()
+    filtered: Dict[str, Any] = {}
+    skipped: list[str] = []
+    for key, val in state.items():
+        if key not in tgt:
+            continue
+        if tuple(tgt[key].shape) != tuple(val.shape):
+            skipped.append(f"{key}: ckpt{tuple(val.shape)} vs model{tuple(tgt[key].shape)}")
+            continue
+        filtered[key] = val
+    return filtered, skipped

@@ -16,6 +16,7 @@ from experiments.aerial.rl.buffer import Transition  # noqa: E402
 from experiments.aerial.rl.dynamics_torch import (  # noqa: E402
     TorchRSSMDynamics,
     _categorical_kl,
+    _filter_compatible_state_dict,
     _symexp,
     _symlog,
     _twohot_decode,
@@ -172,6 +173,21 @@ def test_checkpoint_roundtrip(tmp_path):
     for (n1, a), (n2, b) in zip(m.state_dict().items(), m2.state_dict().items()):
         assert n1 == n2
         assert torch.allclose(a, b)
+
+
+def test_load_checkpoint_skips_shape_mismatch():
+    """Legacy ckpts may omit reward_feat_proj; encoder/RSSM still load."""
+    m = _tiny_model()
+    state = m.state_dict()
+    legacy = dict(state)
+    legacy["reward_head.0.weight"] = torch.randn(256, 1536)
+    legacy["reward_head.0.bias"] = torch.randn(256)
+    filtered, skipped = _filter_compatible_state_dict(m, legacy)
+    assert any("reward_head.0.weight" in s for s in skipped)
+    assert "encoder" in next(k for k in filtered if k.startswith("encoder."))
+    m2 = _tiny_model()
+    missing, _ = m2.load_state_dict(filtered, strict=False)
+    assert not any(k.startswith("encoder.") for k in missing)
 
 
 def test_torch_encode_differs_from_stub_proprio4():
