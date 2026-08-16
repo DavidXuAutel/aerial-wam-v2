@@ -142,6 +142,33 @@ def _build_dynamics(dyn_cfg: Any, *, success_dist_m: float, wm_cfg: Any = None) 
     raise ValueError(f"unknown dynamics kind {kind!r} (expected stub|wan|torch)")
 
 
+def load_torch_dynamics(
+    wm_cfg: Any,
+    ckpt_path: Any,
+    *,
+    device: str = "cuda",
+    success_dist_m: float = 3.0,
+) -> tuple[Any, Dict[str, Any]]:
+    """Build ``TorchRSSMDynamics`` and load WM weights (shared train + deploy path)."""
+    from pathlib import Path
+
+    ckpt = Path(ckpt_path).expanduser().resolve()
+    if not ckpt.is_file():
+        raise FileNotFoundError(f"WM checkpoint not found: {ckpt}")
+    cfg = dict(wm_cfg or {})
+    cfg["device"] = str(device)
+    dynamics = _build_dynamics(
+        {"kind": "torch"},
+        success_dist_m=float(success_dist_m),
+        wm_cfg=cfg,
+    )
+    payload = dynamics.load_checkpoint(str(ckpt))
+    dynamics.eval()
+    for param in dynamics.parameters():
+        param.requires_grad_(False)
+    return dynamics, payload
+
+
 def _build_safety(safety_cfg: Any) -> Any:
     kind = str(_get(safety_cfg, "kind", "null"))
     if kind in ("null", "none", "None"):

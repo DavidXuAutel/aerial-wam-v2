@@ -172,3 +172,18 @@ def test_checkpoint_roundtrip(tmp_path):
     for (n1, a), (n2, b) in zip(m.state_dict().items(), m2.state_dict().items()):
         assert n1 == n2
         assert torch.allclose(a, b)
+
+
+def test_torch_encode_differs_from_stub_proprio4():
+    """Deploy encode must not be stub proprio4 passthrough when kind=torch."""
+    from experiments.aerial.rl.dynamics import StubLatentDynamics
+
+    obs = _obs(pos=(1.0, 2.0, 3.0, 0.0))
+    stub = StubLatentDynamics(goal=None, latent_dim=8)
+    stub_z = stub.encode(obs)
+    torch_m = _tiny_model()
+    torch_z = torch_m.encode(obs)
+    assert stub_z.shape == (8,)
+    assert torch_z.shape == (torch_m.latent_dim,)
+    assert torch_m.latent_dim != 8
+    assert not np.allclose(stub_z, torch_z[:8])

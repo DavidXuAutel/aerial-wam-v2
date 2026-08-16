@@ -72,7 +72,7 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.safety import DepthTauShield
     from experiments.aerial.rl.tau_predictor import make_tau_predictor
-    from experiments.aerial.rl.train_rl import HeuristicPolicy, _build_env
+    from experiments.aerial.rl.train_rl import HeuristicPolicy, _build_env, load_torch_dynamics
 
     out_dir = Path(args.out_dir).expanduser()
     if not out_dir.is_absolute():
@@ -163,13 +163,50 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         return 1
 
     dyn_cfg = cfg.get("dynamics", {}) or {}
-    dynamics = StubLatentDynamics(
-        goal=None,
-        latent_dim=int(dyn_cfg.get("latent_dim", 8)),
-        collide_radius_m=float(dyn_cfg.get("collide_radius_m", 2.0)),
-        success_dist_m=float(reward_cfg.success_dist_m if reward_cfg else 3.0),
-    )
+    dyn_kind = str(args.dynamics_kind or dyn_cfg.get("kind", "torch"))
+    if dyn_kind == "torch":
+        wm_cfg = cfg.get("world_model", {}) or {}
+        wm_ckpt = args.wm_ckpt
+        if not wm_ckpt:
+            wm_dir = wm_cfg.get("checkpoint_dir")
+            if wm_dir:
+                cand = root / wm_dir / "wm_step_5000.pt"
+                if cand.is_file():
+                    wm_ckpt = str(cand)
+        if not wm_ckpt:
+            print("[v4-run] --wm-ckpt required when dynamics-kind=torch", file=sys.stderr)
+            return 2
+        wm_ckpt_path = Path(wm_ckpt).expanduser()
+        if not wm_ckpt_path.is_absolute():
+            wm_ckpt_path = root / wm_ckpt_path
+        if not wm_ckpt_path.is_file():
+            print(f"[v4-run] missing WM ckpt {wm_ckpt_path}", file=sys.stderr)
+            return 2
+        dynamics, wm_payload = load_torch_dynamics(
+            wm_cfg,
+            wm_ckpt_path,
+            device=str(args.device),
+            success_dist_m=float(reward_cfg.success_dist_m if reward_cfg else 3.0),
+        )
+        print(
+            f"[v4-run] torch WM encode path latent_dim={dynamics.latent_dim} "
+            f"ckpt={wm_ckpt_path} step={wm_payload.get('step')}"
+        )
+    else:
+        dynamics = StubLatentDynamics(
+            goal=None,
+            latent_dim=int(dyn_cfg.get("latent_dim", 8)),
+            collide_radius_m=float(dyn_cfg.get("collide_radius_m", 2.0)),
+            success_dist_m=float(reward_cfg.success_dist_m if reward_cfg else 3.0),
+        )
     actor_ac = LatentActorCritic.load_from_checkpoint(actor_ckpt, device=str(args.device))
+    if int(actor_ac.config.latent_dim) != int(dynamics.latent_dim):
+        print(
+            f"[v4-run] actor latent_dim={actor_ac.config.latent_dim} != "
+            f"WM latent_dim={dynamics.latent_dim}",
+            file=sys.stderr,
+        )
+        return 2
     actor_policy = LatentActorDeployPolicy(
         dynamics, actor_ac, deterministic=not bool(args.actor_stochastic),
     )
@@ -416,6 +453,17 @@ def main() -> int:
         "--actor-stochastic",
         action="store_true",
         help="sample actor actions (default deterministic)",
+    )
+    p.add_argument(
+        "--dynamics-kind",
+        default="torch",
+        choices=("stub", "torch"),
+        help="latent encode path for actor deploy (default torch WM)",
+    )
+    p.add_argument(
+        "--wm-ckpt",
+        default=None,
+        help="WM checkpoint for dynamics-kind=torch",
     )
     args = p.parse_args()
     if args.mode == "rollout4090":

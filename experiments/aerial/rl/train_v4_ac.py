@@ -18,7 +18,7 @@ from typing import Any, Dict
 
 import yaml
 
-from experiments.aerial.rl.train_rl import build_from_config
+from experiments.aerial.rl.train_rl import build_from_config, load_torch_dynamics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,6 +38,17 @@ def main() -> int:
     p.add_argument("--device", default="cpu", help="cpu | cuda")
     p.add_argument("--ckpt-dir", default=None, help="write actor ckpt dir")
     p.add_argument("--backend", default="mock", choices=("mock", "airsim"))
+    p.add_argument(
+        "--dynamics",
+        default=None,
+        choices=("stub", "torch"),
+        help="dynamics.kind override (default: stub for mock backend, else yaml)",
+    )
+    p.add_argument(
+        "--wm-ckpt",
+        default=None,
+        help="WM checkpoint path when --dynamics torch (required for serious train)",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -55,11 +66,56 @@ def main() -> int:
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
-    cfg["dynamics"]["kind"] = "stub" if args.backend == "mock" else cfg["dynamics"].get("kind", "stub")
+    if args.dynamics is not None:
+        dyn_kind = str(args.dynamics)
+    elif args.backend == "mock":
+        dyn_kind = "stub"
+    else:
+        dyn_kind = str(cfg["dynamics"].get("kind", "stub"))
+    cfg["dynamics"]["kind"] = dyn_kind
     cfg["tau_predictor"]["enable"] = False if args.backend == "mock" else cfg["tau_predictor"].get("enable", False)
     cfg["v4"]["device"] = str(args.device)
 
+    wm_ckpt_path = None
+    if dyn_kind == "torch":
+        wm_ckpt_path = args.wm_ckpt
+        if not wm_ckpt_path:
+            wm_dir = cfg.get("world_model", {}).get("checkpoint_dir")
+            if wm_dir:
+                cand = repo / wm_dir / "wm_step_5000.pt"
+                if cand.is_file():
+                    wm_ckpt_path = str(cand)
+        if not wm_ckpt_path:
+            logger.error("--wm-ckpt required when --dynamics torch")
+            return 1
+        cfg.setdefault("world_model", {})["device"] = str(args.device)
+
     loop = build_from_config(cfg)
+    if dyn_kind == "torch" and wm_ckpt_path:
+        wm_cfg = cfg.get("world_model", {})
+        success_dist_m = float(cfg.get("reward", {}).get("success_dist_m", 3.0))
+        dynamics, wm_payload = load_torch_dynamics(
+            wm_cfg,
+            wm_ckpt_path,
+            device=str(args.device),
+            success_dist_m=success_dist_m,
+        )
+        loop.dynamics = dynamics
+        if loop.actor_critic is not None:
+            ac_dim = int(loop.actor_critic.config.latent_dim)
+            if ac_dim != int(dynamics.latent_dim):
+                logger.error(
+                    "actor latent_dim=%d != WM latent_dim=%d — rebuild with matching config",
+                    ac_dim,
+                    int(dynamics.latent_dim),
+                )
+                return 1
+        logger.info(
+            "loaded WM ckpt %s step=%s latent_dim=%d",
+            wm_ckpt_path,
+            wm_payload.get("step"),
+            int(dynamics.latent_dim),
+        )
     if loop.actor_critic is None:
         logger.error("actor_critic not built — install torch")
         return 1
@@ -77,6 +133,9 @@ def main() -> int:
         "losses": losses,
         "mean_actor_loss": float(sum(losses) / len(losses)) if losses else None,
         "device": str(args.device),
+        "dynamics_kind": dyn_kind,
+        "wm_ckpt": wm_ckpt_path,
+        "latent_dim": int(getattr(loop.dynamics, "latent_dim", 8)),
     }
     print(json.dumps(meta, indent=2))
 
