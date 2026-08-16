@@ -2,12 +2,15 @@
 
 - **status**: in_progress — A encode-path code ready (uncommitted); tests + commit next
 - **started**: 2026-08-16T16:38:00+08:00
+- **agent_confirmed**: 2026-08-16T16:41:30+08:00
 - **updated**: 2026-08-16T16:45:00+08:00
 - **handoff**: Mac bootstrap → detached agent on 125
 - **prompt**: docs/handover/V4_ENCODE_TRAIN_125_PROMPT.md
-- **agent_pid**: $$
-- **log**: ~/aerial-wam-v2/logs/v4_encode_train_125_agent.log
-- **sleep-safe**: yes (detached on 125)
+- **agent_pid**: **2749229**
+- **agent_bin**: `/home/yao/.local/bin/agent` (composer-2.5-fast)
+- **log**: `~/aerial-wam-v2/logs/v4_encode_train_125_agent.log`
+- **HEAD_at_launch**: `e1ff47f`
+- **sleep-safe**: **yes** — Mac may sleep; work runs on 125 (+ H100 via ssh h100-25)
 
 ## Goal
 1. Align train + deploy to real torch WM encode (not StubLatentDynamics / proprio4).
@@ -40,12 +43,19 @@
 - M5 merge FAIL: actor_mean −13.54 vs heur 9.71; ④ PASS.
 - Prior short train: 10 iters mock/stub → `v4_ac_ckpt_20260816/` (latent_dim=8, wrong encode).
 
+## Agent next steps
+pytest → commit encode path → sync H100 → longer train (≈300 iters) → 125 re-gate ①/④ → update V4_GATE_STATUS → push origin
+
 ## How to check
 
 ```bash
 ssh cursor-125-public
 cd ~/aerial-wam-v2
 cat docs/handover/V4_ENCODE_TRAIN_125_STATUS.md
+ps aux | grep -F V4_ENCODE_TRAIN_125_PROMPT | grep -v grep
 pgrep -af 'train_v4_ac|v4_gate_run_partials|v4_encode'
 tail -50 logs/v4_encode_train_125_agent.log
 ```
+
+## Cleanup note
+Earlier duplicate PIDs 2736890 / 2740412 were killed before relaunch; single agent **2749229** only.
