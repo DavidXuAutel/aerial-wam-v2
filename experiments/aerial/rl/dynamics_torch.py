@@ -1198,7 +1198,10 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
             payload["load_unexpected"] = list(unexpected)
         opt = optimizer if optimizer is not None else self.optimizer
         if opt is not None and "optimizer" in payload:
-            opt.load_state_dict(payload["optimizer"])
+            try:
+                opt.load_state_dict(payload["optimizer"])
+            except (ValueError, RuntimeError) as exc:
+                payload["optimizer_load_skipped"] = str(exc)
         return payload
 
 
