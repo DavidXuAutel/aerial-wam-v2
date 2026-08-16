@@ -1,49 +1,71 @@
 # V4 reward-head fix STATUS (125)
 
-- **status**: **in_progress** — Phase 1A code + load_skipped verified
+- **status**: **done** — Phase 1–3 complete; merge **FAIL** (① still below heur; ④ PASS)
 - **started**: 2026-08-16T22:02:00+08:00
-- **finished**: —
+- **finished**: 2026-08-16T22:26:00+08:00
 - **agent**: composer-2.5-fast
-- **PID**: **107628** (ppid=1, setsid-detached)
 - **prompt**: docs/handover/V4_REWARD_HEAD_125_PROMPT.md
-- **log**: `~/aerial-wam-v2/logs/v4_reward_head_125_agent.log`
-- **HEAD**: `de928ec` (pre-Phase-1 commit)
+- **log**: `logs/v4_reward_head_gate_rollout.log`
+- **HEAD**: `bc0c2d8` (+ doc finalize commit pending)
 - **sleep-safe**: **yes**
 
 ## Goal checklist
-1. 🔄 Phase 1 — finetune reward_head (+ feat_proj) frozen encoder/RSSM; wire imagine aux; `load_skipped` empty for reward_head
-2. ⏳ Phase 2 — H100 AC retrain → `v4_ac_ckpt_*_wm_rh/`
-3. ⏳ Phase 3 — Gate ①/④ re-run + merge + docs; honest FAIL/PASS
-4. ✅ `enable_policy_update` still **false** (yaml verified)
+1. ✅ Phase 1 — RH finetune + imagine aux; `load_skipped` empty for reward_head
+2. ✅ Phase 2 — H100 AC retrain → `v4_ac_ckpt_20260816_wm_rh/`
+3. ✅ Phase 3 — Gate ①/④ re-run + merge + docs (honest FAIL/PASS)
+4. ✅ `enable_policy_update` still **false**
 
-## Phase 1A — load_skipped baseline (legacy ckpt)
-Legacy `wm_ckpt_r60_20260814/wm_step_5000.pt` on 125:
-```
-load_skipped reward-related: ['reward_head.0.weight: ckpt(256, 1536) vs model(256, 76)']
-load_missing reward-related: ['reward_feat_proj.0.weight', 'reward_feat_proj.0.bias', 'reward_head.0.weight']
-```
-→ random `reward_feat_proj` + `reward_head` after load (root cause confirmed).
+## Phase 1A — RH finetune ✅ (H100)
+| Field | Value |
+|---|---|
+| backbone | `wm_ckpt_r60_20260814/wm_step_5000.pt` |
+| steps | 1000 |
+| loss_reward | 1.8611 → **0.7047** |
+| new ckpt | `wm_ckpt_r60_rh_20260816/wm_step_1000.pt` |
+| load_skipped (reward) | **[]** ✅ |
+| log | H100 `artifacts/v4_rh_finetune_h100.log` |
 
-## Phase plan
-| Phase | Work | Host | Status |
-|---|---|---|---|
-| **1A** | Finetune RH; new WM ckpt; assert empty load_skipped | H100 | coding → run |
-| **1B** | `imagine()` aux pass-through + tests | 125 code | coding |
-| **2** | `train_v4_ac` 300 iters → `v4_ac_ckpt_20260816_wm_rh/` | H100 | pending |
-| **3** | gate rollout4090 + merge | 125 | pending |
+## Phase 1B — imagine aux ✅
+- `imagine(goal_rel0, body_vel0)` + `advance_goal_rel_body`
+- `corrector._update_policy` passes obs-derived aux
+- `TorchRSSMDynamics.set_imagination_aux` cache fallback
 
-## Commands (planned)
-```bash
-# Phase 1A (H100)
-ssh h100-25
-cd ~/aerial-wam-v2 && git pull origin main
-source experiments/aerial/scripts/env_h100.sh
-python -m experiments.aerial.rl.train_reward_head \
-  --dataset /home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/dataset_v0_local_depth_r60_20260814 \
-  --wm-ckpt /home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_r60_20260814/wm_step_5000.pt \
-  --config configs/aerial_rl.yaml --steps 1000 --device cuda \
-  --checkpoint-dir experiments/aerial/rl/artifacts/wm_ckpt_r60_rh_20260816
-```
+## Phase 2 — H100 AC retrain ✅
+| Field | Value |
+|---|---|
+| iters | 300 |
+| wm ckpt | `wm_ckpt_r60_rh_20260816/wm_step_1000.pt` |
+| actor ckpt | `v4_ac_ckpt_20260816_wm_rh/v4_ac_latest.pt` |
+| mean_actor_loss | **−0.0087** |
+| latent_dim | **1536** |
+| log | H100 `artifacts/v4_ac_train_h100_wm_rh.log` |
+
+## Phase 3 — gate ✅ (honest partial FAIL)
+
+| Signal | Result | Numbers |
+|---|---|---|
+| **V4-①** | ❌ FAIL | actor_mean **−3.17** vs heur **7.44** (target **8.18**); n=5 |
+| **V4-④** | ✅ PASS | v4_hard **0.143** ≤ v1 **0.250** (remeasured same starts) |
+| **Merge** | ❌ FAIL | `{1: false, 4: true}` |
+
+Artifacts: `experiments/aerial/rl/artifacts/v4_gate_r60_20260816_wm_rh/v4_gate_r60_20260816.json`
+
+### vs encode-train (broken RH)
+| | encode-train | reward-head fix |
+|---|---|---|
+| ① actor_mean | **−68.88** | **−3.17** (much better, still FAIL) |
+| ④ v4_hard | 0.143 vs v1 **0.00** ❌ | 0.143 vs v1 **0.25** ✅ |
+| RH load_skipped | non-empty | **[]** |
+
+RH fix + imagine aux resolved the garbage-reward regression; ① still needs stronger AC / longer train (mock-collector AC vs real 4090 deploy gap).
 
 ## enable_policy_update
-Must remain **false** in `configs/aerial_rl.yaml`.
+**false** in `configs/aerial_rl.yaml` (verified post-run).
+
+## How to check on return
+```bash
+cd ~/aerial-wam-v2
+cat docs/handover/V4_REWARD_HEAD_125_STATUS.md
+tail -20 logs/v4_reward_head_gate_rollout.log
+grep enable_policy_update configs/aerial_rl.yaml
+```

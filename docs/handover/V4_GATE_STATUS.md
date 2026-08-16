@@ -8,8 +8,8 @@
 
 ## 1. 一句话结论（2026-08-16）
 
-**V4 encode-train re-gate：merge FAIL（① −68.88 / ④ 0.143）** — encode path OK；根因是 reward_head 旧形 (256,1536) 跳过加载 + imagine 缺 `goal_rel`。  
-**Follow-on 已启动**：reward-head finetune → AC retrain → re-gate（`V4_REWARD_HEAD_125_STATUS.md`）。  
+**V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）** — RH finetune + imagine aux fixed garbage progress (−68.88→−3.17); ④ now beats remeasured v1 (0.143 vs 0.25). ① still below heur×1.10.  
+Prior encode-train re-gate (−68.88 / ④ FAIL vs v1 0.00) superseded for deploy WM path.  
 `enable_policy_update` **仍 false**。
 
 ---
@@ -25,8 +25,8 @@
 | M3b | H100 WM encode 300-iter train | ✅ — `v4_ac_ckpt_20260816_wm/` latent_dim=1536 |
 | M4 | `_v4_gate` self-check | ✅ |
 | M5 | 4090 ①④ eval (stub) | ❌ merge FAIL — ① −13.54 vs heur 9.71; ④ PASS |
-| M5b | 4090 ①④ re-gate (torch WM) | ❌ merge FAIL — ① −68.88 vs heur 10.66; ④ v4_hard 0.143 |
-| M5c | reward-head finetune + AC `*_wm_rh` + re-gate | ⏳ in progress — see `V4_REWARD_HEAD_125_STATUS.md` |
+| M5b | 4090 ①④ re-gate (torch WM, legacy RH) | ❌ merge FAIL — ① −68.88; ④ v4_hard 0.143 vs v1 0.00 |
+| M5c | reward-head finetune + AC `*_wm_rh` + re-gate | ❌ merge FAIL — ① −3.17 vs heur 7.44; ④ **PASS** (0.143 vs v1 0.25) |
 | M6 | flip yaml | **禁止**（merge 未 PASS） |
 
 ---
@@ -38,16 +38,22 @@
 - **2026-08-16(M3)** — 125→H100 SSH key; H100 `train_v4_ac` 10 iters PASS (stub).
 - **2026-08-16(M5)** — 125 4090 rollout (stub encode): ① FAIL / ④ PASS; yaml 未翻。
 - **2026-08-16(encode-train)** — Align train+deploy to torch WM encode; H100 300 iters; re-gate `v4_gate_r60_20260816_wm`: ① FAIL, ④ FAIL; merge FAIL; yaml 未翻.
-- **2026-08-16(reward-head)** — Start M5c: finetune RH (frozen encoder/RSSM) + imagine aux + H100 `v4_ac_ckpt_*_wm_rh` + re-gate; yaml 未翻.
+- **2026-08-16(reward-head)** — M5c done: RH finetune 1000 steps (`wm_ckpt_r60_rh_20260816`); AC 300 iters; re-gate `v4_gate_r60_20260816_wm_rh`: ① FAIL, ④ PASS; merge FAIL; yaml 未翻.
 
 ---
 
-## 4. Latest gate numbers (torch WM, 2026-08-16)
+## 4. Latest gate numbers (reward-head WM, 2026-08-16)
 
 | Signal | Criterion | Result | Numbers |
 |---|---|---|---|
-| **V4-①** | actor ≥ heur × 1.10 | ❌ | actor_mean **−68.88** vs heur **10.66** (target **11.72**); n=6 |
-| **V4-④** | v4_hard ≤ v1_hard | ❌ | v4_hard **0.143** vs v1 **0.00** (remeasured same starts) |
-| **Merge** | both pass | ❌ | `ok=false` |
+| **V4-①** | actor ≥ heur × 1.10 | ❌ | actor_mean **−3.17** vs heur **7.44** (target **8.18**); n=5 |
+| **V4-④** | v4_hard ≤ v1_hard | ✅ | v4_hard **0.143** vs v1 **0.25** (remeasured same starts) |
+| **Merge** | both pass | ❌ | `ok=false` `{1: false, 4: true}` |
+
+Artifacts: `experiments/aerial/rl/artifacts/v4_gate_r60_20260816_wm_rh/v4_gate_r60_20260816.json`
+
+### Prior (encode-train, legacy RH skipped — superseded)
+| **V4-①** | ❌ | actor_mean **−68.88** vs heur **10.66** |
+| **V4-④** | ❌ | v4_hard **0.143** vs v1 **0.00** |
 
 Artifacts: `experiments/aerial/rl/artifacts/v4_gate_r60_20260816_wm/v4_gate_r60_20260816.json`
