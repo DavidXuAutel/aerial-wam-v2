@@ -63,7 +63,9 @@ Log: `logs/v4_encode_gate_rollout.log` (~26 min). Deploy log confirms: `torch WM
 | ④ v4_hard | 0.00 ✅ | **0.143** ❌ |
 | latent_dim | 8 | **1536** |
 
-Encode path is fixed; actor still regresses — likely imagination reward-head mismatch (legacy ckpt reward_head.0 not loaded) + more train/tuning needed.
+Encode path is fixed; actor still regresses — imagination reward-head mismatch (legacy ckpt `reward_head.0` shape skipped) + `imagine()` missing `goal_rel`/`body_vel`.
+
+**Follow-on (2026-08-16)**: reward-head track — see `docs/handover/V4_REWARD_HEAD_125_PROMPT.md` / `V4_REWARD_HEAD_125_STATUS.md` (finetune RH frozen backbone → AC retrain → re-gate). This encode-train track stays **done**.
 
 ## enable_policy_update
 **false** in `configs/aerial_rl.yaml` (verified post-run).

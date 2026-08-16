@@ -8,10 +8,9 @@
 
 ## 1. 一句话结论（2026-08-16）
 
-**V4 encode-train re-gate 完成：merge FAIL（① progress 未达标，④ 安全也 FAIL）**。  
-Torch WM encode path verified (latent_dim=1536); `enable_policy_update` **仍 false**。  
-① actor_mean=**−68.88** vs heur=**10.66** (n=6); ④ v4_hard=**0.143** > v1=**0.00** ❌。  
-细节见 `docs/handover/V4_ENCODE_TRAIN_125_STATUS.md`。
+**V4 encode-train re-gate：merge FAIL（① −68.88 / ④ 0.143）** — encode path OK；根因是 reward_head 旧形 (256,1536) 跳过加载 + imagine 缺 `goal_rel`。  
+**Follow-on 已启动**：reward-head finetune → AC retrain → re-gate（`V4_REWARD_HEAD_125_STATUS.md`）。  
+`enable_policy_update` **仍 false**。
 
 ---
 
@@ -27,6 +26,7 @@ Torch WM encode path verified (latent_dim=1536); `enable_policy_update` **仍 fa
 | M4 | `_v4_gate` self-check | ✅ |
 | M5 | 4090 ①④ eval (stub) | ❌ merge FAIL — ① −13.54 vs heur 9.71; ④ PASS |
 | M5b | 4090 ①④ re-gate (torch WM) | ❌ merge FAIL — ① −68.88 vs heur 10.66; ④ v4_hard 0.143 |
+| M5c | reward-head finetune + AC `*_wm_rh` + re-gate | ⏳ in progress — see `V4_REWARD_HEAD_125_STATUS.md` |
 | M6 | flip yaml | **禁止**（merge 未 PASS） |
 
 ---
@@ -38,6 +38,7 @@ Torch WM encode path verified (latent_dim=1536); `enable_policy_update` **仍 fa
 - **2026-08-16(M3)** — 125→H100 SSH key; H100 `train_v4_ac` 10 iters PASS (stub).
 - **2026-08-16(M5)** — 125 4090 rollout (stub encode): ① FAIL / ④ PASS; yaml 未翻。
 - **2026-08-16(encode-train)** — Align train+deploy to torch WM encode; H100 300 iters; re-gate `v4_gate_r60_20260816_wm`: ① FAIL, ④ FAIL; merge FAIL; yaml 未翻.
+- **2026-08-16(reward-head)** — Start M5c: finetune RH (frozen encoder/RSSM) + imagine aux + H100 `v4_ac_ckpt_*_wm_rh` + re-gate; yaml 未翻.
 
 ---
 

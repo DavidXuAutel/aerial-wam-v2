@@ -22,6 +22,10 @@
 
 - 10 iters mock/stub → `v4_ac_ckpt_20260816/` (~566KB, latent_dim=8) — **wrong encode path**
 
+## Next (reward-head track — pending)
+
+After Phase 1 RH finetune, retrain AC into **`v4_ac_ckpt_YYYYMMDD_wm_rh/`** with the new WM ckpt (frozen WM). Record command/metrics here when Phase 2 starts. See `V4_REWARD_HEAD_125_STATUS.md`.
+
 ## Verification
 
 ```bash
