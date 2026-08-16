@@ -5,7 +5,7 @@
 - **agent**: composer-2.5-fast
 - **prompt**: docs/handover/V4_M5_125_PROMPT.md
 - **HEAD_at_start**: 01ebfa6
-- **HEAD_at_finish**: _(pending commit)_
+- **HEAD_at_finish**: c5823e6
 - **renderer**: 127.0.0.1:41451 ✅ (AirSim RPC up)
 - **python**: `/home/yao/anaconda3/envs/kairos/bin/python` (airsim + torch + cuda)
 - **log**: `artifacts/v4_m5_125_rollout.log`
