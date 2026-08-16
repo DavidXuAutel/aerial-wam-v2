@@ -151,6 +151,15 @@ corrector:
   wm_window: 8
   smoke: false
 
+# V4 imagination actor-critic (DreamerV3 λ-return; GATE: enable_policy_update stays false).
+v4:
+  lambda_gae: 0.95
+  gamma: 0.997
+  entropy_scale: 3.0e-4
+  actor_lr: 1.0e-4
+  critic_lr: 1.0e-4
+  device: cpu
+
 # Optional OpenFly annotation of episodes (start/goal poses). null -> single
 # origin->goal-less episode from the env's default reset.
 annotation: null

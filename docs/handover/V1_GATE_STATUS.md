@@ -15,7 +15,7 @@
 | Mac / 125 bare / H100 | `86dd457`+（① 拒 tied-zero；晚¹⁵ 实测后文档提交） |
 
 **yaml 已 flip**（`tau_predictor.kind=foe_calibrated`；`planner.enable`/`enable_policy_update` 仍 false）。  
-**下一步**：[V4-MVP](../superpowers/specs/2026-08-16-v4-mvp-design.md) — 见 [V4_GATE_STATUS](V4_GATE_STATUS.md)。
+**下一步**：[V4-MVP](../superpowers/specs/2026-08-16-v4-mvp-design.md) — V4 scaffold M1–M4 完成，见 [V4_GATE_STATUS](V4_GATE_STATUS.md)。
 
 产物（H100）：
 

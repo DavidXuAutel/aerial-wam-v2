@@ -65,6 +65,7 @@ class SerialCorrectorLoop:
         dynamics: LatentDynamics,
         *,
         imagination_policy: Optional[Any] = None,
+        actor_critic: Optional[Any] = None,
         config: Optional[CorrectorConfig] = None,
         episodes: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
@@ -72,6 +73,7 @@ class SerialCorrectorLoop:
         self.buffer = buffer
         self.dynamics = dynamics
         self.imagination_policy = imagination_policy
+        self.actor_critic = actor_critic
         self.config = config or CorrectorConfig()
         self.episodes = episodes
         # Snapshot the base maneuver weight ONCE: the curriculum rewrites
@@ -155,9 +157,7 @@ class SerialCorrectorLoop:
             return {"status": "skipped", "reason": msg}
         if self.imagination_policy is None:
             return {"status": "skipped", "reason": "no imagination_policy provided"}
-        # Encode a batch of real start states, imagine forward, then hand the
-        # trajectories to the (future) actor-critic optimizer. The optimizer
-        # itself is the V4 deliverable; here we only produce its inputs.
+        # Encode start states, imagine forward, then AC-update the rollout.
         try:
             transitions = self.buffer.sample(self.config.imagine_batch)
         except ValueError as exc:
@@ -173,11 +173,21 @@ class SerialCorrectorLoop:
             self.dynamics, self.imagination_policy, z0, self.config.imagine_horizon,
             reward_cfg=getattr(self.collector, "reward_cfg", None),  # match real weights + bonus
         )
+        ac = getattr(self, "actor_critic", None)
+        if ac is not None:
+            ac_out = ac.update(rollout)
+            return {
+                "status": "updated",
+                "batch": int(z0.shape[0]),
+                "horizon": int(self.config.imagine_horizon),
+                "mean_return": float(rollout.returns.mean()),
+                **{k: v for k, v in ac_out.items() if k != "status"},
+            }
         # >>> V4 INSERTION POINT: actor_critic.update(rollout) <<<
         return {
             "status": "imagined",
             "batch": int(z0.shape[0]),
             "horizon": int(self.config.imagine_horizon),
             "mean_return": float(rollout.returns.mean()),
-            "note": "trajectories produced; actor-critic update is the V4 deliverable",
+            "note": "trajectories produced; wire actor_critic for AC update",
         }

@@ -225,6 +225,27 @@ def _load_episodes(cfg: Any) -> Optional[List[Dict[str, Any]]]:
     return episodes[: max(0, int(_get(cfg, "max_episodes", 20)))]
 
 
+def _build_actor_critic(cfg: Any, latent_dim: int) -> Optional[Any]:
+    """Build V4 actor-critic when torch is available (lazy import)."""
+    v4 = _get(cfg, "v4", {})
+    if not v4:
+        return None
+    try:
+        from experiments.aerial.rl.actor_critic import ActorCriticConfig, LatentActorCritic
+    except RuntimeError:
+        return None
+    ac_cfg = ActorCriticConfig(
+        latent_dim=int(latent_dim),
+        lambda_gae=float(_get(v4, "lambda_gae", 0.95)),
+        gamma=float(_get(v4, "gamma", 0.997)),
+        entropy_scale=float(_get(v4, "entropy_scale", 3.0e-4)),
+        actor_lr=float(_get(v4, "actor_lr", 1.0e-4)),
+        critic_lr=float(_get(v4, "critic_lr", 1.0e-4)),
+        device=str(_get(v4, "device", "cpu")),
+    )
+    return LatentActorCritic(config=ac_cfg)
+
+
 def build_from_config(cfg: Any) -> SerialCorrectorLoop:
     env = _build_env(_get(cfg, "env", {}))
     buf_cfg = _get(cfg, "buffer", {})
@@ -286,8 +307,17 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         planner=planner,
     )
     episodes = _load_episodes(cfg)
+    latent_dim = int(getattr(dynamics, "latent_dim", 8))
+    actor_critic = _build_actor_critic(cfg, latent_dim)
+    imagination_policy = None
+    if actor_critic is not None:
+        from experiments.aerial.rl.actor_critic import ImaginationActorPolicy
+
+        imagination_policy = ImaginationActorPolicy(actor_critic)
     return SerialCorrectorLoop(
         collector, buffer, dynamics,
+        imagination_policy=imagination_policy,
+        actor_critic=actor_critic,
         config=corrector_cfg, episodes=episodes,
     )
 
