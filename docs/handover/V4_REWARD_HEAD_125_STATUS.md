@@ -4,7 +4,7 @@
 - **started**: 2026-08-16T22:02:00+08:00
 - **finished**: —
 - **agent**: composer-2.5-fast
-- **PID**: —
+- **PID**: **107628** (ppid=1, setsid-detached)
 - **prompt**: docs/handover/V4_REWARD_HEAD_125_PROMPT.md
 - **log**: `~/aerial-wam-v2/logs/v4_reward_head_125_agent.log`
 - **HEAD**: `de928ec` (pre-Phase-1 commit)
