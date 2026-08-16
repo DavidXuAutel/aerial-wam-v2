@@ -1,26 +1,51 @@
 # V4 encode + longer train STATUS (125)
 
-- **status**: A) encode-path code implemented — running tests + commit
+- **status**: in_progress — A encode-path code ready (uncommitted); tests + commit next
+- **started**: 2026-08-16T16:38:00+08:00
 - **updated**: 2026-08-16T16:45:00+08:00
-- **handoff**: Mac bootstrap → agent on 125 (4090 renderer 127.0.0.1:41451)
+- **handoff**: Mac bootstrap → detached agent on 125
 - **prompt**: docs/handover/V4_ENCODE_TRAIN_125_PROMPT.md
-- **sleep-safe**: yes (agent on 125)
+- **agent_pid**: $$
+- **log**: ~/aerial-wam-v2/logs/v4_encode_train_125_agent.log
+- **sleep-safe**: yes (detached on 125)
 
 ## Goal
 1. Align train + deploy to real torch WM encode (not StubLatentDynamics / proprio4).
 2. Longer H100 AC train → `v4_ac_ckpt_20260816_wm/`.
 3. Re-run V4 ①/④ on 125; update gate docs. Never flip `enable_policy_update`.
 
-## A) Encode-path fixes (in progress)
-- `train_v4_ac.py`: `--dynamics torch --wm-ckpt <path>`; mock backend OK with torch WM.
-- `train_rl.py`: shared `load_torch_dynamics()` for train + deploy.
-- `v4_gate_run_partials.py`: `--dynamics-kind torch --wm-ckpt`; latent_dim check vs actor.
-- Test: `test_torch_encode_differs_from_stub_proprio4`.
+## Phase A — encode path (code)
+- [x] `load_torch_dynamics()` in `train_rl.py` (shared train + deploy)
+- [x] `train_v4_ac.py`: `--dynamics torch`, `--wm-ckpt`; no mock→stub forced when torch
+- [x] `v4_gate_run_partials.py`: `--dynamics-kind torch`, `--wm-ckpt`; removes hardcoded stub default for actor
+- [x] `test_torch_encode_differs_from_stub_proprio4` in `test_dynamics_torch.py`
+- [ ] pytest green
+- [ ] commit + `git push origin main`
+- [ ] sync H100
+
+## Phase B — H100 longer train
+- **pending** — WM ckpt on H100: `/home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_r60_20260814/wm_step_5000.pt`
+- **target ckpt dir**: `experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816_wm/`
+- **planned iters**: 300 (≈1–3h wall; adjust if smoke shows faster)
+
+## Phase C — gate on 125
+- **pending** — stage WM + actor ckpt from H100; renderer `127.0.0.1:41451`
+- **out dir**: `experiments/aerial/rl/artifacts/v4_gate_r60_20260816_wm/`
+- **dataset**: `~/aerial-rl-skeleton/.../dataset_v0_headon_20260811` (headon fallback)
 
 ## enable_policy_update
-**Must stay false** in `configs/aerial_rl.yaml` — verified unchanged.
+**Must stay false** in `configs/aerial_rl.yaml` (verified unchanged).
 
-## Next
-- Commit + `git push origin main`
-- H100 longer train (300 iters target)
-- Stage WM + actor ckpts on 125; gate re-run
+## Context
+- M5 merge FAIL: actor_mean −13.54 vs heur 9.71; ④ PASS.
+- Prior short train: 10 iters mock/stub → `v4_ac_ckpt_20260816/` (latent_dim=8, wrong encode).
+
+## How to check
+
+```bash
+ssh cursor-125-public
+cd ~/aerial-wam-v2
+cat docs/handover/V4_ENCODE_TRAIN_125_STATUS.md
+pgrep -af 'train_v4_ac|v4_gate_run_partials|v4_encode'
+tail -50 logs/v4_encode_train_125_agent.log
+```
