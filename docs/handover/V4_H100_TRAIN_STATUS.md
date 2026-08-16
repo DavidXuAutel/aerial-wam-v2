@@ -1,22 +1,30 @@
-# V4 H100 short train STATUS (M3)
+# V4 H100 train STATUS (encode + longer)
 
 - **date**: 2026-08-16
 - **125→H100 key**: `~/.ssh/id_ed25519_h100` / SSH Host `h100-25` → `a25689@10.239.121.25:31126` ✅
-- **H100 HEAD**: `793d124`
+- **H100 code sync**: scp (origin-only push; H100 github pull not used)
 - **command**:
   ```bash
-  python -m experiments.aerial.rl.train_v4_ac --iters 10 --device cuda \
-    --imagine-horizon 15 --ckpt-dir experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816
+  python -m experiments.aerial.rl.train_v4_ac \
+    --iters 300 --device cuda --imagine-horizon 15 \
+    --dynamics torch \
+    --wm-ckpt /home/a25689/aerial-rl-skeleton/experiments/aerial/rl/artifacts/wm_ckpt_r60_20260814/wm_step_5000.pt \
+    --ckpt-dir experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816_wm
   ```
-- **result**: **PASS**
-- **ckpt**: `~/aerial-wam-v2/experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816/v4_ac_latest.pt` (~566KB)
-- **log**: `~/aerial-wam-v2/artifacts/v4_ac_train_h100.log`
-- **metrics**: mean_actor_loss≈-0.043; critic_loss~0.02; entropy~3.67; device=cuda
-- **enable_policy_update**: still **false** (not flipped)
+- **result**: **PASS** (300 iters, all rl=updated)
+- **ckpt**: `~/aerial-wam-v2/experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816_wm/v4_ac_latest.pt` (~3.5MB, latent_dim=1536)
+- **log**: `~/aerial-wam-v2/artifacts/v4_ac_train_h100_wm.log`
+- **metrics**: mean_actor_loss≈**−0.0005**; dynamics_kind=**torch**; wm step=5000; latent_dim=**1536**
+- **lr**: actor_lr=1e-4, critic_lr=1e-4 (from `configs/aerial_rl.yaml` v4 block)
+- **enable_policy_update**: still **false** (yaml unchanged; train script sets in-memory only)
 
-## Verification (2026-08-16, local via `ssh h100-25`)
+## Prior short train (stub encode — superseded)
 
-- **ckpt present**: ✅ `~/aerial-wam-v2/experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816/v4_ac_latest.pt`
-- **size**: 565931 bytes (553K on disk; matches ~566KB in doc)
-- **mtime**: 2026-08-16 02:44:54 UTC
-- **enable_policy_update**: unchanged (**false**)
+- 10 iters mock/stub → `v4_ac_ckpt_20260816/` (~566KB, latent_dim=8) — **wrong encode path**
+
+## Verification
+
+```bash
+ssh h100-25 'ls -la ~/aerial-wam-v2/experiments/aerial/rl/artifacts/v4_ac_ckpt_20260816_wm/v4_ac_latest.pt'
+ssh h100-25 'tail -5 ~/aerial-wam-v2/artifacts/v4_ac_train_h100_wm.log'
+```
