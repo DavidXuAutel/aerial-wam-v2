@@ -168,10 +168,16 @@ class SerialCorrectorLoop:
         set_goal = getattr(self.dynamics, "set_goal", None)
         if callable(set_goal):
             set_goal(getattr(getattr(self.collector, "env", None), "goal", None))
+        from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
+
+        goal_rel0 = np.stack([goal_rel_from_obs(t.obs) for t in transitions], axis=0)
+        body_vel0 = np.stack([body_vel_from_obs(t.obs) for t in transitions], axis=0)
         z0 = np.stack([self.dynamics.encode(t.obs) for t in transitions], axis=0)
         rollout = imagine(
             self.dynamics, self.imagination_policy, z0, self.config.imagine_horizon,
             reward_cfg=getattr(self.collector, "reward_cfg", None),  # match real weights + bonus
+            goal_rel0=goal_rel0,
+            body_vel0=body_vel0,
         )
         ac = getattr(self, "actor_critic", None)
         if ac is not None:

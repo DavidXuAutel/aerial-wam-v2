@@ -887,6 +887,9 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         self.to(device=self.device, dtype=self.torch_dtype)
         self.optimizer = torch.optim.AdamW(
             self.parameters(), lr=float(lr), betas=(0.9, 0.95))
+        # Optional imagination aux cache (V4): used when :meth:`step` kwargs omitted.
+        self._imagine_goal_rel: Optional[np.ndarray] = None
+        self._imagine_body_vel: Optional[np.ndarray] = None
 
     # -- factory (FastWAM from_config idiom) ---------------------------------
     @classmethod
@@ -1063,6 +1066,106 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
     def forward(self, *args, **kwargs):  # FastWAM aliases forward -> training_loss
         return self.training_loss(*args, **kwargs)
 
+    def apply_freeze_backbone_train_reward_head(self) -> list:
+        """Freeze encoder/RSSM/decoder/cont/coll; train ``reward_feat_proj`` + head only."""
+        for param in self.parameters():
+            param.requires_grad = False
+        head_params = list(self.reward_feat_proj.parameters()) + list(
+            self.reward_head.parameters()
+        )
+        for param in head_params:
+            param.requires_grad = True
+        return [p for p in head_params if p.requires_grad]
+
+    def _sequence_features(
+        self,
+        sample: Dict[str, torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """RSSM teacher-forcing features ``[B,L,D]`` + reward labels/conditioning."""
+        rgb, proprio, action = sample["rgb"], sample["proprio"], sample["action"]
+        reward, done, collided = sample["reward"], sample["done"], sample["collided"]
+        del done, collided  # reward-head finetune does not use cont/coll
+        B, L = proprio.shape[0], proprio.shape[1]
+        goal_rel = sample.get("goal_rel")
+        if goal_rel is None:
+            goal_rel = torch.zeros(
+                B, L, self.goal_rel_dim, device=self.device, dtype=self.torch_dtype,
+            )
+        else:
+            goal_rel = goal_rel.to(self.torch_dtype)
+        body_vel = sample.get("body_vel")
+        if body_vel is None:
+            body_vel = torch.zeros(
+                B, L, self.body_vel_dim, device=self.device, dtype=self.torch_dtype,
+            )
+        else:
+            body_vel = body_vel.to(self.torch_dtype)
+
+        h = self.rssm.initial_h(B, self.device, self.torch_dtype)
+        z = torch.zeros(B, self.z_flat, device=self.device, dtype=self.torch_dtype)
+        feats = []
+        for t in range(L):
+            embed_t = self._embed(rgb[:, t], proprio[:, t])
+            post_p = self.rssm.post_probs(h, embed_t)
+            z = self.rssm._sample(post_p)
+            feats.append(torch.cat([h, z], dim=-1))
+            h = self.rssm.advance_h(h, z, action[:, t].to(self.torch_dtype))
+        feature = torch.stack(feats, dim=1)
+        return feature, action.to(self.torch_dtype), goal_rel, body_vel, reward
+
+    def training_loss_reward_head(
+        self, sample: Dict[str, torch.Tensor]
+    ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        """Two-hot reward CE only; backbone forward under ``no_grad``."""
+        with torch.no_grad():
+            feature, act, goal_rel, body_vel, reward = self._sequence_features(sample)
+        reward_logits = self._reward_logits(feature, act, goal_rel, body_vel)
+        reward_target = _twohot_targets(_symlog(reward.to(self.torch_dtype)), self.bins)
+        loss_reward = -(reward_target * F.log_softmax(reward_logits, dim=-1)).sum(-1).mean()
+        return loss_reward, {
+            "loss": float(loss_reward.detach().item()),
+            "loss_reward": float(loss_reward.detach().item()),
+        }
+
+    def update_reward_head(
+        self,
+        windows: Any,
+        *,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+    ) -> Dict[str, Any]:
+        """One AdamW step on ``reward_feat_proj`` + ``reward_head`` only."""
+        arrays = windows_to_arrays(windows)
+        sample = self._arrays_to_tensors(arrays)
+        self.train()
+        opt = optimizer if optimizer is not None else self.optimizer
+        loss, last = self.training_loss_reward_head(sample)
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        grad_norm = float(nn.utils.clip_grad_norm_(
+            [p for p in self.parameters() if p.requires_grad], self.grad_clip,
+        ))
+        opt.step()
+        return {"grad_norm": grad_norm, **last}
+
+    def set_imagination_aux(
+        self,
+        goal_rel: Optional[np.ndarray] = None,
+        body_vel: Optional[np.ndarray] = None,
+    ) -> None:
+        """Cache aux for :meth:`step` when ``goal_rel`` / ``body_vel`` kwargs omitted."""
+        if goal_rel is None:
+            self._imagine_goal_rel = None
+        else:
+            self._imagine_goal_rel = np.asarray(goal_rel, dtype=np.float32).reshape(
+                self.goal_rel_dim,
+            )
+        if body_vel is None:
+            self._imagine_body_vel = None
+        else:
+            self._imagine_body_vel = np.asarray(body_vel, dtype=np.float32).reshape(
+                self.body_vel_dim,
+            )
+
     # -- V1 gate: real world-model update ------------------------------------
     def update(self, windows: Any) -> Dict[str, Any]:
         """Run ``train_steps_per_update`` AdamW steps on replay ``windows``.
@@ -1151,12 +1254,22 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         a = torch.from_numpy(np.ascontiguousarray(action)).to(
             self.device, self.torch_dtype).reshape(1, self.action_dim)
         if goal_rel is None:
-            g = torch.zeros(1, self.goal_rel_dim, device=self.device, dtype=self.torch_dtype)
+            if self._imagine_goal_rel is not None:
+                g = torch.from_numpy(np.ascontiguousarray(self._imagine_goal_rel)).to(
+                    self.device, self.torch_dtype,
+                ).reshape(1, self.goal_rel_dim)
+            else:
+                g = torch.zeros(1, self.goal_rel_dim, device=self.device, dtype=self.torch_dtype)
         else:
             g = torch.from_numpy(np.ascontiguousarray(goal_rel)).to(
                 self.device, self.torch_dtype).reshape(1, self.goal_rel_dim)
         if body_vel is None:
-            v = torch.zeros(1, self.body_vel_dim, device=self.device, dtype=self.torch_dtype)
+            if self._imagine_body_vel is not None:
+                v = torch.from_numpy(np.ascontiguousarray(self._imagine_body_vel)).to(
+                    self.device, self.torch_dtype,
+                ).reshape(1, self.body_vel_dim)
+            else:
+                v = torch.zeros(1, self.body_vel_dim, device=self.device, dtype=self.torch_dtype)
         else:
             v = torch.from_numpy(np.ascontiguousarray(body_vel)).to(
                 self.device, self.torch_dtype).reshape(1, self.body_vel_dim)

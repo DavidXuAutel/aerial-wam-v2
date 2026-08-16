@@ -21,6 +21,11 @@ from typing import Any, List, Optional
 import numpy as np
 
 from experiments.aerial.rl.dynamics import LatentDynamics
+from experiments.aerial.rl.goal_features import (
+    BODY_VEL_DIM,
+    GOAL_REL_DIM,
+    advance_goal_rel_body,
+)
 from experiments.aerial.rl.reward import RewardConfig, reward_terms
 
 MAX_IMAGINATION_HORIZON = 15  # §9 safety cap until WM error shown non-divergent
@@ -56,8 +61,17 @@ def imagine(
     *,
     reward_cfg: Optional[RewardConfig] = None,
     max_horizon: int = MAX_IMAGINATION_HORIZON,
+    goal_rel0: Optional[np.ndarray] = None,
+    body_vel0: Optional[np.ndarray] = None,
+    propagate_goal_rel: bool = True,
 ) -> ImaginedRollout:
-    """Roll ``z0_batch`` forward ``horizon`` steps through ``dynamics``."""
+    """Roll ``z0_batch`` forward ``horizon`` steps through ``dynamics``.
+
+    When ``goal_rel0`` / ``body_vel0`` are provided (shapes ``[B,4]`` / ``[B,3]``),
+    each imagined ``step`` receives aux conditioning for the torch reward head.
+    ``propagate_goal_rel`` advances ``goal_rel`` with ``advance_goal_rel_body`` after
+    each action (stub-consistent kinematics); ``body_vel`` is held at the start value.
+    """
     cfg = reward_cfg or RewardConfig()
     z0 = np.atleast_2d(np.asarray(z0_batch, dtype=np.float64))
     batch, latent_dim = z0.shape
@@ -77,6 +91,21 @@ def imagine(
     dones = np.zeros((batch, horizon), dtype=bool)
     zs[:, 0] = z0
 
+    use_aux = goal_rel0 is not None or body_vel0 is not None
+    if use_aux:
+        if goal_rel0 is None:
+            goal_rel0 = np.zeros((batch, GOAL_REL_DIM), dtype=np.float32)
+        else:
+            goal_rel0 = np.asarray(goal_rel0, dtype=np.float32).reshape(batch, GOAL_REL_DIM)
+        if body_vel0 is None:
+            body_vel0 = np.zeros((batch, BODY_VEL_DIM), dtype=np.float32)
+        else:
+            body_vel0 = np.asarray(body_vel0, dtype=np.float32).reshape(batch, BODY_VEL_DIM)
+        goal_rel_t = goal_rel0.copy()
+        body_vel_t = body_vel0.copy()
+    else:
+        goal_rel_t = body_vel_t = None
+
     alive = np.ones(batch, dtype=bool)
     for t in range(horizon):
         for b in range(batch):
@@ -85,7 +114,11 @@ def imagine(
                 dones[b, t] = True
                 continue
             a = _act_latent(policy, zs[b, t])
-            out = dynamics.step(zs[b, t], a)
+            step_kw: dict = {}
+            if use_aux:
+                step_kw["goal_rel"] = goal_rel_t[b]
+                step_kw["body_vel"] = body_vel_t[b]
+            out = dynamics.step(zs[b, t], a, **step_kw)
             zs[b, t + 1] = np.asarray(out.z_next, dtype=np.float64).reshape(latent_dim)
             acts[b, t] = a
             pcs[b, t] = out.p_coll
@@ -100,5 +133,7 @@ def imagine(
             if out.done:
                 alive[b] = False
                 dones[b, t] = True
+            if use_aux and propagate_goal_rel and alive[b]:
+                goal_rel_t[b] = advance_goal_rel_body(goal_rel_t[b], a)
 
     return ImaginedRollout(z=zs, actions=acts, rewards=rews, p_coll=pcs, progress=progs, done=dones)

@@ -57,6 +57,22 @@ def goal_rel_from_obs(obs: Any) -> np.ndarray:
     return goal_rel_body(obs.position, float(obs.yaw), goal)
 
 
+def advance_goal_rel_body(
+    goal_rel: np.ndarray,
+    action: np.ndarray,
+) -> np.ndarray:
+    """Update body-frame ``goal_rel`` after one body-delta action (imagination aux).
+
+    Matches the stub WM kinematic convention: ``action[:3]`` is the body-frame
+    displacement applied this step; remaining distance is ``||g_body||``.
+    """
+    g = np.asarray(goal_rel, dtype=np.float64).reshape(GOAL_REL_DIM).copy()
+    disp = np.asarray(action, dtype=np.float64).reshape(4)[:3]
+    g[:3] = g[:3] - disp
+    g[3] = float(np.linalg.norm(g[:3]))
+    return g.astype(np.float32, copy=False)
+
+
 def body_vel_from_obs(obs: Any) -> np.ndarray:
     """World-frame ``obs.velocity`` → body-frame ``[fwd, left, up]`` (m/s)."""
     v = np.asarray(getattr(obs, "velocity", np.zeros(3)), dtype=np.float64).reshape(3)

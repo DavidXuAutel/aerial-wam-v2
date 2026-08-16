@@ -190,6 +190,34 @@ def test_load_checkpoint_skips_shape_mismatch():
     assert not any(k.startswith("encoder.") for k in missing)
 
 
+def test_reward_head_finetune_load_skipped_empty(tmp_path):
+    """Saved RH-finetuned ckpt must load reward_feat_proj/head without skip."""
+    m = _tiny_model()
+    m.apply_freeze_backbone_train_reward_head()
+    opt = torch.optim.AdamW([p for p in m.parameters() if p.requires_grad], lr=1e-3)
+    out = m.update_reward_head(_windows(batch=2, length=3), optimizer=opt)
+    assert np.isfinite(out["loss_reward"])
+    p = str(tmp_path / "wm_rh.pt")
+    m.save_checkpoint(p, optimizer=opt, step=1)
+    m2 = _tiny_model()
+    payload = m2.load_checkpoint(p)
+    rh_skip = [s for s in payload.get("load_skipped", []) if "reward" in s]
+    assert rh_skip == []
+
+
+def test_set_imagination_aux_used_in_step():
+    """Cached aux reaches step when kwargs omitted."""
+    m = _tiny_model()
+    z = m.encode(_obs())
+    a = np.array([0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+    g = np.array([5.0, 0.0, 0.0, 5.0], dtype=np.float32)
+    v = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    m.set_imagination_aux(g, v)
+    p_cached = m.step(z, a).progress
+    p_explicit = m.step(z, a, goal_rel=g, body_vel=v).progress
+    assert np.isfinite(p_cached) and p_cached == pytest.approx(p_explicit)
+
+
 def test_torch_encode_differs_from_stub_proprio4():
     """Deploy encode must not be stub proprio4 passthrough when kind=torch."""
     from experiments.aerial.rl.dynamics import StubLatentDynamics
