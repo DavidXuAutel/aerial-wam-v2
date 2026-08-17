@@ -10,7 +10,8 @@
 
 **Goal+z0 track done — merge FAIL（① −8.74 / ④ PASS）** — goal inject + headon RGB z0 fixed train conditioning (goal_rel 0→3.05) but ① **regressed** vs RH-only (−3.17→−8.74); ④ still beats remeasured v1 (0.000 vs 0.429).  
 Prior V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）.  
-`enable_policy_update` **仍 false**。
+`enable_policy_update` **仍 false**。  
+**Governance**：2026-08-17 frozen `n_eval_episodes=8`；V4 `n<8` → `authoritative=false`（洞 1 已关）。
 
 ---
 

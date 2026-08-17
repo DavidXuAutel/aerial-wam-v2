@@ -63,8 +63,8 @@ def _emit(obj: Dict[str, Any], path: Optional[str]) -> None:
 
 def _self_check() -> int:
     s1 = metrics.check_progress_vs_heuristic(
-        actor_progress_sums=[12.0, 11.0, 13.0],
-        heuristic_progress_sums=[10.0, 9.0, 10.0],
+        actor_progress_sums=[12.0] * 8,
+        heuristic_progress_sums=[10.0] * 8,
         delta_p=0.10,
     )
     s4 = metrics.check_safety_no_regression(

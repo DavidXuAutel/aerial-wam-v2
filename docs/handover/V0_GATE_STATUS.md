@@ -10,7 +10,7 @@
 
 ## 1. 一句话结论(2026-08-14)
 
-**✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ n=8(<16, scan 仅 10/16 accepted); ④ `before=1.0` 合法空过(`n_contact=0`), ratio=0.113。
+**✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ **n=8**（现已与 frozen §4.1 对齐，re-freeze 2026-08-17）；④ `before=1.0` 合法空过(`n_contact=0`), ratio=0.113。
 
 ---
 
@@ -20,9 +20,9 @@
 |---|---|---|---|
 | **①a–c** | loss↓≥2% / recon 不劣 / min entropy-frac ≥0.10 | ✅ **r60 clean WM 训练 PASS**(H100 2026-08-14): loss 3.87→1.96 / recon 0.065→0.021 / min_ent 0.47; `wm_train_meta.json` **authoritative=true**; ✅ **partial emit PASS** → `v0_partial_1_r60_20260814.json` | **无 —— partial 已落盘**(H100 2026-08-14) |
 | **①d** | AbsRel ≤0.30 | ✅ head A 0.132(代表)/0.167(approach OOD);✅ **head B local 0.0483**(晚⁷);✅ **r60 ft-head holdout 0.0641**(同上 partial 1) | **无 —— r60 ckpt 已在 partial 1 通过** |
-| **②** | N=16;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ **r60 merge PASS**(H100 2026-08-14): progress **13.49** vs random **−4.30**; final_dist **16.54** vs **34.12**; **n=8** | **无 —— partial 24 + merge 已 PASS** |
+| **②** | N=**8**;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ **r60 merge PASS**(H100 2026-08-14): progress **13.49** vs random **−4.30**; final_dist **16.54** vs **34.12**; **n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze） |
 | **③** | reproj median 相对误差 ≤0.25;有效窗 ≥8 | ✅ head A 0.05–0.12(余量对 0.25 不宽);✅ **r60 ft-head median 0.212 / n=90**(H100 2026-08-14) | **无 —— partial 3 已落盘** |
-| **④** | before ≥0.50;ratio ≤0.80 | ✅ **r60 merge PASS**: ratio **0.113**; before **1.0**(空过,n_contact=0); **n=8** | **无 —— partial 24 + merge 已 PASS** |
+| **④** | before ≥0.50;ratio ≤0.80 | ✅ **r60 merge PASS**: ratio **0.113**; before **1.0**(空过,n_contact=0); **n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze；④b 空过仍见洞 2） |
 
 ### 2.1 核心 gap:head 一致性
 
@@ -127,12 +127,18 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 ---
 
-## 4. n=16 的处置(用户拍板 2026-08-12)
+## 4. n re-freeze（用户拍板 2026-08-17：`n=8`）
 
-**不再追 scan 喂满 16** —— 理由:"如果非要做就会出现之前的 harness bug"(晚⁸–晚¹⁴ 那一串 probe/scan/spawn-collision 几何 bug)。
+**已收口。** frozen spec §4.1 ②a `n_eval_episodes`：**16 → 8**。
 
-**治理收口(必须做,否则踩红线)**:`n_eval_episodes: 16` 是 §4.1 **冻结值**。静默用 n<16 跑 = 悄悄弱化 gate = gaming。干净做法 = **一次 re-freeze**,把 n 降到实测可达值(历史实测 ②n=9~12 / ④n=7),理由写明"scan 喂满 16 不可达,强做必重引 harness 几何 bug"。
-状态:**待用户定 n 值** → 然后改 frozen spec §4.1 + RUNBOOK §8 记一笔。
+| 项 | 值 |
+|---|---|
+| 冻结值 | **8**（V0 ②④ / V1-① / V4-① 下限） |
+| 理由 | r60 scan 喂满 16 不可达；强做必重引晚⁸–晚¹⁴ harness 几何 bug |
+| 代码 | `v0_metrics.n_eval_episodes=8`；V4 `n<8` → `authoritative=false`，merge 拒收 |
+| 历史 | 2026-08-12 曾「待用户定 n」；2026-08-14 在 n=8 上 merge/翻 flags（当时相对旧冻结值 16 为越界）→ 本次文书 re-freeze 把第一真相源对齐到已发生的权威跑 |
+
+**不再追 scan 喂满 16。**
 
 ---
 
@@ -146,6 +152,7 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 ## 6. 变更记录
 
+- **2026-08-17** — **n re-freeze 收口**：frozen §4.1 `n_eval_episodes` 16→**8**（用户拍板）；V4 `n<8` 非权威。洞 1 关闭。防误读注 / 悬空引用 / §3.5 4090 冲突见同日更早条目；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
 - **2026-08-17** — 防误读：header 标明「8/12 Step-6 / merge 从未 exit 0」类备忘≠现状；§3.2 悬空引用结案为不存在；新增 §3.5 4090 双 runbook 冲突；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
 - **2026-08-15** — V0 合拢后文档同步 + V1/V4 设计：新增 [V1/V4 设计](../design/2026-08-15-v1-v4-design.md)、[V1_GATE_STATUS.md](V1_GATE_STATUS.md)；更新 `PROJECT_STATUS.md` / `RUNBOOK_v0.md` / `README.md`。
 - **2026-08-14(晚⁴)** —— **V0 GATE 合拢 + flags 翻转**:

@@ -24,7 +24,7 @@ class V0GateThresholds:
     collapse_entropy_frac: float = 0.10
     depth_absrel_max: float = 0.30
     # ② progress vs random
-    n_eval_episodes: int = 16
+    n_eval_episodes: int = 8
     progress_margin: float = 5.0
     dist_margin_m: float = 3.0
     # ③ scale

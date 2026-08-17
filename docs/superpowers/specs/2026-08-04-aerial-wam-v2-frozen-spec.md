@@ -112,9 +112,11 @@ connected ∧ real_rgb ∧ imu ∧ (baro∨gps) ∧ collision ∧ depth ∧ dept
 | ①b | `recon_non_worse` | last10% recon ≤ first10% recon | RGB recon；深度头接入后另计 ①d |
 | ①c | `min_post_entropy_frac` | ≥ **`collapse_entropy_frac`**（默认 **0.10**） | 训练全程 min |
 | ①d | `depth_absrel_max` | holdout median AbsRel ≤ **0.30** | 仅当 depth 头与 GT depth 语料存在；否则 ①d=SKIP（整门 FAIL——V0 需要深度柱） |
-| ②a | `n_eval_episodes` | **16** | 与 annotation 起点对齐；seed=0 |
+| ②a | `n_eval_episodes` | **8** | 与 annotation 起点对齐；seed=0；**re-freeze 2026-08-17**（原 16；见下 n 注） |
 | ②b | `progress_margin` | mean(progress_sum_policy) ≥ mean(progress_sum_random) + **5.0** | 同起点；随机动作为 `U(-1,1)` clip 到 body_delta_limits |
 | ②c | `dist_margin_m` | mean(final_dist_policy) ≤ mean(final_dist_random) − **3.0** | ②b ∨ ②c 任一即可过 ② |
+
+**n re-freeze（2026-08-17；用户拍板 `n=8`）**：原 ②a `n_eval_episodes=16`。r60 权威 ②④ 实跑 **n=8**（scan 仅 10/16 accepted），V1-① / V4-① 草案已对齐 8。强行 scan 喂满 16 会重引晚⁸–晚¹⁴ harness 几何 bug（probe/scan/spawn-collision）。**修订**：冻结值改为 **8**；`v0_metrics.V0GateThresholds.n_eval_episodes` 默认同改。**V4 下限**：rollout 评测 `n < 8` → 该信号 `authoritative=false`，不得单独支撑 merge PASS。不改 ②b/②c 数值阈值。落点：本文 §4.1 · `v0_metrics.py` · `v4_metrics.py` · `docs/handover/V0_GATE_STATUS.md` §4。
 | ③a | `min_motion_m` | 窗内 ‖Δp‖ ≥ **0.5** m 才计入 | 静止窗不参与尺度比 |
 | ③b | `scale_rel_err_max` | median |Zpred − Zobs| / Zobs ≤ **0.25** | 2026-08-10：`vio.reproject_scale_error`（重投影，取代 band-median `scale_relative_error`）；阈值不变 |
 | ③c | `scale_depth_band_m` | **[1.0, 40.0]** m | 2026-08-05 定；2026-08-10 band 敏感性证明为 domain-of-interest 掩码而非偏置源（GT-oracle 在 40/80/200/∞ 恒≈0.002），冻结 [1,40]（D̂ 最坏档仍 0.122 PASS） |
@@ -222,3 +224,4 @@ Shield 对照协议：默认 yaml 保持 `safety.kind: null`；`_v0_gate --shiel
 *修订 2026-08-05（③ 协议）：钉死导航带 [1,40] m、heading-forward `fwd_cos_min=0.7`、approach-support `scale_support_ratio=0.6`、`min_scale_windows=8`；**不改** `scale_rel_err_max=0.25`。依据 `--signal3-diagnose`：旧 full-frame median + world-+x 采样在开阔地平线/贴墙平行上使 GT oracle 亦不可达；0.6 使 GT oracle 在 resize 语料上可达（med≈0.21），从而把失败归因到 D̂。*
 *修订 2026-08-10（③ 估计器）：band-median → 重投影 `vio.reproject_scale_error`（GT-oracle 0.26→0.002，canonical D̂ 0.122 PASS，5 语料佐证 + band 扫描）；band 冻结 [1,40]；`scale_support_ratio` 降级采样器专用；**不改** `scale_rel_err_max=0.25` / `depth_absrel_max=0.30`。*
 *修订 2026-08-10（①d 深度骨干）：§3 `D̂_t,σ_t` 落点加 `DA3DepthHead`（DA3METRIC-LARGE 冻结 DINOv2-ViT-L + 可训 DPT）作 `_DepthHead` 之外的 `build_depth_head` 分派后端，仅加固 ①d 薄/失败余量（代表性 0.281 / approach 0.31 → 目标 0.1x）；§6 加 Step 5 深度骨干子选项，§9 加 vendored `third_party/depth_anything_3/` + `DA3DepthHead`/`build_depth_head` + `--backbone da3`。**接口语义、gate 数学、③ 估计器均不变；不改** `depth_absrel_max=0.30` / `scale_rel_err_max=0.25`。DA3 仅动 ①d，不动 ③。依据 `docs/handover/2026-08-10-da3-depth-backbone.md`。*
+*修订 2026-08-17（②a n）：`n_eval_episodes` **16→8**；理由见上「n re-freeze」注。不改 ②b/②c / ④ / ① 阈值。*

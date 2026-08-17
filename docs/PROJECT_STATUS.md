@@ -51,7 +51,7 @@
 | WM | `wm_ckpt_r60_20260814/wm_step_5000.pt` |
 | Merge | `v0_gate_r60_20260814.json` |
 
-**开放**：§4.1 `n_eval_episodes=16` vs 实测 n=8 — 待 re-freeze（见 `V0_GATE_STATUS.md` §4）。
+**开放（洞 2/3，非 n）**：④b 空过；V1-② `coll_ok=null` 待增采。~~§4.1 n=16 vs 8~~ → **已 re-freeze 为 8**（2026-08-17）。
 
 ---
 
@@ -150,8 +150,10 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | ~~**V1a-2**~~ | ✅ `kind=torch` + `enable_wm_update=true` + corrector smoke |
 | **V1b** | τ + 想象规划 + `DepthTauShield` + `_v1_gate` — **merge PASS（严谨）**；部署 flip FOE yaml 待人工 |
 | **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
-| **n re-freeze** | `n_eval_episodes` 8 vs 16（V0 遗留） |
-| **V4** | V1b PASS 后：DreamerV3 λ-return AC + `enable_policy_update` |
+| **n re-freeze** | ✅ **关闭**（2026-08-17）：frozen `n_eval_episodes=8` |
+| **洞 2 ④b 空过** | 合法空过；无接触集时 before=1.0 |
+| **洞 3 V1-② coll N/A** | 可选增采 pos≥3 |
+| **V4** | 进行中（goal+z0）；`enable_policy_update` 仍 false |
 
 ---
 

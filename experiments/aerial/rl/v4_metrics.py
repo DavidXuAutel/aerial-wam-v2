@@ -9,7 +9,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class V4GateThresholds:
-    """Re-freeze draft (V4-MVP design §4)."""
+    """Aligned with frozen spec §4.1 n re-freeze 2026-08-17 (n=8 floor)."""
 
     progress_delta_p: float = 0.10
     near_coll_rate_ratio_max: float = 0.80
@@ -40,15 +40,24 @@ def check_progress_vs_heuristic(
             "mean_progress_heuristic": mean_heur,
         }
     target = mean_heur * (1.0 + float(delta_p))
+    n = int(min(ap.size, hp.size))
     ok = bool(np.isfinite(mean_actor) and mean_actor >= target)
+    n_floor = int(DEFAULT_V4_THRESHOLDS.n_eval_episodes)
+    authoritative = bool(n >= n_floor)
     return {
         "ok": ok,
         "mean_progress_actor": mean_actor,
         "mean_progress_heuristic": mean_heur,
         "target_min": target,
         "delta_p": float(delta_p),
-        "n": int(min(ap.size, hp.size)),
-        "authoritative": True,
+        "n": n,
+        "n_floor": n_floor,
+        "authoritative": authoritative,
+        **(
+            {}
+            if authoritative
+            else {"reason": f"n={n} < frozen floor {n_floor} (non-authoritative)"}
+        ),
     }
 
 
@@ -99,10 +108,20 @@ def aggregate_v4_verdict(results: Mapping[str, Mapping[str, Any]]) -> Dict[str, 
             "reason": f"signals {bad_type} have a non-bool 'ok'",
         }
     passed = {k: results[k].get("ok") is True for k in keys}
-    overall_ok = all(passed.values())
-    return {
+    # Frozen §4.1 n floor (2026-08-17): n<8 on ① → non-authoritative, cannot merge PASS.
+    non_auth = [
+        k
+        for k in keys
+        if results[k].get("authoritative") is False
+    ]
+    overall_ok = all(passed.values()) and not non_auth
+    out: Dict[str, Any] = {
         "ok": overall_ok,
         "passed": passed,
         "thresholds": asdict(DEFAULT_V4_THRESHOLDS),
         "details": dict(results),
     }
+    if non_auth:
+        out["reason"] = f"signals {non_auth} non-authoritative (n below frozen floor)"
+        out["non_authoritative"] = non_auth
+    return out
