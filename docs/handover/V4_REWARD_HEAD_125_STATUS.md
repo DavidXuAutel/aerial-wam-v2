@@ -59,7 +59,7 @@ Artifacts: `experiments/aerial/rl/artifacts/v4_gate_r60_20260816_wm_rh/v4_gate_r
 
 RH fix + imagine aux resolved the garbage-reward regression; ① still needs stronger AC / longer train (mock-collector AC vs real 4090 deploy gap).
 
-**Follow-on (2026-08-17)**: goal + z0 alignment track — see `docs/handover/V4_GOAL_Z0_125_PROMPT.md` / `V4_GOAL_Z0_125_STATUS.md` (diagnose goal_rel≈0 under mock+null → inject goals / real RGB z0 → re-gate). This reward-head track stays **done**.
+**Follow-on (2026-08-17)**: goal + z0 alignment track — see `docs/handover/V4_GOAL_Z0_125_STATUS.md`. Result: goal inject + RGB z0 fixed train conditioning but ① regressed (−3.17→−8.74); ④ PASS. Phase 4 escalations deferred. This reward-head track stays **done**.
 
 ## enable_policy_update
 **false** in `configs/aerial_rl.yaml` (verified post-run).

@@ -8,8 +8,8 @@
 
 ## 1. 一句话结论（2026-08-17）
 
-**Next track: goal + z0 alignment on 125** — see `V4_GOAL_Z0_125_STATUS.md` (diagnose goal-less mock → inject goals / real RGB z0 → re-gate).  
-**Prior V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）** — RH finetune + imagine aux fixed garbage progress (−68.88→−3.17); ④ beats remeasured v1 (0.143 vs 0.25). ① still below heur×1.10.  
+**Goal+z0 track done — merge FAIL（① −8.74 / ④ PASS）** — goal inject + headon RGB z0 fixed train conditioning (goal_rel 0→3.05) but ① **regressed** vs RH-only (−3.17→−8.74); ④ still beats remeasured v1 (0.000 vs 0.429).  
+Prior V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）.  
 `enable_policy_update` **仍 false**。
 
 ---
@@ -27,7 +27,7 @@
 | M5 | 4090 ①④ eval (stub) | ❌ merge FAIL — ① −13.54 vs heur 9.71; ④ PASS |
 | M5b | 4090 ①④ re-gate (torch WM, legacy RH) | ❌ merge FAIL — ① −68.88; ④ v4_hard 0.143 vs v1 0.00 |
 | M5c | reward-head finetune + AC `*_wm_rh` + re-gate | ❌ merge FAIL — ① −3.17 vs heur 7.44; ④ **PASS** (0.143 vs v1 0.25) |
-| M5d | goal inject + real RGB z0 + re-gate | ⏳ in progress — `V4_GOAL_Z0_125_*` |
+| M5d | goal inject + real RGB z0 + re-gate | ❌ merge FAIL — ① −8.74 vs heur 8.42; ④ **PASS** (0.000 vs v1 0.429) |
 | M6 | flip yaml | **禁止**（merge 未 PASS） |
 
 ---
@@ -40,11 +40,21 @@
 - **2026-08-16(M5)** — 125 4090 rollout (stub encode): ① FAIL / ④ PASS; yaml 未翻。
 - **2026-08-16(encode-train)** — Align train+deploy to torch WM encode; H100 300 iters; re-gate `v4_gate_r60_20260816_wm`: ① FAIL, ④ FAIL; merge FAIL; yaml 未翻.
 - **2026-08-16(reward-head)** — M5c done: RH finetune 1000 steps (`wm_ckpt_r60_rh_20260816`); AC 300 iters; re-gate `v4_gate_r60_20260816_wm_rh`: ① FAIL, ④ PASS; merge FAIL; yaml 未翻.
-- **2026-08-17(goal+z0)** — M5d started: diagnose mock goal_rel≈0; inject goals / RGB z0; re-gate planned `v4_gate_r60_20260817_wm_rh_goal`; yaml 未翻.
+- **2026-08-17(goal+z0)** — M5d done: goal inject + headon RGB z0 AC 300 iters (`v4_ac_ckpt_20260817_wm_rh_goal_rgb`); re-gate `v4_gate_r60_20260817_wm_rh_goal`: ① FAIL (−8.74), ④ PASS; merge FAIL; yaml 未翻.
 
 ---
 
-## 4. Latest gate numbers (reward-head WM, 2026-08-16)
+## 4. Latest gate numbers (goal+RGB z0, 2026-08-17)
+
+| Signal | Criterion | Result | Numbers |
+|---|---|---|---|
+| **V4-①** | actor ≥ heur × 1.10 | ❌ | actor_mean **−8.74** vs heur **8.42** (target **9.26**); n=7 |
+| **V4-④** | v4_hard ≤ v1_hard | ✅ | v4_hard **0.000** vs v1 **0.429** (remeasured same starts) |
+| **Merge** | both pass | ❌ | `ok=false` `{1: false, 4: true}` |
+
+Artifacts: `experiments/aerial/rl/artifacts/v4_gate_r60_20260817_wm_rh_goal/v4_gate_r60_20260816.json`
+
+### Prior (reward-head WM, 2026-08-16 — superseded)
 
 | Signal | Criterion | Result | Numbers |
 |---|---|---|---|
