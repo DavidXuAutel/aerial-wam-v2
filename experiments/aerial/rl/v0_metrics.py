@@ -282,8 +282,16 @@ def check_shield_effectiveness(
         before.append(first_i < first_c)
     if before:
         before_frac = float(np.mean(before))
+        before_vacuous = False
+        before_ok: Optional[bool] = bool(
+            before_frac >= thr.intervention_before_contact_min
+        )
     else:
-        before_frac = 1.0  # no contacts → vacuously OK on this sub-metric
+        # n_contact=0: ④b not measured. Terminal methodology (frozen §4.1
+        # re-freeze 2026-08-17 hole 2): vacuous, ④ overall rides on ④c.
+        before_frac = 1.0
+        before_vacuous = True
+        before_ok = None
 
     def _rate(episodes: Sequence[Sequence[bool]]) -> float:
         total = sum(len(e) for e in episodes)
@@ -301,11 +309,14 @@ def check_shield_effectiveness(
         ratio = rate_on / rate_off
         ratio_ok = ratio <= thr.near_coll_rate_ratio_max
 
-    before_ok = before_frac >= thr.intervention_before_contact_min
+    # Vacuous ④b (n_contact=0) does not fail ④; ④c must still pass.
+    overall_ok = bool((before_ok is not False) and ratio_ok)
     return {
-        "ok": bool(before_ok and ratio_ok),
+        "ok": overall_ok,
         "intervention_before_contact_frac": before_frac,
         "before_ok": before_ok,
+        "before_vacuous": before_vacuous,
+        "before_measured": not before_vacuous,
         "near_coll_rate_on": rate_on,
         "near_coll_rate_off": rate_off,
         "near_coll_rate_ratio": ratio,

@@ -79,6 +79,7 @@ def check_wm_fidelity(
         "latent_ok": latent_ok,
         "coll_ok": coll_ok,
         "coll_insufficient": coll_insufficient,
+        "coll_claimed": coll_ok is not None,
     }
     if latent_norm_max is not None:
         out["latent_norm_max"] = latent_norm_max

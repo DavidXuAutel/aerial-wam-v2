@@ -94,9 +94,9 @@ connected ∧ real_rgb ∧ imu ∧ (baro∨gps) ∧ collision ∧ depth ∧ dept
 | 信号 | 度量 | 复用 | 过关条件（摘要；细则 §4.1） |
 |---|---|---|---|
 | ① 非塌缩 | 训练曲线 + 深度重建见证 | `_wm_train_validate._check_learning`、`post_entropy_frac`、`loss_recon` | loss↓≥2%；recon 不劣化；min entropy-frac ≥ `collapse_entropy_frac`（默认 0.10）；深度 AbsRel 有界 |
-| ② 接近量上升 | sim rollout progress-vs-random | `NavigationReward.progress`、同起点对照 | N=16；mean progress_sum 优于随机 +5.0 **或** mean 终点距优于随机 ≥3.0 m |
+| ② 接近量上升 | sim rollout progress-vs-random | `NavigationReward.progress`、同起点对照 | N=**8**（re-freeze 2026-08-17）；mean progress_sum 优于随机 +5.0 **或** mean 终点距优于随机 ≥3.0 m |
 | ③ D̂ 尺度与 VIO 一致 | 相对尺度误差 | `vio.reproject_scale_error` | 运动窗上 median 相对误差 ≤ 0.25 |
-| ④ 简单近障生效 | shield-on vs shield-off | `ThresholdSafetyShield`、`CollectStats.interventions` | 干预先于接触 ≥50%；近碰撞率 ≤ shield-off 的 80% |
+| ④ 简单近障生效 | shield-on vs shield-off | `ThresholdSafetyShield`、`CollectStats.interventions` | ④c 近碰撞率 ≤ shield-off 的 80%；④b 干预先于接触 ≥50%（`n_contact=0` 时 ④b 为 N/A，④=④c，见下空过终态注） |
 
 **④ 的接线**：`collector.py` 须在调 `safety.should_override` **之前**由深度头产出 `depth_min_pred`（今天两者皆空）。**评测期**用 CLI/`_v0_gate` 临时 `safety.kind=threshold` 跑 shield-on/off 对照，**不**改默认 `configs/aerial_rl.yaml` 直到四信号全过。
 
@@ -126,6 +126,8 @@ connected ∧ real_rgb ∧ imu ∧ (baro∨gps) ∧ collision ∧ depth ∧ dept
 | ④a | `near_collision_depth_m` | GT `depth_min` < **1.5** m | 度量钉死 1.5;shield 触发 `min_depth_m` = 度量 + 反应余量（默认 **3.0 m**），见下 ④ 反应余量注（re-freeze 2026-08-11） |
 | ④b | `intervention_before_contact_min` | **≥ 0.50** | 在最终 `collided` 的 episode 中，首次 intervention 步号 < 首次 contact 步号 的比例 |
 | ④c | `near_coll_rate_ratio_max` | shield-on / shield-off ≤ **0.80** | near_coll 帧占比；同 N、同起点；**仅评测 CLI 开罩** |
+
+**④b 空过终态（re-freeze 2026-08-17 hole 2；不改 ④b 0.50 / ④c 0.80）**：3.0 m 反应余量 + 有效 shield 可使评测集 **`n_contact=0`**。此时 ④b **未被测量**（不是「干预先于接触 ≥0.50」的实证）。**接受为终态**：`before_ok=null`、`before_vacuous=true`；④ overall = **仅 ④c**（须 `ratio_ok`）。`intervention_before_contact_frac` 仍 emit 1.0 以兼容旧 JSON，但不得解读为测得的 before 比例。若将来要主张 ④b 实证，须另造 **有接触对照集**（降 trigger 或 shield-off 专测），不在本 re-freeze 范围。落点：`v0_metrics.check_shield_effectiveness`。
 
 **④ 反应余量注（re-freeze 2026-08-11；不改 ④a 钉死度量 1.5 / ④b 0.50 / ④c 0.80）**：原 ④a 协议注要求 `ThresholdSafetyShield.min_depth_m` 与近碰撞度量 1.5 m **对齐**。实测（`dataset_v0_approach_20260805`，DA3 深度头 approach AbsRel≈0.167，accepted=12）证明该对齐使 ④ **结构性不可过**——预测器在 1.5 m 边界处偏乐观（d̂ 读得比 GT 远）：(i) "退到 `safe_depth` 再悬停"把机体停在 GT<1.5 带内 → `near_coll_rate_on`(0.205) ≫ `off`(0.034)、**ratio 反转 6.10**；(ii) 约半数过边界时 d̂ 仍 >1.5 → 触发晚一拍、前一步已前冲进碰撞 → 干预晚于接触，**before_frac=0.333**。**修订**：(a) shield latch 后**连续后退**（`override_action` 去掉 hover-at-safe 分支，每步 body −x），机体单调退带 → ratio 稳过；(b) shield **触发 `min_depth_m` 提到 3.0 m**（> 度量 1.5，作反应余量），提前于进带反应 → 不进带、零碰撞 → `before_frac` 空过（`check_shield_effectiveness` 无碰撞集 → 1.0）。**度量端 `near_collision_depth_m=1.5` 与 ④b/④c 钉死值不动**；改的只是 shield 触发/后退**行为**（shield 是被测系统，反应余量属其设计参数，非 gate 阈值）。起点前向深度最小 5.578 m > 3.0 m，余量不误触发起点。落点：`safety.py::ThresholdSafetyShield`（`min_depth_m=3.0` 默认、连续后退）· `v0_rollout_eval.run_shield_eval(shield_trigger_depth_m=3.0)`（与 metric 掩码解耦）· `train_rl._build_safety`（live 默认 3.0）。理由：④b「干预先于接触」在噪声预测器下，对"恰好边界反应"数学不可满足，反应余量为必需而非调参偏好。
 
@@ -225,3 +227,4 @@ Shield 对照协议：默认 yaml 保持 `safety.kind: null`；`_v0_gate --shiel
 *修订 2026-08-10（③ 估计器）：band-median → 重投影 `vio.reproject_scale_error`（GT-oracle 0.26→0.002，canonical D̂ 0.122 PASS，5 语料佐证 + band 扫描）；band 冻结 [1,40]；`scale_support_ratio` 降级采样器专用；**不改** `scale_rel_err_max=0.25` / `depth_absrel_max=0.30`。*
 *修订 2026-08-10（①d 深度骨干）：§3 `D̂_t,σ_t` 落点加 `DA3DepthHead`（DA3METRIC-LARGE 冻结 DINOv2-ViT-L + 可训 DPT）作 `_DepthHead` 之外的 `build_depth_head` 分派后端，仅加固 ①d 薄/失败余量（代表性 0.281 / approach 0.31 → 目标 0.1x）；§6 加 Step 5 深度骨干子选项，§9 加 vendored `third_party/depth_anything_3/` + `DA3DepthHead`/`build_depth_head` + `--backbone da3`。**接口语义、gate 数学、③ 估计器均不变；不改** `depth_absrel_max=0.30` / `scale_rel_err_max=0.25`。DA3 仅动 ①d，不动 ③。依据 `docs/handover/2026-08-10-da3-depth-backbone.md`。*
 *修订 2026-08-17（②a n）：`n_eval_episodes` **16→8**；理由见上「n re-freeze」注。不改 ②b/②c / ④ / ① 阈值。*
+*修订 2026-08-17（④b 空过终态）：`n_contact=0` 时 ④b 为 N/A（`before_vacuous`），④ 以 ④c 为实证；不改 ④b 0.50 / ④c 0.80。*

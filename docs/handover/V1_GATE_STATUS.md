@@ -15,7 +15,7 @@
 | Mac / 125 bare / H100 | `86dd457`+（① 拒 tied-zero；晚¹⁵ 实测后文档提交） |
 
 **yaml 已 flip**（`tau_predictor.kind=foe_calibrated`；`planner.enable`/`enable_policy_update` 仍 false）。  
-**下一步**：[V4-MVP](../superpowers/specs/2026-08-16-v4-mvp-design.md) — V4 scaffold M1–M4 完成，见 [V4_GATE_STATUS](V4_GATE_STATUS.md)。
+**下一步**：[V4-MVP](../superpowers/specs/2026-08-16-v4-mvp-design.md) — V4 scaffold M1–M4 完成，见 [V4_GATE_STATUS](V4_GATE_STATUS.md)。②-coll 为独立诊断（§4.1），**不是** merge 重写。
 
 产物（H100）：
 
@@ -31,7 +31,7 @@
 | 信号 | 判据 | 结果 |
 |---|---|---|
 | **V1-①** | `v0>0` 且 `v1 ≤ 0.8×v0`；V1=`foe_calibrated`；trigger=1.5 | ✅ **auth PASS** — `delta_reduction`；hard **v0=0.75 → v1=0.50**（target≤0.60）；off_hard=1.0 |
-| **V1-②** | honest held-out；beat≥0.80；coll N/A if pos&lt;3 | ✅ PASS — goalvel beat=**0.93**；`coll_ok=null`（pos=1，不足 3）；done/recon/latent OK |
+| **V1-②** | honest held-out；beat≥0.80；coll N/A if pos&lt;3 | ✅ **progress PASS** — goalvel beat=**0.93**；merge `coll_ok=null`（pos=1）；②-coll **诊断**另账（§4.1：pos=5 / AUROC 0.972） |
 | **V1-③** | FOE+D̂；both_fail≤0.20；τ MAE≤2；**V0 ③ reproj≤0.25 同 ckpt** | ✅ auth PASS — both_fail=0.0013；MAE=0.935；`v0_reproj_evidence.median=0.212`（`v0_partial_3_r60_20260814.json`） |
 
 ### 软过 → 严谨（晚¹⁵）
@@ -48,7 +48,7 @@
 
 - [x] V1a / 严谨 ① δ / ② honest / ③ Phase 2 auth + **merge**
 - [x] **人工**：yaml `tau_predictor.kind=foe_calibrated` + `ckpt=.../tau_foe_calibrator.pt` (**flipped 2026-08-15 on 125**)
-- [ ] **可选**：增采含碰撞 held-out（使 ② `coll_traj_pos≥3` 可评 AUROC）；P0b cones；V4
+- [x] **洞 3 定义 + 诊断测量**：②-coll 为**独立诊断**（不改 08-15 merge）。headon coll=**0** 不能当 OOD。r60 `--n-starts 4` → `coll_traj_pos=5`、AUROC=0.972 → 按窗数主张诊断 PASS（`coll_claimed=true`）。unique held-out collision **episodes**=2。P0b / V4 仍开。
 
 ---
 
@@ -73,8 +73,52 @@
 | ckpt | `wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt` |
 | meta | `heldout_frac=0.25`，train eps=**36**/48，`authoritative=true` |
 | fidelity | held-out 12 ep；beat=**0.933**；latent_norm_max=21.3 |
-| coll | pos=**1** → N/A；log AUROC=0.909 仅诊断 |
-| out | `artifacts/v1_fidelity_goalvel_20260815.out` |
+| coll（08-15 merge） | pos=**1** → N/A；`coll_claimed=false`；log AUROC=0.909 仅诊断；**不改写** |
+| **②-coll 诊断（洞 3）** | 见下 §4.1；**不并入** 08-15 merge JSON |
+
+### 4.1 ②-coll 诊断（2026-08-17；不改 08-15 merge）
+
+**定义**：②-progress merge 仍只主张 reward/done/recon/latent；碰撞预测保真是**另开账本**的诊断。`v1_metrics.check_wm_fidelity` 增加 `coll_claimed`（`coll_ok is not None`）。
+
+**语料计数**（`count_dataset_collisions.py`，npz `collided` 含 quarantine）：
+
+| dataset | coll_eps | 能否当 ②-coll |
+|---|---|---|
+| `dataset_v0_headon_20260811` | **0** | **否** — headon-as-OOD 计划失败 |
+| `dataset_v0_local_depth_r60_20260814` | **9**/51（quarantine 3 全是碰撞；usable 6） | 用 **held-out 窗**（下） |
+| `dataset_v0_approach_merged` | 12 | 无 manifest，`_refuse_v0` 风险，未用 |
+| `dataset_v0_depth_near_merged` | 14 | 同上，未用 |
+
+**H100 作业** PID 33709 **已结束**（log `~/aerial-wam-v2/artifacts/v1_coll_fidelity_nstarts4.log`）。`_wm_fidelity_eval` 不 emit JSON；数字从 log 抄录：
+
+| 项 | 值 |
+|---|---|
+| dataset / ckpt | r60；`wm_ckpt_v1_heldout_goalvel_20260815/wm_step_5000.pt` |
+| split | `--heldout-frac 0.25`（12/48 tail；与 train meta `heldout_frac=0.25`、train eps=36 **同切**） |
+| `--horizon` / `--n-starts` | 15 / **4** → 48 windows |
+| `coll_traj_pos` / neg | **5** / 43 |
+| `coll_auroc` | **0.972**（≥0.65） |
+| reward beat / recon / latent | 1.00 / growth_ok / 21.60 |
+| `v1_metrics` wrap | `coll_ok=true`，`coll_claimed=true`，`coll_insufficient=false` |
+
+**泄漏/口径**：usable 碰撞 ep 6 条，train 切到 4 条（idx 14/15/30/31），held-out **2** 条（idx 46/47 = `episode_00049/00050.npz`）。eval 窗只来自 held-out，**无训练集约窗重叠**。`coll_traj_pos=5` 是这 2 条 ep 被 n-starts=4 加密出的**窗**数（规格门槛是窗，不是 unique ep）。若将来要 unique collision ep≥3 的更严主张，需 4090 增采碰撞富集 held-out —— **当前不把 08-15 merge 改成 coll PASS**。
+
+```json
+{
+  "kind": "v1_2_coll_diagnostic",
+  "not_a_merge_rewrite": true,
+  "source_log": "artifacts/v1_coll_fidelity_nstarts4.log",
+  "dataset": "dataset_v0_local_depth_r60_20260814",
+  "heldout_frac": 0.25,
+  "n_starts": 4,
+  "coll_traj_pos": 5,
+  "coll_traj_neg": 43,
+  "coll_auroc": 0.972,
+  "unique_heldout_collision_episodes": 2,
+  "coll_claimed": true,
+  "coll_ok": true
+}
+```
 
 ### ③ auth FOE
 
@@ -118,6 +162,7 @@ python experiments/aerial/scripts/v1_gate_run_partials.py rollout4090 \
 
 ## 6. 变更记录
 
+- **2026-08-17** — **洞 3 收口（定义+诊断）**：②-coll 独立诊断，不改 08-15 merge。headon coll=0 弃用；r60 n-starts=4 → pos=5 / AUROC=0.972 → `coll_claimed=true`（unique held-out collision ep=2）。`v1_metrics.coll_claimed`。
 - **2026-08-15(晚¹⁵)** — **严谨复核**：① 拒 tied-zero 并 δ 重跑 PASS（0.75→0.50）；② `coll_ok` 改 N/A；③ 绑定 V0 reproj 证据；**merge 重出 ok=true**。代码 `86dd457`。
 - **2026-08-15(晚¹⁴)** — Phase 2 FOE；auth ③；曾 merge（① 为 soft tied-zero，后撤销权威性）。
 - **2026-08-15(晚¹³)** — ② goalvel beat=0.93。

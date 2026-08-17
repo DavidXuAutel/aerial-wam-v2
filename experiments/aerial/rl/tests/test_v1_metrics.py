@@ -52,7 +52,43 @@ def test_wm_fidelity_coll_na_when_no_collision_trajs():
     out = v1_metrics.check_wm_fidelity(verdict, agg=agg, recon_growth_ok=True)
     assert out["coll_ok"] is None
     assert out["coll_insufficient"] is True
+    assert out["coll_claimed"] is False
     assert out["ok"] is True
+
+
+def test_wm_fidelity_coll_na_when_pos_one():
+    """08-15 merge shape: pos=1 is diagnostic-only, not a ②-coll claim."""
+    verdict = {
+        "reward_ok": True,
+        "done_ok": True,
+        "recon_growth_ok": True,
+        "coll_ok": True,
+    }
+    agg = {"coll_traj_pos": 1, "coll_auroc": 0.909, "latent_norm_max": 21.3}
+    out = v1_metrics.check_wm_fidelity(verdict, agg=agg, recon_growth_ok=True)
+    assert out["coll_ok"] is None
+    assert out["coll_claimed"] is False
+    assert out["coll_insufficient"] is True
+    assert out["ok"] is True
+
+
+def test_wm_fidelity_coll_claimed_when_pos_ge_3():
+    verdict = {"reward_ok": True, "done_ok": True, "recon_growth_ok": True}
+    agg = {"coll_traj_pos": 5, "coll_auroc": 0.972, "latent_norm_max": 21.6}
+    out = v1_metrics.check_wm_fidelity(verdict, agg=agg, recon_growth_ok=True)
+    assert out["coll_ok"] is True
+    assert out["coll_claimed"] is True
+    assert out["coll_insufficient"] is False
+    assert out["ok"] is True
+
+
+def test_wm_fidelity_coll_claimed_fails_low_auroc():
+    verdict = {"reward_ok": True, "done_ok": True, "recon_growth_ok": True}
+    agg = {"coll_traj_pos": 5, "coll_auroc": 0.50, "latent_norm_max": 19.0}
+    out = v1_metrics.check_wm_fidelity(verdict, agg=agg, recon_growth_ok=True)
+    assert out["coll_ok"] is False
+    assert out["coll_claimed"] is True
+    assert out["ok"] is False
 
 
 def test_wm_fidelity_fails_on_reward():

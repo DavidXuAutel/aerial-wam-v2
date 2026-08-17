@@ -187,8 +187,44 @@ def test_shield_effectiveness():
         thr=thr,
     )
     assert r["ok"]
-    assert r["before_ok"]
+    assert r["before_ok"] is True
+    assert r["before_measured"] is True
     assert r["ratio_ok"]
+
+
+def test_shield_effectiveness_vacuous_before():
+    """n_contact=0 → ④b N/A; ④ still passes on ④c."""
+    r = m.check_shield_effectiveness(
+        interventions_on=[[True, True, False, False]],
+        collided_on=[[False, False, False, False]],
+        near_coll_on=[[False, False, False, False]],
+        near_coll_off=[[True, True, True, False]],
+        thr=m.DEFAULT_THRESHOLDS,
+    )
+    assert r["ok"]
+    assert r["before_ok"] is None
+    assert r["before_vacuous"] is True
+    assert r["before_measured"] is False
+    assert r["n_contact_episodes"] == 0
+    assert r["ratio_ok"]
+    # Backward-compat JSON still emits 1.0; must not be read as a measured ④b.
+    assert r["intervention_before_contact_frac"] == 1.0
+
+
+def test_shield_effectiveness_vacuous_before_still_needs_ratio():
+    """Vacuous ④b must not pass ④ when ④c fails."""
+    r = m.check_shield_effectiveness(
+        interventions_on=[[True, True, False, False]],
+        collided_on=[[False, False, False, False]],
+        near_coll_on=[[True, True, True, False]],
+        near_coll_off=[[True, False, False, False]],
+        thr=m.DEFAULT_THRESHOLDS,
+    )
+    assert r["before_ok"] is None
+    assert r["before_vacuous"] is True
+    assert r["intervention_before_contact_frac"] == 1.0
+    assert r["ratio_ok"] is False
+    assert r["ok"] is False
 
 
 def test_aggregate_requires_all_four():

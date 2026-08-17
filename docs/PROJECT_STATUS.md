@@ -40,7 +40,7 @@
 | **①d** | holdout AbsRel ≤ 0.30 | ✅ **0.0641**（r60 ft-head） |
 | **②** | progress ≥ random+5.0 ∨ final_dist ≤ random−3.0 | ✅ progress **13.49** vs **−4.30**；**n=8** |
 | **③** | reprojection median rel ≤ 0.25；n≥8 | ✅ median **0.212**；n=90 |
-| **④** | before ≥0.50；ratio ≤0.80 | ✅ ratio **0.113**；before=1.0 空过；**n=8** |
+| **④** | ④c ratio ≤0.80（④b 有接触才测） | ✅ ④c ratio **0.113**；④b N/A（`n_contact=0`）；**n=8** |
 
 ### 3.1 r60 部署线（head 已统一）
 
@@ -51,7 +51,8 @@
 | WM | `wm_ckpt_r60_20260814/wm_step_5000.pt` |
 | Merge | `v0_gate_r60_20260814.json` |
 
-**开放（洞 2/3，非 n）**：④b 空过；V1-② `coll_ok=null` 待增采。~~§4.1 n=16 vs 8~~ → **已 re-freeze 为 8**（2026-08-17）。
+**洞 2 ④b**：✅ 关闭（2026-08-17）— 空过为终态，实证=④c。  
+**洞 3 V1-② coll**：✅ 定义关闭 + 诊断已测（r60 n-starts=4，`coll_traj_pos=5` / AUROC 0.972，`coll_claimed=true`）；**不改** 08-15 merge（仍 `coll_ok=null`）。headon coll=0 不可用。~~§4.1 n=16 vs 8~~ → **已 re-freeze 为 8**（2026-08-17）。
 
 ---
 
@@ -79,7 +80,7 @@
 
 ### 4.3 信号 ② — 接近量 vs 随机
 
-在 \(N=16\) 个 rollout episode 上（当前实测 n=9~12，待 re-freeze）：
+在 \(N=8\) 个 rollout episode 上（re-freeze 2026-08-17；原 16）：
 
 \[
 \text{PASS} \iff
@@ -114,8 +115,8 @@ e_w = \frac{|\hat{s}_D - s_{\mathrm{VIO}}|}{\max(s_{\mathrm{VIO}}, \varepsilon)}
 
 | 子信号 | 条件 |
 |---|---|
-| ④b | 接触前干预比例 \(\ge 0.50\)（无接触集 → 合法空过 =1.0） |
-| ④c | \(\mathrm{near\_coll\_rate\_on} / \mathrm{near\_coll\_rate\_off} \le 0.80\) |
+| ④b | 接触前干预比例 \(\ge 0.50\)；`n_contact=0` 时 **N/A**（`before_vacuous`；JSON 仍 emit 1.0 仅兼容，非测得） |
+| ④c | \(\mathrm{near\_coll\_rate\_on} / \mathrm{near\_coll\_rate\_off} \le 0.80\)（④ 实证） |
 
 Shield 触发深度：**3.0 m**（反应余量，re-freeze 注；度量带仍为 1.5 m）。
 
@@ -151,8 +152,8 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **V1b** | τ + 想象规划 + `DepthTauShield` + `_v1_gate` — **merge PASS（严谨）**；部署 flip FOE yaml 待人工 |
 | **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
 | **n re-freeze** | ✅ **关闭**（2026-08-17）：frozen `n_eval_episodes=8` |
-| **洞 2 ④b 空过** | 合法空过；无接触集时 before=1.0 |
-| **洞 3 V1-② coll N/A** | 可选增采 pos≥3 |
+| **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
+| **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 n-starts=4 诊断 `pos=5` / AUROC 0.972（`coll_claimed`）；**不改** 08-15 merge |
 | **V4** | 进行中（goal+z0）；`enable_policy_update` 仍 false |
 
 ---

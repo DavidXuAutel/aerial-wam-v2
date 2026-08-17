@@ -27,8 +27,8 @@
 
 | 文档 | 读什么 |
 |---|---|
-| [`V0_GATE_STATUS.md`](V0_GATE_STATUS.md) | **§1+§2** = V0 权威现状；§3.3 = 旧 ①a–c 失格史；§4 = **n=8 已 re-freeze** |
-| [`V1_GATE_STATUS.md`](V1_GATE_STATUS.md) | V1 三信号严谨 PASS + 部署 flags |
+| [`V0_GATE_STATUS.md`](V0_GATE_STATUS.md) | **§1+§2** = V0 权威现状；§3.3 = 旧 ①a–c 失格史；§4 = **n=8 已 re-freeze**；§4.1 = **④b 空过终态已收口** |
+| [`V1_GATE_STATUS.md`](V1_GATE_STATUS.md) | V1 三信号严谨 PASS + 部署 flags；**§4.1 = ②-coll 独立诊断**（不改 08-15 merge） |
 | [`../../experiments/aerial/RUNBOOK_v0.md`](../../experiments/aerial/RUNBOOK_v0.md) | V0 顶层入口；**§1–§2 现状**；§8 = 变更考古（勿把晚¹⁹ 当今天） |
 | [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) | 项目鸟瞰（若与 V4 活文档冲突，**以 V4_GATE_STATUS 为准**） |
 | [`../design/2026-08-15-v1-v4-design.md`](../design/2026-08-15-v1-v4-design.md) | V1/V4 母本设计 |
@@ -58,6 +58,8 @@
   → 内容只活在 `RUNBOOK_v0.md` §8 晚¹⁹/晚²⁰ 正文。
 - 「`_v0_gate --merge` 从未 exit 0」「仍在 Step 6 合拢」类 8/12 备忘。
 - 「n=8 相对冻结 16 越界」—— **2026-08-17 已 re-freeze，n=8 即冻结值**。
+- 「④b before=1.0 是测得的干预先于接触」—— **否**；`n_contact=0` 时空过终态，④ 实证=④c。
+- 「headon 可作 V1-② coll OOD」—— **否**；headon `coll_eps=0`。
 - `PROJECT_STATUS.md` / `RUNBOOK_v0.md` §1 若仍写「V1 进行中 / V4 未开始」而与 `V4_GATE_STATUS` 冲突时 → **以 V4 活文档为准**（并应回写那两处）。
 
 ---

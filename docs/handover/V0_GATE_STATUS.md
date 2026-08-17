@@ -10,7 +10,7 @@
 
 ## 1. 一句话结论(2026-08-14)
 
-**✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ **n=8**（现已与 frozen §4.1 对齐，re-freeze 2026-08-17）；④ `before=1.0` 合法空过(`n_contact=0`), ratio=0.113。
+**✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ **n=8**（现已与 frozen §4.1 对齐，re-freeze 2026-08-17）。④ **实证=④c** ratio=0.113；④b `n_contact=0` 为终态空过（`before_ok=null` / `before_vacuous=true`；JSON 仍 emit `before=1.0` 仅兼容，**不是**测得的干预先于接触）。
 
 ---
 
@@ -22,7 +22,7 @@
 | **①d** | AbsRel ≤0.30 | ✅ head A 0.132(代表)/0.167(approach OOD);✅ **head B local 0.0483**(晚⁷);✅ **r60 ft-head holdout 0.0641**(同上 partial 1) | **无 —— r60 ckpt 已在 partial 1 通过** |
 | **②** | N=**8**;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ **r60 merge PASS**(H100 2026-08-14): progress **13.49** vs random **−4.30**; final_dist **16.54** vs **34.12**; **n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze） |
 | **③** | reproj median 相对误差 ≤0.25;有效窗 ≥8 | ✅ head A 0.05–0.12(余量对 0.25 不宽);✅ **r60 ft-head median 0.212 / n=90**(H100 2026-08-14) | **无 —— partial 3 已落盘** |
-| **④** | before ≥0.50;ratio ≤0.80 | ✅ **r60 merge PASS**: ratio **0.113**; before **1.0**(空过,n_contact=0); **n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze；④b 空过仍见洞 2） |
+| **④** | ④c ratio ≤0.80；④b ≥0.50 仅当有接触 | ✅ **r60 merge PASS**: ④c ratio **0.113**；④b **N/A**（`n_contact=0`，`before_vacuous`）；JSON `before=1.0` 仅兼容；**n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze；洞 2 空过终态已收口） |
 
 ### 2.1 核心 gap:head 一致性
 
@@ -48,8 +48,8 @@
       - **Gate partial 1(H100)**: `v0_partial_1_r60_20260814.json` — `--signals 1` 含 ①a–c+①d(需 `--dataset`+`--depth-ckpt`), **PASS**
 - [x] **C0. P0a: `predict_cones()` 落地** — Mac @ `27f11a3+`; `depth_geometry.py` + `DepthMinPredictor.predict_cones` 五向净空; **`predict_min()`/collector/safety 未动** → ④ 逐字节不变。单测 7/7 pass。
 - [ ] **C1. P0b: shield 消费侧切到锥** — 在 ④ 重跑前做;会改 ④ 行为 → 需重跑 emit partial
-- [ ] **D. n 的 re-freeze** — 见 §4,待用户定 n 值
-- [x] **E. ②④ 重跑** — ✅ `v0_partial_24_r60_20260814.json` PASS(n=8; ② progress 13.49/−4.30; ④ ratio 0.113, before=1.0 空过)
+- [x] **D. n 的 re-freeze** — ✅ 2026-08-17 用户拍板 **n=8**；见 §4
+- [x] **E. ②④ 重跑** — ✅ `v0_partial_24_r60_20260814.json` PASS(n=8; ② progress 13.49/−4.30; ④c ratio 0.113; ④b N/A 空过)
 - [x] **F. `--merge` 全四 partial JSON** — ✅ **`v0_gate_r60_20260814.json` MERGED PASS exit 0**; flags 已翻
 
 ### 3.1 H100 查证进展(2026-08-12 第一轮已回)
@@ -140,6 +140,10 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 **不再追 scan 喂满 16。**
 
+### 4.1 洞 2：④b 空过终态（2026-08-17）
+
+**已收口（文书 + 指标诚实字段）。** r60 ④ `n_contact=0` → ④b 无测量。frozen §4.1 现写明：此为 **3.0 m 反应余量下的接受终态**；④ 实证在 **④c**；`before_ok=null` / `before_vacuous=true`。不另造接触对照（除非将来要主张 ④b 数字）。
+
 ---
 
 ## 5. 治理红线（V0 已过关；V1/V4 仍适用）
@@ -152,6 +156,7 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 ## 6. 变更记录
 
+- **2026-08-17** — **洞 2 收口**：④b `n_contact=0` 接受为终态（`before_ok=null` / `before_vacuous`）；④ 实证=④c；JSON `frac=1.0` 仅兼容。§3 待办 D 标为已完成（洞 1）。
 - **2026-08-17** — **n re-freeze 收口**：frozen §4.1 `n_eval_episodes` 16→**8**（用户拍板）；V4 `n<8` 非权威。洞 1 关闭。防误读注 / 悬空引用 / §3.5 4090 冲突见同日更早条目；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
 - **2026-08-17** — 防误读：header 标明「8/12 Step-6 / merge 从未 exit 0」类备忘≠现状；§3.2 悬空引用结案为不存在；新增 §3.5 4090 双 runbook 冲突；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
 - **2026-08-15** — V0 合拢后文档同步 + V1/V4 设计：新增 [V1/V4 设计](../design/2026-08-15-v1-v4-design.md)、[V1_GATE_STATUS.md](V1_GATE_STATUS.md)；更新 `PROJECT_STATUS.md` / `RUNBOOK_v0.md` / `README.md`。

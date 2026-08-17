@@ -28,7 +28,7 @@
 | **①d** | 深度 AbsRel ≤0.30 | H100 离线 | ✅ **0.0641** |
 | **②** | 接近量↑ vs random | 4090 sim rollout | ✅ progress 13.49 vs −4.30；**n=8** |
 | **③** | D̂ 尺度（重投影） | H100 离线 | ✅ median **0.212** |
-| **④** | 近障 shield 开/关 | 4090 sim rollout | ✅ ratio **0.113**；before=1.0 空过；**n=8** |
+| **④** | 近障 shield 开/关 | 4090 sim rollout | ✅ ④c ratio **0.113**；④b N/A（`n_contact=0` 空过）；**n=8** |
 
 > 完整路径与 partial JSON 见 [V0_GATE_STATUS.md](docs/handover/V0_GATE_STATUS.md)。②④ rollout-dataset 仍用 `dataset_v0_headon_20260811` 做 obstacle scan。
 
@@ -115,6 +115,7 @@
 
 > 格式:`YYYY-MM-DD —— 改了什么(为什么 / 依据)`。最新在上。
 
+- **2026-08-17** —— **洞 2/3**：④b 空过终态（实证=④c）；V1-② coll 改为独立诊断（headon coll=0 弃用；r60 n-starts=4 pos=5 / AUROC 0.972）。不改 08-15 merge。
 - **2026-08-17** —— **n re-freeze**：frozen §4.1 `n_eval_episodes` **16→8**（用户拍板）；V4 `n<8` → non-authoritative。洞 1 关闭。详见 [V0_GATE_STATUS §4](docs/handover/V0_GATE_STATUS.md)。
 - **2026-08-17** —— 活文档防误读：§1 标明晚¹⁹「merge 从未 exit 0」为 8/12 快照；当前阶段改为 **V4**；文档地图链到 [LIVING_DOCS.md](docs/handover/LIVING_DOCS.md)。
 - **2026-08-15(午) —— V1a 执行完成（H100 `.25`）。**
