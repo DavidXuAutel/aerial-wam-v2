@@ -2,7 +2,9 @@
 
 > **用途**:`_v0_gate --merge` 到底还差什么,一处说清。**每次 gate 相关动作后必须更新本文件**(这是 Claude 会话间遗忘的补丁 —— Mac 侧 artifacts/ 无任何 emit JSON,历史结果全在 H100,不写这里就丢)。
 > **权威性**:阈值以 frozen spec §4.1 为唯一真相源;信号现状以总 RUNBOOK §2 + 本文件为准。本文件**不新建阈值**。
-> **关联**:总 RUNBOOK `experiments/aerial/RUNBOOK_v0.md`(顶层入口 + 文档地图)、方案评估报告 `2026-08-12-v2-plan-risk-assessment.md`。
+> **关联**:总 RUNBOOK [`experiments/aerial/RUNBOOK_v0.md`](../../experiments/aerial/RUNBOOK_v0.md)（顶层入口 + 文档地图）；活文档阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
+>
+> **防误读（2026-08-17）**：若你看到「`_v0_gate --merge` 从未 exit 0 / 四信号 0/4 可 merge / 仍卡在 Step 6 合拢」类备忘 —— 那是 **2026-08-12（晚¹⁹–晚²²）前后** 的诊断快照，**不是现状**。当时论证（✅≠权威 merge、①a–c dt-desync 实质失格、证明力缩水、n&lt;16）多数属实；**2026-08-14 已在同一 r60 ft-head 下 merge PASS**（见 §1）。读现状以 **§1 + §2** 为准；§3.3 / RUNBOOK §8 晚¹⁹–²² 仅作历史。当前主线已过 V0/V1，见 [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md)。
 
 ---
 
@@ -101,13 +103,27 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 **治理**:纯增量旁挂文件。`_v0_gate._signal1abc_from_log` **只 parse `.jsonl`、从不读该文件** → 冻结 §4.1 verdict **逐字节不变**;未动阈值/shield/env/模型/flags。训练前写以便崩溃/中断也留痕。
 **测试**:`tests/test_wm_train_meta.py` 4 例(记录语料并标 authoritative / `--allow-v0-desync` 标 authoritative=False / 缺 manifest 不抛 / 不污染 gate 读的 `.jsonl`);模块级 `importorskip("torch")` 照 `test_dynamics_torch.py:12` 惯例 → Mac 跳过、H100 真跑。**Mac 全套 177 passed / 3 skipped,无回归。**
 
-### 3.2 悬空引用:两个被 RUNBOOK 引用但 Mac 侧不存在的文档
+### 3.2 悬空引用（已确认不存在 — 2026-08-17）
 
-Mac worktree 全盘 `find` 均无:
-- `docs/handover/2026-08-12-v2-plan-risk-assessment.md` —— RUNBOOK §8 晚²⁰ 引用的方案评估报告。**我(Claude)写了 §8 记录却未确认文件落盘**,可能写在别的 worktree 或压根没写成。
-- `docs/handover/2026-08-12-v0-gate-status-and-roadmap.md` —— 晚¹⁹ 声称"状态收敛成的单一权威文档"。
+下列路径在 Mac / 本仓库全盘 `find` **均不存在**（从未落盘或只写在别的 worktree 未合并）。**禁止再当作权威文档链接**：
 
-→ **本文件(V0_GATE_STATUS.md)要治的正是这个病,结果自己也被咬。** 处置:H100 上 `ls` 确认;确实不存在则从 RUNBOOK §8 删除悬空引用(不要留指向空文件的"权威文档"指针)。
+| 悬空路径 | 原引用 | 唯一残留载体 |
+|---|---|---|
+| `docs/handover/2026-08-12-v2-plan-risk-assessment.md` | RUNBOOK §8 晚²⁰ | **RUNBOOK §8 晚²⁰ 正文**（证明力缩水 / 信号3 定义漂移等） |
+| `docs/handover/2026-08-12-v0-gate-status-and-roadmap.md` | 晚¹⁹「单一权威文档」 | **本文件 + RUNBOOK §8 晚¹⁹** |
+
+本文件 header **不再**关联上述空路径。RUNBOOK §8 历史条目可保留日期叙事，但其中文件名视为死链。
+
+### 3.5 4090 文档冲突（仍开放）
+
+两处 handover **对立**，卡在「①a–c / 采集是否在 4090 checkout 代码」：
+
+| 文档 | 说法 |
+|---|---|
+| [`RUNBOOK_sync_and_env.md`](../../experiments/aerial/scripts/RUNBOOK_sync_and_env.md) L13 | 4090「只跑渲染，不 pull 代码」 |
+| [`2026-08-04-v0-4090-local-collect-runbook.md`](2026-08-04-v0-4090-local-collect-runbook.md) | 采集必须在 4090；「禁止 scp 热补丁 → 4090 上 git checkout/pull」 |
+
+**实操（r60）偏向后者**：`~/aerial-wam-v2` + `env_4090.sh` + loopback `:41451`。待办：统一改 sync RUNBOOK 措辞，避免再靠口头推断。
 
 ---
 
@@ -130,6 +146,7 @@ Mac worktree 全盘 `find` 均无:
 
 ## 6. 变更记录
 
+- **2026-08-17** — 防误读：header 标明「8/12 Step-6 / merge 从未 exit 0」类备忘≠现状；§3.2 悬空引用结案为不存在；新增 §3.5 4090 双 runbook 冲突；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
 - **2026-08-15** — V0 合拢后文档同步 + V1/V4 设计：新增 [V1/V4 设计](../design/2026-08-15-v1-v4-design.md)、[V1_GATE_STATUS.md](V1_GATE_STATUS.md)；更新 `PROJECT_STATUS.md` / `RUNBOOK_v0.md` / `README.md`。
 - **2026-08-14(晚⁴)** —— **V0 GATE 合拢 + flags 翻转**:
   1. **②④ rollout PASS**(H100→4090): `v0_partial_24_r60_20260814.json`; scan 10/16 accepted → eval **n=8**; ② progress 13.49 vs −4.30; ④ ratio **0.113**, before=1.0(空过)

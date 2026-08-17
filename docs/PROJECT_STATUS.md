@@ -1,7 +1,8 @@
 # Aerial WAM v2 — 项目现状整理
 
-> **日期**: 2026-08-15（V0 merge PASS 后更新；V1/V4 见 [设计](design/2026-08-15-v1-v4-design.md)）  
-> **代码来源**: `robomaster-tt-control` 分支 `aerial-rl-skeleton` @ `8a063be`  
+> **日期**: 2026-08-17（对齐 V4 活文档；V0 merge 08-14 / V1 merge 08-15）  
+> **阅读顺序**: [handover/LIVING_DOCS.md](handover/LIVING_DOCS.md)  
+> **代码来源**: `aerial-wam-v2` @ `main`（历史分支名 `aerial-rl-skeleton`）  
 > **阈值权威**: [frozen spec §4.1](superpowers/specs/2026-08-04-aerial-wam-v2-frozen-spec.md) — 本文只摘录，不新建第二真相源
 
 ---
@@ -15,19 +16,19 @@
 - `world_model.depth_head.enable: true`
 - `safety.kind: threshold`
 
-**V1（进行中）**：`dynamics.kind=torch` + `enable_wm_update` + τ/想象规划/双通道罩 — 见 [V1/V4 设计](design/2026-08-15-v1-v4-design.md)。
+**V1（已完成 2026-08-15 严谨 merge PASS）**：`dynamics.kind=torch` + `enable_wm_update` + τ/`foe_calibrated` + 双通道罩 — 见 [V1_GATE_STATUS](handover/V1_GATE_STATUS.md)。
 
-**V4（未开始）**：`enable_policy_update` — V1b 过门后才讨论。
+**V4（进行中）**：想象 AC；`enable_policy_update` **仍 false** 直至 V4 merge PASS — 见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md)。
 
-旧 `wm_step_5000.pt` 已判定为单柱 RGB shortcut，**不可 warm-start**。权威 WM：`wm_ckpt_r60_20260814`。
+旧 `wm_step_5000.pt` 已判定为单柱 RGB shortcut，**不可 warm-start**。权威 V0 WM：`wm_ckpt_r60_20260814`；V4 RH 线另有 `wm_ckpt_r60_rh_20260816`。
 
 ---
 
-## 2. 一句话结论（2026-08-15）
+## 2. 一句话结论（2026-08-17）
 
-**✅ V0 四信号已在同一 r60 ft-head + 一次 merge 下合拢 PASS**（`v0_gate_r60_20260814.json`，H100 `.25`）。
-
-**当前阶段：V1 merge PASS（严谨口径，2026-08-15 晚¹⁵）** — ① δ 实证（0.75→0.50）+ ② goalvel 0.93 + ③ FOE auth；yaml `tau_predictor.kind` 未 auto-flip。详见 [V1_GATE_STATUS.md](handover/V1_GATE_STATUS.md)。
+**✅ V0 / V1 均已 merge PASS。**  
+**当前：V4-MVP** — reward-head 后仍 ① FAIL；下一轨 **goal+z0**（[`V4_GOAL_Z0_125_STATUS.md`](handover/V4_GOAL_Z0_125_STATUS.md)）。  
+`enable_policy_update` **仍 false**。
 
 ---
 

@@ -11,7 +11,11 @@
 
 **V0 ✅ 已完成（2026-08-14）**：四信号 merge PASS → `v0_gate_r60_20260814.json`；flags 已翻 `depth_head.enable` + `safety.kind: threshold`。
 
-**当前阶段：V1a ✅（2026-08-15）** — WM validate PASS + `enable_wm_update` 已翻 + corrector smoke `wm=updated`×3。下一步 **V1b**（τ + 想象规划 + 双通道罩）。设计见 [V1/V4 设计](docs/design/2026-08-15-v1-v4-design.md)；进度见 [V1_GATE_STATUS.md](docs/handover/V1_GATE_STATUS.md)。
+**V1 ✅ merge PASS（2026-08-15 严谨口径）** — 见 [V1_GATE_STATUS.md](docs/handover/V1_GATE_STATUS.md)。
+
+**当前阶段：V4-MVP（2026-08-17）** — reward-head 轨后仍 merge FAIL（①）；下一轨 **goal+z0** 见 [V4_GATE_STATUS.md](docs/handover/V4_GATE_STATUS.md) / [V4_GOAL_Z0_125_STATUS.md](docs/handover/V4_GOAL_Z0_125_STATUS.md)。**活文档阅读顺序**：[LIVING_DOCS.md](docs/handover/LIVING_DOCS.md)。
+
+> **防误读**：§8 晚¹⁹「从未在同 head+n=16 合拢 / merge 从未 exit 0」是 **2026-08-12 快照**。V0 已于 08-14 merge exit 0（n=8&lt;16 瑕疵仍在，见 [V0_GATE_STATUS](docs/handover/V0_GATE_STATUS.md) §4）。
 
 **为什么**：旧 `wm_step_5000.pt` 被判定为单柱 RGB-only RSSM shortcut(已失效);必须从随机初始化干净重训,
 结构性反 shortcut。
@@ -29,6 +33,8 @@
 > 完整路径与 partial JSON 见 [V0_GATE_STATUS.md](docs/handover/V0_GATE_STATUS.md)。②④ rollout-dataset 仍用 `dataset_v0_headon_20260811` 做 obstacle scan。
 
 ## 3. 文档地图
+
+**先读**：[活文档阅读清单](docs/handover/LIVING_DOCS.md)。
 
 **权威规格 / 设计**(定义"做什么"):
 - **[frozen spec](docs/superpowers/specs/2026-08-04-aerial-wam-v2-frozen-spec.md) —— §4.1 四信号阈值,最权威,改阈值需 re-freeze。**
@@ -109,6 +115,7 @@
 
 > 格式:`YYYY-MM-DD —— 改了什么(为什么 / 依据)`。最新在上。
 
+- **2026-08-17** —— 活文档防误读：§1 标明晚¹⁹「merge 从未 exit 0」为 8/12 快照；当前阶段改为 **V4**；文档地图链到 [LIVING_DOCS.md](docs/handover/LIVING_DOCS.md)。
 - **2026-08-15(午) —— V1a 执行完成（H100 `.25`）。**
   `_wm_train_validate` 500 steps on r60 PASS → `wm_ckpt_v1a_20260815/`；flip `dynamics.kind=torch` + `enable_wm_update=true`；`v1a_corrector_smoke.py` 3 iter mock **`wm=updated`×3**。详见 [V1_GATE_STATUS.md](docs/handover/V1_GATE_STATUS.md)。
 - **2026-08-15 —— V0 合拢后文档同步 + V1/V4 设计。**
