@@ -9,7 +9,7 @@
 ## 1. 一句话结论（2026-08-17）
 
 **Goal+z0 track done — merge FAIL（① −8.74 / ④ PASS）** — goal inject + headon RGB z0 fixed train conditioning (goal_rel 0→3.05) but ① **regressed** vs RH-only (−3.17→−8.74); ④ still beats remeasured v1 (0.000 vs 0.429).  
-Prior V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）.  
+**① 诊断（2026-08-17）**：见 [V4_PROGRESS_DIAG_125_STATUS](V4_PROGRESS_DIAG_125_STATUS.md) — actor 首动作与 goal **反号**（cos≈−0.88）；heuristic cos≈+0.99；根因候选 = deploy actor **无 goal 输入**。  
 `enable_policy_update` **仍 false**。  
 **Governance**：2026-08-17 frozen `n_eval_episodes=8`；V4 `n<8` → `authoritative=false`（洞 1 已关）。
 

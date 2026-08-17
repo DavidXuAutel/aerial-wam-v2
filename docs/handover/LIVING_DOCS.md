@@ -10,9 +10,10 @@
 | 顺序 | 文档 | 读什么 |
 |---|---|---|
 | 1 | [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) | **当前阶段**一句话：V4 merge 状态、下一轨 |
-| 2 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | **正在跑**的 125 agent（goal 注入 / 真 RGB z0 / 重 gate） |
-| 3 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
-| 4 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
+| 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：actor 反目标飞；无 goal 输入 |
+| 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
+| 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
+| 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
 
 可选同轨细节（按需，非每天）：
 
