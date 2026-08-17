@@ -138,6 +138,8 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 | 代码 | `v0_metrics.n_eval_episodes=8`；V4 `n<8` → `authoritative=false`，merge 拒收 |
 | 历史 | 2026-08-12 曾「待用户定 n」；2026-08-14 在 n=8 上 merge/翻 flags（当时相对旧冻结值 16 为越界）→ 本次文书 re-freeze 把第一真相源对齐到已发生的权威跑 |
 
+**诚实边界（洞 1）**：这是**事后合法化**——08-14 先在 n=8 上 merge 并翻 flags，08-17 才把冻结值从 16 对齐到 8。理由实质性（scan 喂满 16 不可达 / 会重引 harness bug），**不是为凑过**，且上表自陈顺序。严格说：V0 从「相对旧冻结值的越界通过」变成「事后合法化的通过」，**不是**「事前干净通过」。合法性轴已关；**不**与 V1-① 统计功效脆弱（另案）混淆。
+
 **不再追 scan 喂满 16。**
 
 ### 4.1 洞 2：④b 空过终态（2026-08-17）
@@ -156,6 +158,7 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 ## 6. 变更记录
 
+- **2026-08-17** — §4 **诚实边界**显式化：洞 1 = 事后合法化（08-14 merge@n=8 → 08-17 冻结对齐），非事前干净通过；与 V1-① 功效正交。
 - **2026-08-17** — **洞 2 收口**：④b `n_contact=0` 接受为终态（`before_ok=null` / `before_vacuous`）；④ 实证=④c；JSON `frac=1.0` 仅兼容。§3 待办 D 标为已完成（洞 1）。
 - **2026-08-17** — **n re-freeze 收口**：frozen §4.1 `n_eval_episodes` 16→**8**（用户拍板）；V4 `n<8` 非权威。洞 1 关闭。防误读注 / 悬空引用 / §3.5 4090 冲突见同日更早条目；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。
 - **2026-08-17** — 防误读：header 标明「8/12 Step-6 / merge 从未 exit 0」类备忘≠现状；§3.2 悬空引用结案为不存在；新增 §3.5 4090 双 runbook 冲突；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。

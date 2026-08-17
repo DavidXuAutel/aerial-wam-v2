@@ -28,7 +28,8 @@
 | 文档 | 读什么 |
 |---|---|
 | [`V0_GATE_STATUS.md`](V0_GATE_STATUS.md) | **§1+§2** = V0 权威现状；§3.3 = 旧 ①a–c 失格史；§4 = **n=8 已 re-freeze**；§4.1 = **④b 空过终态已收口** |
-| [`V1_GATE_STATUS.md`](V1_GATE_STATUS.md) | V1 三信号严谨 PASS + 部署 flags；**§4.1/§4.2 = ②-coll 独立诊断**（不改 08-15 merge） |
+| [`V1_GATE_STATUS.md`](V1_GATE_STATUS.md) | V1 三信号严谨 PASS + 部署 flags；**§4.1/§4.2 = ②-coll 独立诊断**（不改 08-15 merge）；§2 ① **功效脆弱已记** |
+| [`V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md`](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md) | **待签字**：V1-① 条款②配对强制 + ③裕度带（与 n re-freeze 正交） |
 | [`V1_COLL_HELDOUT_COLLECT_125_STATUS.md`](V1_COLL_HELDOUT_COLLECT_125_STATUS.md) | 125 碰撞富集 held-out 采集 **DONE**（usable 65 / coll usable 8） |
 | [`V1_COLL_HELDOUT_DIAGNOSTIC_STATUS.md`](V1_COLL_HELDOUT_DIAGNOSTIC_STATUS.md) | H100 ②-coll 新 held-out 诊断 **CLAIMED**（pos=20 / AUROC 0.977） |
 | [`../../experiments/aerial/RUNBOOK_v0.md`](../../experiments/aerial/RUNBOOK_v0.md) | V0 顶层入口；**§1–§2 现状**；§8 = 变更考古（勿把晚¹⁹ 当今天） |
@@ -59,7 +60,8 @@
   `2026-08-12-v2-plan-risk-assessment.md`、`2026-08-12-v0-gate-status-and-roadmap.md`  
   → 内容只活在 `RUNBOOK_v0.md` §8 晚¹⁹/晚²⁰ 正文。
 - 「`_v0_gate --merge` 从未 exit 0」「仍在 Step 6 合拢」类 8/12 备忘。
-- 「n=8 相对冻结 16 越界」—— **2026-08-17 已 re-freeze，n=8 即冻结值**。
+- 「n=8 相对冻结 16 越界」—— **2026-08-17 已 re-freeze，n=8 即冻结值**（洞 1 = **事后合法化**，见 `V0_GATE_STATUS` §4；非事前干净通过）。
+- 「n=8 re-freeze 治了 V1-① 擦边」—— **否**；合法性 ≠ 统计功效。① 裕度 0.8 局 / McNemar p≈0.5 见 `V1_GATE_STATUS` §2 + [待签字条款②③](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)。
 - 「④b before=1.0 是测得的干预先于接触」—— **否**；`n_contact=0` 时空过终态，④ 实证=④c。
 - 「headon 可作 V1-② coll OOD」—— **否**；headon `coll_eps=0`。
 - `PROJECT_STATUS.md` / `RUNBOOK_v0.md` §1 若仍写「V1 进行中 / V4 未开始」而与 `V4_GATE_STATUS` 冲突时 → **以 V4 活文档为准**（并应回写那两处）。

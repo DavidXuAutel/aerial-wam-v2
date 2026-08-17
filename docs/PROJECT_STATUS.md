@@ -151,9 +151,10 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | ~~**V1a-2**~~ | ✅ `kind=torch` + `enable_wm_update=true` + corrector smoke |
 | **V1b** | τ + 想象规划 + `DepthTauShield` + `_v1_gate` — **merge PASS（严谨）**；部署 flip FOE yaml 待人工 |
 | **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
-| **n re-freeze** | ✅ **关闭**（2026-08-17）：frozen `n_eval_episodes=8` |
+| **n re-freeze** | ✅ **关闭**（2026-08-17）：frozen `n_eval_episodes=8`（**事后合法化**，非事前干净；合法性轴） |
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
+| **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
 | **V4** | 进行中（goal+z0）；`enable_policy_update` 仍 false |
 
 ---

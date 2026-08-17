@@ -30,7 +30,7 @@
 
 | 信号 | 判据 | 结果 |
 |---|---|---|
-| **V1-①** | `v0>0` 且 `v1 ≤ 0.8×v0`；V1=`foe_calibrated`；trigger=1.5 | ✅ **auth PASS** — `delta_reduction`；hard **v0=0.75 → v1=0.50**（target≤0.60）；off_hard=1.0 |
+| **V1-①** | `v0>0` 且 `v1 ≤ 0.8×v0`；V1=`foe_calibrated`；trigger=1.5 | ✅ **auth PASS**（当时判据）— `delta_reduction`；hard **v0=0.75 → v1=0.50**（target≤0.60）；off_hard=1.0。**功效脆弱（已记、未修）**：对 target 裕度 **0.8 局**；配对 McNemar **2:0**，**p≈0.5**。n=8 re-freeze **不**治此；条款②③ 见 [待签字草案](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md) |
 | **V1-②** | honest held-out；beat≥0.80；coll N/A if pos&lt;3 | ✅ **progress PASS** — goalvel beat=**0.93**；merge `coll_ok=null`（pos=1）；②-coll **诊断**另账（§4.1 r60：pos=5 / AUROC 0.972；§4.2 新 held-out：pos=20 / AUROC 0.977，unique usable coll ep=8） |
 | **V1-③** | FOE+D̂；both_fail≤0.20；τ MAE≤2；**V0 ③ reproj≤0.25 同 ckpt** | ✅ auth PASS — both_fail=0.0013；MAE=0.935；`v0_reproj_evidence.median=0.212`（`v0_partial_3_r60_20260814.json`） |
 
@@ -49,6 +49,7 @@
 - [x] V1a / 严谨 ① δ / ② honest / ③ Phase 2 auth + **merge**
 - [x] **人工**：yaml `tau_predictor.kind=foe_calibrated` + `ckpt=.../tau_foe_calibrator.pt` (**flipped 2026-08-15 on 125**)
 - [x] **洞 3 定义 + 诊断测量**：②-coll 为**独立诊断**（不改 08-15 merge）。headon coll=**0** 不能当 OOD。r60 `--n-starts 4` → `coll_traj_pos=5`、AUROC=0.972（unique held-out coll ep=2）。**2026-08-17** 新 WM-unseen held-out `dataset_v1_coll_heldout_20260817` → pos=**20** / AUROC=**0.977** / unique usable coll ep=**8** → `coll_claimed=true`（见 §4.2）。P0b / V4 仍开。
+- [ ] **V1-① 功效条款②③（待签字）**：配对强制 + 裕度带 — [提案](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)。脆弱性已记入 §2；**未**改 merge / frozen。
 
 ---
 
@@ -62,6 +63,7 @@
 | trigger | **1.5 m**（metric band；非 3.0 standoff） |
 | hard v0 / v1 / off | **0.75 / 0.50 / 1.0** |
 | target_max | 0.60（δ=0.20） |
+| **功效（记录）** | 裕度 **0.8 局**；McNemar **2:0**，p≈0.5 — **fragile**；见 [提案](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md) |
 | near_ep v0 / v1 | 0.625 / 0.875（hard 为主判据；near 未单独 gate） |
 | scan | 8/8；probe collided=8 |
 | log | `artifacts/v1_partial1_auth_rerun.log` |
@@ -193,6 +195,7 @@ python experiments/aerial/scripts/v1_gate_run_partials.py rollout4090 \
 
 ## 6. 变更记录
 
+- **2026-08-17(晚²)** — **V1-① 功效缺口入账**：§2/§4 记 0.8 局裕度 + McNemar 2:0 p≈0.5；与 n re-freeze **正交**。条款②③ → [待签字提案](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；**不改** 08-15 merge。
 - **2026-08-17(晚)** — **②-coll 清洁 held-out**：125 采 `dataset_v1_coll_heldout_20260817`（usable 65 / usable coll ep 8）→ H100 `--heldout-frac 1.0` n-starts=4 → pos=**20** / AUROC=**0.977** → `coll_claimed=true`。**不改** 08-15 merge。
 - **2026-08-17** — **洞 3 收口（定义+诊断）**：②-coll 独立诊断，不改 08-15 merge。headon coll=0 弃用；r60 n-starts=4 → pos=5 / AUROC=0.972 → `coll_claimed=true`（unique held-out collision ep=2）。`v1_metrics.coll_claimed`。
 - **2026-08-15(晚¹⁵)** — **严谨复核**：① 拒 tied-zero 并 δ 重跑 PASS（0.75→0.50）；② `coll_ok` 改 N/A；③ 绑定 V0 reproj 证据；**merge 重出 ok=true**。代码 `86dd457`。
