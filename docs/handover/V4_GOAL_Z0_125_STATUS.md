@@ -1,10 +1,10 @@
 # V4 goal + z0 alignment STATUS (125)
 
-- **status**: **started** — waiting for detached agent Phase 0
+- **status**: **in_progress** — Phase 0 diagnose
 - **started**: 2026-08-17T08:59:00+08:00
 - **finished**: —
-- **agent**: composer-2.5-fast (launch pending PID)
-- **PID**: —
+- **agent**: composer-2.5-fast (active)
+- **PID**: **3283543**
 - **prompt**: docs/handover/V4_GOAL_Z0_125_PROMPT.md
 - **log**: `~/aerial-wam-v2/logs/v4_goal_z0_125_agent.log`
 - **HEAD**: (pre-agent; tip after handoff commit)
