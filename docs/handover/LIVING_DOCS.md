@@ -28,7 +28,9 @@
 | 文档 | 读什么 |
 |---|---|
 | [`V0_GATE_STATUS.md`](V0_GATE_STATUS.md) | **§1+§2** = V0 权威现状；§3.3 = 旧 ①a–c 失格史；§4 = **n=8 已 re-freeze**；§4.1 = **④b 空过终态已收口** |
-| [`V1_GATE_STATUS.md`](V1_GATE_STATUS.md) | V1 三信号严谨 PASS + 部署 flags；**§4.1 = ②-coll 独立诊断**（不改 08-15 merge） |
+| [`V1_GATE_STATUS.md`](V1_GATE_STATUS.md) | V1 三信号严谨 PASS + 部署 flags；**§4.1/§4.2 = ②-coll 独立诊断**（不改 08-15 merge） |
+| [`V1_COLL_HELDOUT_COLLECT_125_STATUS.md`](V1_COLL_HELDOUT_COLLECT_125_STATUS.md) | 125 碰撞富集 held-out 采集 **DONE**（usable 65 / coll usable 8） |
+| [`V1_COLL_HELDOUT_DIAGNOSTIC_STATUS.md`](V1_COLL_HELDOUT_DIAGNOSTIC_STATUS.md) | H100 ②-coll 新 held-out 诊断 **CLAIMED**（pos=20 / AUROC 0.977） |
 | [`../../experiments/aerial/RUNBOOK_v0.md`](../../experiments/aerial/RUNBOOK_v0.md) | V0 顶层入口；**§1–§2 现状**；§8 = 变更考古（勿把晚¹⁹ 当今天） |
 | [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) | 项目鸟瞰（若与 V4 活文档冲突，**以 V4_GATE_STATUS 为准**） |
 | [`../design/2026-08-15-v1-v4-design.md`](../design/2026-08-15-v1-v4-design.md) | V1/V4 母本设计 |

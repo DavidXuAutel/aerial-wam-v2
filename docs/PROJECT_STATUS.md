@@ -52,7 +52,7 @@
 | Merge | `v0_gate_r60_20260814.json` |
 
 **洞 2 ④b**：✅ 关闭（2026-08-17）— 空过为终态，实证=④c。  
-**洞 3 V1-② coll**：✅ 定义关闭 + 诊断已测（r60 n-starts=4，`coll_traj_pos=5` / AUROC 0.972，`coll_claimed=true`）；**不改** 08-15 merge（仍 `coll_ok=null`）。headon coll=0 不可用。~~§4.1 n=16 vs 8~~ → **已 re-freeze 为 8**（2026-08-17）。
+**洞 3 V1-② coll**：✅ 定义关闭 + 诊断已测（r60 n-starts=4，`coll_traj_pos=5` / AUROC 0.972；**2026-08-17** WM-unseen held-out `dataset_v1_coll_heldout_20260817` → pos=**20** / AUROC=**0.977** / unique usable coll ep=**8**，`coll_claimed=true`）；**不改** 08-15 merge（仍 `coll_ok=null`）。headon coll=0 不可用。~~§4.1 n=16 vs 8~~ → **已 re-freeze 为 8**（2026-08-17）。
 
 ---
 
@@ -153,7 +153,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **P0b** | shield 消费 `predict_cones()`（可选，会改 ④ 行为） |
 | **n re-freeze** | ✅ **关闭**（2026-08-17）：frozen `n_eval_episodes=8` |
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
-| **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 n-starts=4 诊断 `pos=5` / AUROC 0.972（`coll_claimed`）；**不改** 08-15 merge |
+| **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V4** | 进行中（goal+z0）；`enable_policy_update` 仍 false |
 
 ---
