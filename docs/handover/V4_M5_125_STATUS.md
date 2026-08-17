@@ -18,7 +18,7 @@
 ## How to check on return
 
 ```bash
-ssh cursor-125-public
+ssh cursor-125  # offsite: cursor-125-public
 cd ~/aerial-wam-v2
 cat docs/handover/V4_M5_125_STATUS.md
 tail -50 artifacts/v4_m5_125_rollout.log

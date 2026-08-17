@@ -69,3 +69,7 @@ cat docs/handover/V4_REWARD_HEAD_125_STATUS.md
 tail -20 logs/v4_reward_head_gate_rollout.log
 grep enable_policy_update configs/aerial_rl.yaml
 ```
+
+
+## Access note (2026-08-17)
+On-campus again: use `cursor-125` / `origin`→direct; offsite fallback remains `cursor-125-public`. See `docs/handover/ACCESS.md`.
