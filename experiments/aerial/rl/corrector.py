@@ -179,6 +179,8 @@ class SerialCorrectorLoop:
             goal_rel0=goal_rel0,
             body_vel0=body_vel0,
         )
+        mean_abs_goal_rel = float(np.mean(np.abs(goal_rel0)))
+        mean_progress = float(rollout.progress.mean())
         ac = getattr(self, "actor_critic", None)
         if ac is not None:
             ac_out = ac.update(rollout)
@@ -187,6 +189,8 @@ class SerialCorrectorLoop:
                 "batch": int(z0.shape[0]),
                 "horizon": int(self.config.imagine_horizon),
                 "mean_return": float(rollout.returns.mean()),
+                "mean_abs_goal_rel": mean_abs_goal_rel,
+                "mean_progress": mean_progress,
                 **{k: v for k, v in ac_out.items() if k != "status"},
             }
         # >>> V4 INSERTION POINT: actor_critic.update(rollout) <<<
@@ -195,5 +199,7 @@ class SerialCorrectorLoop:
             "batch": int(z0.shape[0]),
             "horizon": int(self.config.imagine_horizon),
             "mean_return": float(rollout.returns.mean()),
+            "mean_abs_goal_rel": mean_abs_goal_rel,
+            "mean_progress": mean_progress,
             "note": "trajectories produced; wire actor_critic for AC update",
         }

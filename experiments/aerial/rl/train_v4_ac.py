@@ -18,6 +18,10 @@ from typing import Any, Dict
 
 import yaml
 
+from experiments.aerial.rl.collect_dataset import (
+    _mock_goal_episode,
+    approach_bias_episodes,
+)
 from experiments.aerial.rl.train_rl import build_from_config, load_torch_dynamics
 
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +53,32 @@ def main() -> int:
         default=None,
         help="WM checkpoint path when --dynamics torch (required for serious train)",
     )
+    p.add_argument(
+        "--annotation",
+        default=None,
+        help="OpenFly annotation JSON for start→goal episodes (real or mock collect)",
+    )
+    p.add_argument(
+        "--approach-bias",
+        action="store_true",
+        help="rewrite goals to start+dist along start yaw (matches collect_dataset)",
+    )
+    p.add_argument(
+        "--approach-dist-m",
+        type=float,
+        default=25.0,
+        help="goal distance along start heading when --approach-bias",
+    )
+    p.add_argument(
+        "--dataset",
+        default=None,
+        help="preload real RGB replay episodes for z0 encode (offline RGB align)",
+    )
+    p.add_argument(
+        "--skip-collect",
+        action="store_true",
+        help="skip env collect each iter (use with --dataset for offline z0 AC)",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -66,6 +96,10 @@ def main() -> int:
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
+    if args.annotation:
+        cfg["annotation"] = str(args.annotation)
+    if args.skip_collect:
+        cfg["corrector"]["episodes_per_iter"] = 0
     if args.dynamics is not None:
         dyn_kind = str(args.dynamics)
     elif args.backend == "mock":
@@ -91,6 +125,39 @@ def main() -> int:
         cfg.setdefault("world_model", {})["device"] = str(args.device)
 
     loop = build_from_config(cfg)
+    # Mock dry-run with no annotation: inject a goal so imagined progress / RH
+    # aux are non-trivial (collect_dataset does the same for mock collect).
+    if args.backend == "mock" and loop.episodes is None:
+        loop.episodes = [_mock_goal_episode()]
+        logger.info("mock backend: injected synthetic start→goal episode")
+    if args.approach_bias and loop.episodes is not None:
+        loop.episodes = approach_bias_episodes(
+            loop.episodes, dist_m=float(args.approach_dist_m),
+        )
+        logger.info(
+            "approach-bias ON: goals -> start + %.1f m along start yaw (%d eps)",
+            float(args.approach_dist_m), len(loop.episodes),
+        )
+    if args.dataset:
+        from experiments.aerial.rl import dataset as ds
+        from experiments.aerial.rl.goal_features import attach_goal, resolve_episode_goal
+
+        ds_path = Path(args.dataset)
+        if not ds_path.is_dir():
+            logger.error("--dataset %s is not a directory", ds_path)
+            return 1
+        loaded = ds.load_dataset(ds_path, skip_quarantined=True)
+        stamped = 0
+        for ep in loaded:
+            goal = resolve_episode_goal(ep, allow_end_proxy=True)
+            if goal is not None:
+                attach_goal(ep, goal)
+                stamped += 1
+            loop.buffer.add_episode(ep)
+        logger.info(
+            "preloaded %d episodes (%d with goals) from %s for real-RGB z0",
+            len(loaded), stamped, ds_path,
+        )
     if dyn_kind == "torch" and wm_ckpt_path:
         wm_cfg = cfg.get("world_model", {})
         success_dist_m = float(cfg.get("reward", {}).get("success_dist_m", 3.0))
@@ -122,20 +189,35 @@ def main() -> int:
 
     reports = loop.run()
     losses = []
+    diag_goal_rel: list[float] = []
+    diag_progress: list[float] = []
+    diag_return: list[float] = []
     for i, r in enumerate(reports):
         rl = r.rl
         logger.info("iter %d rl=%s", i, rl)
         if rl.get("status") == "updated":
             losses.append(float(rl.get("actor_loss", float("nan"))))
+            if "mean_abs_goal_rel" in rl:
+                diag_goal_rel.append(float(rl["mean_abs_goal_rel"]))
+            if "mean_progress" in rl:
+                diag_progress.append(float(rl["mean_progress"]))
+            if "mean_return" in rl:
+                diag_return.append(float(rl["mean_return"]))
 
     meta = {
         "iters": len(reports),
         "losses": losses,
         "mean_actor_loss": float(sum(losses) / len(losses)) if losses else None,
+        "mean_abs_goal_rel": float(sum(diag_goal_rel) / len(diag_goal_rel)) if diag_goal_rel else None,
+        "mean_progress": float(sum(diag_progress) / len(diag_progress)) if diag_progress else None,
+        "mean_return": float(sum(diag_return) / len(diag_return)) if diag_return else None,
         "device": str(args.device),
         "dynamics_kind": dyn_kind,
         "wm_ckpt": wm_ckpt_path,
         "latent_dim": int(getattr(loop.dynamics, "latent_dim", 8)),
+        "dataset": args.dataset,
+        "skip_collect": bool(args.skip_collect),
+        "mock_goal_injected": bool(args.backend == "mock" and args.annotation is None),
     }
     print(json.dumps(meta, indent=2))
 

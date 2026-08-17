@@ -12,7 +12,7 @@
 - **access**: `cursor-125` direct LAN — see `ACCESS.md` (NOT `cursor-125-public`)
 
 ## Goal checklist
-1. ⏳ Phase 0 — diagnose: log mean|goal_rel|, mean imagined progress, mean_return (expect ≈0 under mock+null)
+1. ✅ Phase 0 — diagnose: log mean|goal_rel|, mean imagined progress, mean_return (expect ≈0 under mock+null)
 2. ⏳ Phase 1 — inject goals into train_v4_ac; H100 AC retrain → `v4_ac_ckpt_*_wm_rh_goal/`
 3. ⏳ Phase 2 — align z0 with real RGB (offline encode or short 4090 collect)
 4. ⏳ Phase 3 — re-gate ①/④ on 125; honest FAIL/PASS; update V4_GATE_STATUS
@@ -31,26 +31,31 @@
 ## Phase 0 — diagnose
 | Metric | Value | Notes |
 |---|---|---|
-| mean\|goal_rel\| | — | expect ≈0 |
-| mean imagined progress | — | expect ≈0 |
-| mean_return | — | — |
+| mean\|goal_rel\| | **0.0** | mock+annotation:null (probe `logs/v4_goal_z0_phase0_probe.log`) |
+| mean imagined progress | **0.651** | RH still emits progress w/o goal aux |
+| mean_return | **3.14** | misleadingly nonzero despite goal_rel≈0 |
 
 ## Phase 1 — goal inject + AC
 | Field | Value |
 |---|---|
-| goal source | — (mock episode / annotation / approach-bias) |
+| goal source | `_mock_goal_episode` (start→[30,0,5]) injected in `train_v4_ac` |
 | wm ckpt | `wm_ckpt_r60_rh_20260816/wm_step_1000.pt` |
-| actor ckpt | — |
+| actor ckpt | — (pending H100) |
 | iters | — |
-| post-fix mean\|goal_rel\| | — |
-| log | — |
+| post-fix mean\|goal_rel\| | **10.17** (2-iter 4090 probe) |
+| post-fix mean_progress | **0.843** |
+| post-fix mean_return | **4.06** |
+| log | `logs/v4_goal_z0_phase1_mock_goal.log` |
 
 ## Phase 2 — z0 RGB align
 | Field | Value |
 |---|---|
-| method | — (offline encode / 4090 collect) |
-| dataset / buffer | — |
-| actor ckpt | — |
+| method | offline encode (headon real RGB, `--dataset --skip-collect`) |
+| dataset / buffer | `dataset_v0_headon_20260811` (34 eps, goals via end-proprio proxy) |
+| probe mean\|goal_rel\| | **64.96** |
+| probe mean_progress | **0.715** |
+| actor ckpt | — (pending H100 `v4_ac_ckpt_20260817_wm_rh_goal_rgb/`) |
+| log | `logs/v4_goal_z0_phase2_rgb_probe.log` |
 
 ## Phase 3 — gate
 | Signal | Result | Numbers |
