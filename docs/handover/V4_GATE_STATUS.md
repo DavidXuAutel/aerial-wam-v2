@@ -6,10 +6,10 @@
 
 ---
 
-## 1. 一句话结论（2026-08-16）
+## 1. 一句话结论（2026-08-17）
 
-**V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）** — RH finetune + imagine aux fixed garbage progress (−68.88→−3.17); ④ now beats remeasured v1 (0.143 vs 0.25). ① still below heur×1.10.  
-Prior encode-train re-gate (−68.88 / ④ FAIL vs v1 0.00) superseded for deploy WM path.  
+**Next track: goal + z0 alignment on 125** — see `V4_GOAL_Z0_125_STATUS.md` (diagnose goal-less mock → inject goals / real RGB z0 → re-gate).  
+**Prior V4 reward-head re-gate：merge FAIL（① −3.17 / ④ PASS）** — RH finetune + imagine aux fixed garbage progress (−68.88→−3.17); ④ beats remeasured v1 (0.143 vs 0.25). ① still below heur×1.10.  
 `enable_policy_update` **仍 false**。
 
 ---
@@ -27,6 +27,7 @@ Prior encode-train re-gate (−68.88 / ④ FAIL vs v1 0.00) superseded for deplo
 | M5 | 4090 ①④ eval (stub) | ❌ merge FAIL — ① −13.54 vs heur 9.71; ④ PASS |
 | M5b | 4090 ①④ re-gate (torch WM, legacy RH) | ❌ merge FAIL — ① −68.88; ④ v4_hard 0.143 vs v1 0.00 |
 | M5c | reward-head finetune + AC `*_wm_rh` + re-gate | ❌ merge FAIL — ① −3.17 vs heur 7.44; ④ **PASS** (0.143 vs v1 0.25) |
+| M5d | goal inject + real RGB z0 + re-gate | ⏳ in progress — `V4_GOAL_Z0_125_*` |
 | M6 | flip yaml | **禁止**（merge 未 PASS） |
 
 ---
@@ -39,6 +40,7 @@ Prior encode-train re-gate (−68.88 / ④ FAIL vs v1 0.00) superseded for deplo
 - **2026-08-16(M5)** — 125 4090 rollout (stub encode): ① FAIL / ④ PASS; yaml 未翻。
 - **2026-08-16(encode-train)** — Align train+deploy to torch WM encode; H100 300 iters; re-gate `v4_gate_r60_20260816_wm`: ① FAIL, ④ FAIL; merge FAIL; yaml 未翻.
 - **2026-08-16(reward-head)** — M5c done: RH finetune 1000 steps (`wm_ckpt_r60_rh_20260816`); AC 300 iters; re-gate `v4_gate_r60_20260816_wm_rh`: ① FAIL, ④ PASS; merge FAIL; yaml 未翻.
+- **2026-08-17(goal+z0)** — M5d started: diagnose mock goal_rel≈0; inject goals / RGB z0; re-gate planned `v4_gate_r60_20260817_wm_rh_goal`; yaml 未翻.
 
 ---
 

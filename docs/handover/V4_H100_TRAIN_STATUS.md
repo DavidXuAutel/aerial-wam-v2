@@ -48,6 +48,12 @@ python -m experiments.aerial.rl.train_v4_ac \
 - merge **FAIL** (① −3.17 vs heur 7.44; ④ PASS) — see `V4_REWARD_HEAD_125_STATUS.md`
 - **enable_policy_update**: still **false** (yaml unchanged)
 
+## Follow-on — goal + z0 (2026-08-17)
+
+- Track: `docs/handover/V4_GOAL_Z0_125_PROMPT.md` / `V4_GOAL_Z0_125_STATUS.md`
+- Planned H100 AC: frozen `wm_ckpt_r60_rh_20260816/wm_step_1000.pt` → new dir `v4_ac_ckpt_*_wm_rh_goal/` (and preferably RGB-aligned z0)
+- Do **not** treat goal-less mock as the serious train path
+
 ## Verification
 
 ```bash
