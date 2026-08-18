@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — 「§4 充分」不成立；A.3 `b3_le_a` **已作废**；A.4 = **`fwdmax_ge_pi`**（夹后前飞 λG0 47.64 ≥ π 18.25）⇒ 倒挂来自无界动作通道，**不开 RH 案**。**动作空间一致性裁定已签 = C2 有界策略分布**（08-18；`a = limits ⊙ tanh(u)` + 雅可比修正 logp，`limits = body_delta_limits(1/5Hz) = [1.0,0.4,0.4,0.314]`，**代码已落地**；C1 字面 clip 被否 —— actor 是 REINFORCE ⇒ 似然错配 + 探索塌缩，见提案 §4.1）。**改策略类 ⇒ 须从零重训**：下一件 = **重跑 §A/§A.3/§A.4（`n_action_clipped` 应为 0）→ H100 从零重训（禁 warm-start 现 ckpt）→ 125 ① 再 gate（`n≥8`）**。① 仍 **FAIL（−8.74）**，`enable_policy_update` 仍 **false**。  
+**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**。下一件 = 签 §4 In 表。`enable_policy_update` 仍 **false**。  
 `enable_policy_update` **仍 false**。
 
 ---
@@ -155,7 +155,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | A.4 = **`fwdmax_ge_pi`**（08-18 seed=0；夹后前飞 47.64 ≥ π 18.25）→ ✅ **裁定 = C2 有界策略分布，代码已落地**（08-18；Mac 数学/回归已验，227 passed / 6 skipped(torch)，`_v4_gate --self-check` PASS）→ ⏳ **重跑 §A → H100 从零重训 → 125 ① 再 gate（`n≥8`）**。In 表 [其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) 仍**不充分**；`enable_policy_update` 仍 false |
+| **V4** | C2 已从零重训（`v4_ac_ckpt_20260818_c2_fromscratch`）；① **FAIL** n=5 非全权（−7.43 / −3.53）；④ PASS；**`clip_insufficient`**。In 表 [其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
 
 ---
 

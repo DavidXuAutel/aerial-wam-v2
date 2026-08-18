@@ -1,7 +1,7 @@
 # V4 §A / §A.3 imagined return decomp (125, 2026-08-18)
 
-- **status**: **A.2 done · A.3 done → 判定作废 · A.4 DONE = `fwdmax_ge_pi`（seed=0）；处置写法已修正（C1 不够，见末节）→ 「动作空间一致性裁定」已签 = **C2 有界策略分布**（2026-08-18，代码已落地）** (read-only)
-- **⚠️ 本文档全部数字产自 pre-C2 无界策略类**（ckpt 无 `policy_class` ⇒ 载入判为 `unbounded_gaussian_legacy`），保留为**审计链**、可逐位回放；`v4_imagine_return_decomp.py` 只 evaluate 不训练，故仍能复现。**下一件 = 用 C2 从零重训后的 π 重跑 §A/§A.3/§A.4**，届时 `n_action_clipped` 应为 **0**（`--clip-actions` 成为 no-op），本文档**另起新节**记录、不覆盖旧数字。
+- **status**: **C2 重跑 DONE** — `n_action_clipped=0`；H100 从零重训 DONE；① 再 gate **FAIL**（两跑均 **n=5 < 8**，`authoritative=false`）。pre-C2 数字仍为审计链，不覆盖。
+- **⚠️ 本文档 A.2–A.4 数字产自 pre-C2 无界策略类**（旧 ckpt 无 `policy_class` ⇒ `unbounded_gaussian_legacy`），可逐位回放。C2 新数字见文末 **「C2 从零重训后重跑」**。
 - **⚠️ 读者先读「A.3 判定作废」再读 §A.4**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；A.4 已跑，倒挂来自无界动作通道，**仍不是 RH 案**
 - **seed=0**：A.4 / A.3traj 同 seed；A.2 两次无 seed 跑（`14d0f06` / `2afcb33`）同 ckpt 同 z0 结果不同（前飞 λG0 47.02→49.65，+5.6%），已 superseded 为审计链
 - **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`700dbe6` + `--clip-actions` / `--match-basis`)
@@ -144,5 +144,42 @@ Verdict **`b_gt_c`** — **碰撞项通道排除**（p_coll 差≈0）。A.2 不
 - 本文档所有 pre-C2 数字**可回放**：保留 `policy_class="unbounded_gaussian_legacy"`，且 `load_from_checkpoint` 见到缺 `policy_class` 的旧 payload 自动判 legacy 并 warn（两类张量形状相同，否则会**静默**载入新律）。但 `update()` 对 legacy **抛 `RuntimeError`** ⇒ 失效 ckpt **不可能被 warm-start**（红线「干净重训禁 warm-start 失效 ckpt」落成代码）。
 - 「clip 已成 no-op」将来是**测出来**的：`ImaginedRollout.n_action_clipped` 计数 + `corrector` 在 `>0` 时 warn。C2 下单测实测 **0**；对故意越界策略（`[9,0,0,0]`，5 步）实测 **5**。
 - 上文「另记」的 `planner.default_candidates`：`planner.action_limits` **默认 `None`** ⇒ V1 08-15 已 merge 的部署打分**逐位不变**（打开须 V1 re-gate，本周期不打开）。同源不一致**仍记在案、未修**。
-- 验证：Mac 无 torch ⇒ 纯 numpy 独立验密度积分 1.000000/1.000000/1.000016/1.000000、熵恒等式 MC −2.129664 vs 解析 −2.128682；上文 σ=0.6065、8.6%、3.4e-6 全部复算一致。全量 `pytest experiments/aerial/rl/tests/` = **227 passed / 6 skipped**（6 例 torch 门控，**须在 H100/125 复跑**）；`_v4_gate --self-check` **PASS**。
-- **未做**：§A/§A.3/§A.4 重跑、H100 从零重训、125 ① 再 gate（`n≥8`）。`enable_policy_update` 仍 **false**。
+- 验证：Mac 无 torch ⇒ 纯 numpy 独立验密度积分 1.000000/1.000000/1.000016/1.000000、熵恒等式 MC −2.129664 vs 解析 −2.128682；上文 σ=0.6065、8.6%、3.4e-6 全部复算一致。125/H100 torch 复跑：`test_action_space_consistency.py` + `test_actor_critic.py` = **24 passed**；125 全量 `pytest experiments/aerial/rl/tests/` = **291 passed**；`_v4_gate --self-check` **PASS**（两机）。float32 `tanh*limits` 越界 1 ulp 已在 `act_latent` 用 float64 盒夹死（`6055cb1`）。
+- **已做（2026-08-18）**：§A/§A.3/§A.4 C2 重跑（`n_action_clipped=0`）→ H100 从零重训 → 125 ① 再 gate。见下一节。`enable_policy_update` 仍 **false**。
+
+---
+
+## C2 从零重训后重跑（2026-08-18，另起一节，不覆盖上文）
+
+单测先于重训：125 与 H100 各 **24 passed**（`test_action_space_consistency` 18 + `test_actor_critic` 6 — 即文档里「6 例 torch 门控」在有 torch 的机器上随同 C2 文件一起跑）。
+
+### 冒烟（`--fresh-c2`，随机初始化，seed=0）
+
+全部臂 `n_action_clipped=0`。`--clip-actions` 与否 λG0 逐位相同（clip 包策略 = no-op）。随机 π a0≈0，λG0 13.99 < 最大前飞 37.72。JSON：`artifacts/v4_imagine_return_decomp_c2fresh_a23_20260818.json` / `..._c2fresh_a4_20260818.json`。
+
+### H100 从零重训
+
+`train_v4_ac --iters 300 --dynamics torch --skip-collect --dataset headon --backend mock`，**未**载入 `v4_ac_ckpt_20260817_*`。日志：`policy_class=tanh_bounded_v1`，训练过程 **零** `n_action_clipped` warn。ckpt：`v4_ac_ckpt_20260818_c2_fromscratch/v4_ac_latest.pt`。mean_return 55.82，mean|goal_rel|=3.05。
+
+### 训后 §A（seed=0，同一 headon z0）
+
+| Arm | Σ progress | λ G0 | a0 x | n_clip | ‖goal‖ 30→ |
+|---|---|---|---|---|---|
+| (a) C2 π | +81.64 | **+59.09** | **+0.567**（前向） | **0** | 17.8 |
+| (b) max forward | +62.60 | +47.78 | +1.0 | **0** | 15.0 |
+| (c) max retreat | +9.28 | +15.91 | −1.0 | **0** | 45.0 |
+
+A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现在**在盒内向前**（不再是无界后退），多出来的 λG0 来自侧向/垂向自由度，**不要**读成「再开 RH 案」。`--clip-actions` 仍 no-op。JSON：`..._c2train_a23_20260818.json` / `..._c2train_a4_20260818.json`。
+
+### 125 ① 再 gate
+
+两跑 spawn 都把 scored n 打到 **5 < 8** ⇒ `authoritative=false`。① **均 FAIL**；④ **均 PASS**（v4_hard **0.000** vs v1 **0.400**）。
+
+| 跑 | n | actor_mean | heur | target | ① | ④ |
+|---|---|---|---|---|---|---|
+| seed=0，请 10 起 | 5 | **−7.43** | 8.70 | 9.57 | FAIL | 0.000 vs 0.400 |
+| seed=1，请 8 起 | 5 | **−3.53** | 9.47 | 10.42 | FAIL | 0.000 vs 0.400 |
+
+对照 M5d unbounded：**−8.74** / heur 8.42。C2 后 ① 仍负，缺口未过 1.10。提案 §4.1：`clip_helped` 要 λG0(π)≤最大前飞 **且** ① 差额缩小——前件不成立（59>47.78）；① 仍 FAIL ⇒ **`clip_insufficient`**。`spurious_pass` 未触发。
+
+**n≥8 未落地**（spawn-in-collision 在 eval 丢局）。数字不得当全权 merge。下一件 = 签 §4 In 表（goal 入 actor），不是再训现 π、不是开 RH、不降 `δ_p`、不翻 yaml。

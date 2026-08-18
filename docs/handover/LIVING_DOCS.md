@@ -11,8 +11,8 @@
 |---|---|---|
 | 1 | [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) | **当前阶段**一句话：V4 merge 状态、下一轨 |
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
-| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **部分签字**：动作空间一致性 = **C2 有界策略分布**（08-18 已签，**代码已落地**，见 §4.1 顶注）；§4 In 表 / V3 / unique-goals **仍待签**、未动。**① 尚未再 gate** |
-| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」再读 **A.4 DONE**：夹后前飞 47.64 ≥ π 18.25；末节 = **C2 已落地**（全文数字产自 pre-C2 legacy 策略类，留作审计链） |
+| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **部分签字**：C2 已落地并重训；① 再 gate = **`clip_insufficient`**（n=5 非全权）。§4 In 表 / V3 / unique-goals **仍待签** |
+| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」；文末 **C2 重跑**：`n_action_clipped=0`，① 仍 FAIL |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -81,6 +81,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) 「A.3 判定作废」+ **A.4 DONE = `fwdmax_ge_pi`**（**不**开 RH 案）+ 末节 **C2 已落地**；下一件 = **重跑 §A → 从零重训 → ① 再 gate**  
+2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) 文末 **C2 重跑**：`n_action_clipped=0`；① **`clip_insufficient`**；下一件 = 签 §4 In 表  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1

@@ -3,7 +3,7 @@
 > **状态**：**部分签字**（2026-08-18）。**已签 = 动作空间一致性裁定 C2**（代码已落地：`actor_critic.py` / `imagination.py` / `corrector.py` / `planner.py` / `train_rl.py` / `train_v4_ac.py` / `configs/aerial_rl.yaml` + 新单测；清单见 §4.1 顶注）。**其余仍待签**（§1–§3 事实 / §4 In 表 / V3 范围 / unique-goals 下限）⇒ In 表与 goal 输入**未动**，frozen ① 阈值（`δ_p=0.10`、`n≥8`）**未动**，`enable_policy_update` **仍 false**。  
 > **先例**：2026-08-11 ④ — shield 触发与 1.5 m 度量对齐使 ④ **结构性不可过** → **修订规格（被测系统）**，不继续调参、不降阈值。  
 > **本提案同类**：goal-blind `π(a|z)` 在 goal-directed ① 上对 heuristic **不可稳健达成** → 修订 Actor/Critic **In 表**，**不**降 `δ_p=0.10`，**不**加长训当前 π。  
-> **签字前置**：§A **已跑** → A.2 = **`(b)>(c)`**（碰撞项已排除）。§A.3 **已跑** → 字面 `b3_le_a`，但 **该判定作废**。§A.4 **已跑（seed=0）** → **`fwdmax_ge_pi`**（夹后最大前飞 λG0 47.64 ≥ π_clipped 18.25）。⚠️ **「§4 充分」仍不成立**，**「先修 RH」也无依据** —— 倒挂来自无界动作通道。**动作空间一致性裁定已签 = C2 有界策略分布**（「在 `imagine()` 加一行 clip」= **C1，已否决单独落** —— actor 是 REINFORCE，会似然错配 + 探索塌缩）。下一件 = **重跑 §A/§A.3/§A.4（`n_action_clipped` 应为 0）→ H100 从零重训 → 125 ① 再 gate（`n≥8`；判据 `clip_helped`/`clip_insufficient`/`spurious_pass` 已事前写死于 §4.1）**。
+> **签字前置**：§A **已跑** → A.2 = **`(b)>(c)`**（碰撞项已排除）。§A.3 **已跑** → 字面 `b3_le_a`，但 **该判定作废**。§A.4 **已跑（seed=0）** → **`fwdmax_ge_pi`**（夹后最大前飞 λG0 47.64 ≥ π_clipped 18.25）。⚠️ **「§4 充分」仍不成立**，**「先修 RH」也无依据** —— 倒挂来自无界动作通道。**动作空间一致性裁定已签 = C2 有界策略分布**（「在 `imagine()` 加一行 clip」= **C1，已否决单独落** —— actor 是 REINFORCE，会似然错配 + 探索塌缩）。**已做** = 重跑 §A（`n_action_clipped=0`）→ H100 从零重训 → 125 ① 再 gate。判定 **`clip_insufficient`**（① 仍 FAIL，n=5 非全权）。下一件 = 签 §4 In 表。
 
 ---
 
@@ -247,7 +247,7 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 > - `planner.py`：`action_limits` **默认 `None`**，即 V1 08-15 已 merge 的行为**不变**（打开 = 改 V1 部署路径 ⇒ 须 V1 re-gate，本周期不打开）。见本节末「另记」。
 > - 单测 `tests/test_action_space_consistency.py`（18 例，torch 门控）；`_v4_gate --self-check` **PASS**；Mac 全量 `pytest experiments/aerial/rl/tests/` = **227 passed / 6 skipped**。
 > - Mac 无 torch ⇒ 用**纯 numpy 独立**验证 C2 的数学：密度在盒上积分 = 1.000000 / 1.000000 / 1.000016 / 1.000000（四组参数）；熵恒等式 MC −2.129664 vs 解析 −2.128682（差 9.8e-4）；本节所引 σ=0.6065、8.57%、3.4e-6 全部复算一致。torch 门控的 6 例**须在 H100/125 复跑**。
-> - **未做（下一件）**：§A/§A.3/§A.4 重跑（应见 `n_action_clipped=0`）→ H100 **从零重训**（禁 warm-start 现 ckpt）→ 125 ① 再 gate（`n≥8`），判据按本节末表 `clip_helped`/`clip_insufficient`/`spurious_pass`。
+> - **已做（2026-08-18）**：125/H100 torch 单测 24 passed → §A/§A.3/§A.4 C2 重跑（`n_action_clipped=0`）→ H100 从零重训 `v4_ac_ckpt_20260818_c2_fromscratch` → 125 ① 再 gate。① 两跑 FAIL（n=5 非全权）；④ PASS。判定 **`clip_insufficient`**。`n≥8` 因 spawn 未落地。
 > - **未动**：`δ_p=0.10`、`n≥8`、`enable_policy_update=false`、`w_progress`/`w_maneuver`/`success_bonus`、shield / τ / depth 路径、RSSM（V3 边界）。
 
 **先说结论：A.4 判据里我写的处置「在 `imagine()` 落与部署同一 clip」按字面落，不够，且大概率有害。洞在提案方（我）—— 我只指定了 clip 的位置，没检查它落进的是什么估计量。**
@@ -289,7 +289,7 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 - [x] **先做 §A 只读诊断**；A.2 = **`(b)>(c)`** → **碰撞项通道已排除**（附带发现：`p_coll≈6e-4` 平到底，碰撞头在想象里近乎死，另案）。
 - [x] §A.3 已跑，字面 `b3_le_a`（λG0 π 103.63 vs 前飞@3.59 59.85）；**复核后作废**：幅度欠匹配 ~4.6×、五臂全在不可实现区、(b3) 过冲扣分。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md)
 - [x] ⚠️ **「§4 充分」不成立**，**且「先修 RH」无依据** —— §A.4（只读，`--clip-actions`，seed=0）判定 = **`fwdmax_ge_pi`**（λG0 47.64 ≥ 18.25）→ 倒挂来自无界动作通道；先落动作空间一致性并重跑 §A。**不是** RH 案。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) A.4 节
-- [x] **动作空间一致性裁定**：裁定 = **C2 有界策略分布**（2026-08-18 签字；**代码已落地**，清单见 §4.1 顶注）。见 **§4.1**：actor 是 REINFORCE，字面 clip 会造成似然错配 + 探索塌缩（盒内采样概率 8.6%，现 ckpt 3.4e-6）⇒ **C1 不推荐单独落**。C2 属「训练=部署」既有红线的修不一致，但改策略类 ⇒ **须从零重训（禁 warm-start 现 ckpt）—— 该重训尚未做**
+- [x] **动作空间一致性裁定**：裁定 = **C2 有界策略分布**（2026-08-18 签字；**代码已落地 + 从零重训已做**，清单见 §4.1 顶注）。见 **§4.1**：actor 是 REINFORCE，字面 clip 会造成似然错配 + 探索塌缩 ⇒ **C1 不推荐单独落**。① 再 gate = **`clip_insufficient`**（n=5 非全权）
 - [ ] 接受 §1–§3 为**已发生结构事实**（写入 `V4_GATE_STATUS`；M5c/M5d 仍诚实 FAIL）
 - [ ] 接受 §4：改 In 表，**不**改 `δ_p`
 - [ ] **V3 范围裁定**：为 actor/critic MLP 增加 `goal_rel` 输入是否触及「goal-input 属 V3，本周期不给 RSSM 加 goal 张量输入」？裁定 = ______（不触及 / 触及需另开 V3 案）。*提案方读法：不触及——RSSM 完全不动，只加策略/价值 MLP 的输入维。*
