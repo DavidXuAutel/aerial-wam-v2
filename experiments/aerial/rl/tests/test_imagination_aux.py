@@ -58,9 +58,12 @@ def test_imagine_aux_progress_is_analytic_delta_goal_norm():
     )
     assert roll_ret.progress[0, 0] == pytest.approx(-1.0, abs=1e-5)
 
-    g2 = np.array([[5.0, 3.0, 0.0, 7.0]], dtype=np.float32)
+    g2 = np.array([[0.0, 8.0, 0.0, 8.0]], dtype=np.float32)
     roll_zero = imagine(m, _ZeroPolicy(), z0, horizon=1, goal_rel0=g2, body_vel0=v)
     assert roll_zero.progress[0, 0] == pytest.approx(0.0, abs=1e-5)
+
+    roll_zero_g1 = imagine(m, _ZeroPolicy(), z0, horizon=1, goal_rel0=g1, body_vel0=v)
+    assert roll_zero_g1.progress[0, 0] == pytest.approx(0.0, abs=1e-5)
 
 
 def test_imagine_aux_p_coll_still_from_dynamics_step():
@@ -70,12 +73,11 @@ def test_imagine_aux_p_coll_still_from_dynamics_step():
     z0 = z[None, :]
     g0 = np.array([[10.0, 0.0, 0.0, 10.0]], dtype=np.float32)
     v = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
+    a = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
 
+    expected_pc = m.step(z0[0], a, goal_rel=g0[0], body_vel=v[0]).p_coll
     roll_aux = imagine(
-        m, _FixedActionPolicy([1.0, 0.0, 0.0, 0.0]), z0, horizon=2,
+        m, _FixedActionPolicy(a), z0, horizon=1,
         goal_rel0=g0, body_vel0=v,
     )
-    roll_no_aux = imagine(
-        m, _FixedActionPolicy([1.0, 0.0, 0.0, 0.0]), z0, horizon=2,
-    )
-    np.testing.assert_array_equal(roll_aux.p_coll, roll_no_aux.p_coll)
+    assert roll_aux.p_coll[0, 0] == pytest.approx(expected_pc, rel=0, abs=1e-6)
