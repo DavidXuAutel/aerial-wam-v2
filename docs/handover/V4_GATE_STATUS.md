@@ -32,7 +32,7 @@
    7. 小项：`goal_rel0` up 分量 **0.07–1.04**（非 0，疑为起飞悬停高度与 spawn z 之差，**待一句确认**，非 harness 异源）；我在 PROMPT 里加的 `cos_mean10_act_xy_goal_body_xy` / `mean10_action` **未报**，JSON 里有，零成本可补。  
 **⇒ 下一件**：**不是**签 §4 In 表、**不是**再训现 π。须另案查想象-真实倒挂（WM 逐步转移保真 / 评测 z0 与训练 z0 域差）；全权 ① 仍须先解**评测期**丢局（**不**降 `n`）。  
    > **更新（2026-08-18 复核后，收窄到更便宜的一步）**：倒挂**不必**先去查 WM 转移 / z0 域差 —— 上面第 4 条已证它在**想象内部、可实现集合内**就存在（(b) 臂几何 15.0 m vs RH +62.60）。⇒ ~~下一件 = **RH 校准曲线**~~ ← **DONE（2026-08-18，125 离线）**。脚本 `v4_rh_progress_calib.py`；JSON `artifacts/v4_rh_progress_calib_c2train_20260818.json`。逐步 `out.progress` vs `Δ‖g‖`（≡ `analytic_progress`，stub 运动学）：**不是 1:1**。π **6.66×**（81.64 / 12.26）；max-forward **4.18×**（62.60 / 14.99，yaw≡0 ⇒ 不是漏转 yaw）；retreat **wrong sign**（RH +0.62 vs analytic −1.00）。形状：t0–t4 近校准，**t≈6 起 RH 爆到 6–9 m/步**而几何仍 ~1。事前规则（forward |ratio|≥2 或 retreat 反号）⇒ **`sign_reopen_rh_progress_head`**。a4 与 a23 重叠臂逐位相同。**不**回到 WM/z0 那条更贵的路（曲线未近 1:1）。改 RH 仍须签字；代码未动。  
-**⇒ 下一件**：签 **重开 RH progress 头**（本曲线即签字材料），然后才改码。**不是**签 §4 In 表、**不是**再训现 π。  
+**⇒ 下一件**：~~签 **重开 RH progress 头**~~ ← **已签 2026-08-18**（裁定 **R1**：`imagine` aux progress = `analytic_progress(g, a[:3])`；HEAD `7883b89`）。**进行中**：R1 代码 + 校准复跑 + 从零重训 AC。**不是**签 §4 In 表、**不是** warm-start 现 π。  
 **全权 ① 的前置**：先分清扫描拒收 vs `_run_one_resilient→None` 再修（**不**降 `n`——「不降阈值凑过」）。  
 **（裁定当时原文，2026-08-18，保留存审计链）动作空间一致性裁定 = C2**：策略分布改为 `u~N(mean,std)`、`a = limits ⊙ tanh(u)`（`limits = body_delta_limits(1/env.step_hz)` = 部署同一盒），logp 加 tanh 雅可比 ⇒ 采样律**结构性**落在部署动作集内、REINFORCE 无偏。~~**下一件 = 重跑 §A/§A.3/§A.4（`n_action_clipped` 应为 0）→ H100 从零重训（禁 warm-start 现 ckpt）→ 125 ① 再 gate（`n≥8`，判据 `clip_helped`/`clip_insufficient`/`spurious_pass` 已事前写死于提案 §4.1）**。~~ ← **已做，见上句。** 下段保留裁定当时的推理原文：  
 （裁定材料，2026-08-18，**原文保留**）：**A.4 的判定不变，但我在事前表里写的处置「在 `imagine()` 落 clip」写法不足** —— actor 更新是 **REINFORCE**（`corrector.py:176` → `actor_critic.update`，`logp = Normal(mean,std).log_prob(rollout.actions)`，`actor_critic.py:257`/`:271`，无梯度穿 `dynamics.step`），字面 clip = 用**未夹高斯**给**夹后动作**算 logp ⇒ (i) 似然错配、REINFORCE 有偏；(ii) 探索塌缩 —— `_log_std`=−0.5 ⇒ σ=**0.6065** 四维同值，是后三维上限（0.4/0.4/0.314）的 1.5–1.9 倍，四维**全在盒内**概率仅 **8.6%**（mean=0），按现 ckpt mean 为 **3.4e-6** ⇒ 样本全是盒面原子、状态内动作方差≈0、**学不出方向**。故裁定项改为三选一：**C1 字面 clip（不推荐单独落）/ C2 有界策略分布 `a = limits ⊙ tanh(u)` + 雅可比修正 logp（推荐；改策略类 ⇒ 须从零重训，禁 warm-start 现 ckpt）/ C3 pathwise 重写想象（本周期不做）**。~~未签字前**不改** `imagination.py` / `actor_critic.py`~~ ← **已签 C2，代码已改（见 §3 顶条）**。  
@@ -65,6 +65,7 @@
 
 ## 3. 变更记录
 
+- **2026-08-18（§5 签重开 RH = R1）** — 改了什么：提案 §5 「重开 RH progress 头」= **[x]**，裁定 **重开并落地 R1**（`imagine` aux progress = `analytic_progress(g, a[:3])`；RH `p_coll`/z 不动；不重训 `reward_head`；不修 yaw）；HEAD `7883b89`。为什么：RH 校准曲线非 1:1（π 6.66× / 前飞 4.18× / 后退反号）= 签字材料。依据：[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)。门禁未动；`enable_policy_update=false`。
 - **2026-08-16** — 规格落地；125 agent 接手 M0–M4。
 - **2026-08-16 晚** — M1–M4 代码入库；`_v4_gate --self-check` PASS；`v4_ac_smoke` OK。
 - **2026-08-16(M3)** — 125→H100 SSH key; H100 `train_v4_ac` 10 iters PASS (stub).

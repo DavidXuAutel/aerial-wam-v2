@@ -27,3 +27,5 @@ Arm (b) has yaw ≡ 0, so the 4.18× is **not** `advance_goal_rel_body` missing 
 This is RH vs **stub kinematics**, not vs real-world ①. Imagined ΣG ~85 ≈ RH sum; of that, ~12 m is true kinematic close and ~70 m is head inflation. Real ① ≈ −5 is a leftover world gap — **not** the next job until RH is honest.
 
 **Do not** implement the head in this job. yaml / `enable_policy_update` untouched.
+
+**Next job**: [`V4_RH_REOPEN_125_STATUS.md`](V4_RH_REOPEN_125_STATUS.md) — R1 analytic Δ‖g‖ in `imagine` aux path (signed 2026-08-18 HEAD `7883b89`).

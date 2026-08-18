@@ -13,7 +13,7 @@ Calib accept (old C2 ckpt, measures imagine not π): arm (b) \|ΣG/ΣΔ‖g‖\|
 
 ## Phase 0 — sign
 
-- (pending)
+- **DONE** 2026-08-18 — §5 「重开 RH progress 头」= **[x]**，裁定 **重开并落地 R1**；HEAD `7883b89`；`advance_goal_rel_body` yaw **unchecked**。
 
 ## Phase 1 — code
 

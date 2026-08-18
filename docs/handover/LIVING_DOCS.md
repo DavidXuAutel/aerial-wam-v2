@@ -15,7 +15,7 @@
 | 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」；文末 **C2 重跑** + **cos diag** |
 | 2d | [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) | **DONE**：C2 ①-eval cos **+0.806 / +0.762** ⇒ **不签** §4 In 表（想象-真实倒挂；洞 4：`goal_rel0` 构造性前向）。**先读顶部「复核」块**：本轮记 `unclassified`；**RH 案重开**（RH 高估 4.2×，排序反转）；n=5 归因已翻转为**评测期** |
 | 2e | [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md) | **DONE**：RH vs Δ‖g‖ **非 1:1**（π 6.66× / 前飞 4.18× / 后退反号）⇒ 重开 RH 签字材料 |
-| 2f | [`V4_RH_REOPEN_125_STATUS.md`](V4_RH_REOPEN_125_STATUS.md) | **IN PROGRESS（125）**：签重开 RH = R1（`imagine` aux progress = analytic Δ‖g‖）；指令 [`V4_RH_REOPEN_125_PROMPT.md`](V4_RH_REOPEN_125_PROMPT.md) |
+| 2f | [`V4_RH_REOPEN_125_STATUS.md`](V4_RH_REOPEN_125_STATUS.md) | **IN PROGRESS（125）**：§5 已签 R1（`imagine` aux progress = analytic Δ‖g‖）；R1 代码 + 校准 + 从零重训 AC — [`V4_RH_REOPEN_125_PROMPT.md`](V4_RH_REOPEN_125_PROMPT.md) |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -96,6 +96,6 @@
 
 1. `V4_GATE_STATUS.md` §1  
 2. [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md) — RH 校准曲线 **DONE**：非 1:1（π 6.66× / 前飞 4.18× / 后退反号）⇒ 签字材料已出；**不签** §4 In 表  
-2f. [`V4_RH_REOPEN_125_STATUS.md`](V4_RH_REOPEN_125_STATUS.md) — **当前 125 作业**：签重开 RH = R1（analytic Δ‖g‖ in `imagine`），然后从零重训 AC + ① 再 gate  
+2f. [`V4_RH_REOPEN_125_STATUS.md`](V4_RH_REOPEN_125_STATUS.md) — **当前 125 作业**：§5 已签 R1；落地 analytic Δ‖g‖ in `imagine` → 校准复跑 → 从零重训 AC + ① 再 gate  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1
