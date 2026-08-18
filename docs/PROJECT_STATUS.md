@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 仍 FAIL（n=5 非全权）；④ PASS。C2 cos **+0.81/+0.76** ⇒ **不签** §4 In 表。RH 校准曲线 **DONE**（π **6.66×** / 前飞 **4.18×** / 后退 **反号**）。**已签** §5 重开 RH = **R1**（`imagine` aux progress = analytic Δ‖g‖；HEAD `7883b89`）；R1 落地 + 校准复跑 + 从零重训 AC **进行中**。`enable_policy_update` 仍 **false**。
+**当前：V4-MVP** — R1 **DONE**（`imagine` aux progress = analytic Δ‖g‖）；H100 从零重训 `v4_ac_ckpt_20260818_c2_analytic_progress`。① **仍 FAIL**（n=5 非全权；−2.65/−1.38）；④ PASS。imagΣG **~4**（was C2 ~85）；cos **+0.98/+0.97** ⇒ **不签** §4 In 表。`enable_policy_update` 仍 **false**。
 
 ---
 
