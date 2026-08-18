@@ -155,7 +155,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | ① 不可稳健达成已记；方向为负待 [§A](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
+| **V4** | §A **`b>c`**（想象不偏好后退）；In 表修订 [待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
 
 ---
 
