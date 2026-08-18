@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**，但事前判据的第二个合取项（首动作 cos<0）**未验** —— 训后 §A a0 已转前向 (+0.567)，①-eval 逐 ep cos 未报 ⇒ 下一件 = **先取该 cos + `goal_rel0` 方向分布**，再决定签 §4 In 表（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1）。`enable_policy_update` 仍 **false**。
+**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**。C2 cos diag **DONE**：mean first-act cos **+0.806 / +0.762** ⇒ **不签** §4 In 表（活假设 = 想象-真实倒挂，imagΣG ~85 vs real ~−5）。下一件 = 另案查 WM/z0 域差，**不是** In 表 goal concat、**不是**再训现 π（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1）。`enable_policy_update` 仍 **false**。
 
 ---
 
@@ -154,7 +154,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | C2 已从零重训（`v4_ac_ckpt_20260818_c2_fromscratch`）；① **FAIL** n=5 非全权（−7.43 / −3.53）；④ PASS；**`clip_insufficient`**。In 表 [其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
+| **V4** | C2 已从零重训；① **FAIL** n=5 非全权；④ PASS；**`clip_insufficient`**。cos diag：**不签** §4 In 表（mean cos +0.81/+0.76）；[提案其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
 
 ---
 

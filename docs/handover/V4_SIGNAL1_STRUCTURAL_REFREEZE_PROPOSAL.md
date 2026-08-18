@@ -1,9 +1,9 @@
 # V4-① 结构性不可达：规格修订待签字
 
-> **状态**：**部分签字**（2026-08-18）。**已签 = 动作空间一致性裁定 C2**（代码已落地：`actor_critic.py` / `imagination.py` / `corrector.py` / `planner.py` / `train_rl.py` / `train_v4_ac.py` / `configs/aerial_rl.yaml` + 新单测；清单见 §4.1 顶注）。**其余仍待签**（§1–§3 事实 / §4 In 表 / V3 范围 / unique-goals 下限）⇒ In 表与 goal 输入**未动**，frozen ① 阈值（`δ_p=0.10`、`n≥8`）**未动**，`enable_policy_update` **仍 false**。  
+> **状态**：**部分签字**（2026-08-18）。**已签 = 动作空间一致性裁定 C2**（代码已落地：`actor_critic.py` / `imagination.py` / `corrector.py` / `planner.py` / `train_rl.py` / `train_v4_ac.py` / `configs/aerial_rl.yaml` + 新单测；清单见 §4.1 顶注）。**§4 In 表搁置**（08-18 C2 cos≥0，mean **+0.806 / +0.762**）。**其余仍待签**（§1–§3 事实 / V3 范围 / unique-goals 下限）⇒ goal 输入**未动**，frozen ① 阈值（`δ_p=0.10`、`n≥8`）**未动**，`enable_policy_update` **仍 false**。  
 > **先例**：2026-08-11 ④ — shield 触发与 1.5 m 度量对齐使 ④ **结构性不可过** → **修订规格（被测系统）**，不继续调参、不降阈值。  
 > **本提案同类**：goal-blind `π(a|z)` 在 goal-directed ① 上对 heuristic **不可稳健达成** → 修订 Actor/Critic **In 表**，**不**降 `δ_p=0.10`，**不**加长训当前 π。  
-> **签字前置**：§A **已跑** → A.2 = **`(b)>(c)`**（碰撞项已排除）。§A.3 **已跑** → 字面 `b3_le_a`，但 **该判定作废**。§A.4 **已跑（seed=0）** → **`fwdmax_ge_pi`**（夹后最大前飞 λG0 47.64 ≥ π_clipped 18.25）。⚠️ **「§4 充分」仍不成立**，**「先修 RH」也无依据** —— 倒挂来自无界动作通道。**动作空间一致性裁定已签 = C2 有界策略分布**（「在 `imagine()` 加一行 clip」= **C1，已否决单独落** —— actor 是 REINFORCE，会似然错配 + 探索塌缩）。**已做** = 重跑 §A（`n_action_clipped=0`）→ H100 从零重训 → 125 ① 再 gate。判定 **`clip_insufficient`**（① 仍 FAIL，n=5 非全权）。下一件 = 签 §4 In 表。
+> **签字前置**：§A **已跑** → A.2 = **`(b)>(c)`**（碰撞项已排除）。§A.3 **已跑** → 字面 `b3_le_a`，但 **该判定作废**。§A.4 **已跑（seed=0）** → **`fwdmax_ge_pi`**（夹后最大前飞 λG0 47.64 ≥ π_clipped 18.25）。⚠️ **「§4 充分」仍不成立**，**「先修 RH」也无依据** —— 倒挂来自无界动作通道。**动作空间一致性裁定已签 = C2 有界策略分布**（「在 `imagine()` 加一行 clip」= **C1，已否决单独落** —— actor 是 REINFORCE，会似然错配 + 探索塌缩）。**已做** = 重跑 §A（`n_action_clipped=0`）→ H100 从零重训 → 125 ① 再 gate。判定 **`clip_insufficient`**（① 仍 FAIL，n=5 非全权）。**C2 cos diag DONE** ⇒ **不签** §4 In 表（mean cos +0.806/+0.762 ≥0；想象-真实倒挂）。
 
 ---
 
@@ -297,12 +297,12 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 - [x] ⚠️ **「§4 充分」不成立**，**且「先修 RH」无依据** —— §A.4（只读，`--clip-actions`，seed=0）判定 = **`fwdmax_ge_pi`**（λG0 47.64 ≥ 18.25）→ 倒挂来自无界动作通道；先落动作空间一致性并重跑 §A。**不是** RH 案。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) A.4 节
 - [x] **动作空间一致性裁定**：裁定 = **C2 有界策略分布**（2026-08-18 签字；**代码已落地 + 从零重训已做**，清单见 §4.1 顶注）。见 **§4.1**：actor 是 REINFORCE，字面 clip 会造成似然错配 + 探索塌缩 ⇒ **C1 不推荐单独落**。① 再 gate = **`clip_insufficient`**（n=5 非全权）
 - [ ] 接受 §1–§3 为**已发生结构事实**（写入 `V4_GATE_STATUS`；M5c/M5d 仍诚实 FAIL）
-- [ ] 接受 §4：改 In 表，**不**改 `δ_p`
+- [ ] 接受 §4：改 In 表，**不**改 `δ_p` — **08-18 C2 cos≥0，In 表修订搁置**（mean cos actor **+0.806 / +0.762**；HEAD `b35d245`；见 [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md)）
 - [ ] **V3 范围裁定**：为 actor/critic MLP 增加 `goal_rel` 输入是否触及「goal-input 属 V3，本周期不给 RSSM 加 goal 张量输入」？裁定 = ______（不触及 / 触及需另开 V3 案）。*提案方读法：不触及——RSSM 完全不动，只加策略/价值 MLP 的输入维。*
 - [ ] ① 再 gate 的 accepted n ≥ **8** 已确认（M5d 的 n=7 为非全权）
 - [ ] 权威训最少 unique goals = ______（建议 ≫ 1，且与 ① 评测同分布、不同实例）
 - [ ] 在签字前 **禁止** 现 ckpt 加长训 / 翻 yaml
 
-**签字栏**：日期 **2026-08-18（部分签字）** · A.3 判定 **`b3_le_a`（已测，已作废）** · **A.4 判定 `fwdmax_ge_pi`（已测）** · 动作空间一致性裁定 **C2 有界策略分布（已签字 + 代码已落地，见 §4.1 顶注）** · V3 裁定 ______（**未签**） · unique-goals 下限 ______（**未签**）
+**签字栏**：日期 **2026-08-18（部分签字）** · A.3 判定 **`b3_le_a`（已测，已作废）** · **A.4 判定 `fwdmax_ge_pi`（已测）** · 动作空间一致性裁定 **C2 有界策略分布（已签字 + 代码已落地，见 §4.1 顶注）** · §4 In 表 **08-18 C2 cos≥0，修订搁置**（mean **+0.806 / +0.762**，HEAD `b35d245`） · V3 裁定 ______（**未签**） · unique-goals 下限 ______（**未签**）
 
-> 只签了动作空间一致性一项。§5 其余空项（§1–§3 事实、§4 In 表、V3 范围、unique-goals 下限）**仍未签**，故 §4 的 In 表/goal 输入**一律未动**；「签字前禁止现 ckpt 加长训 / 翻 yaml」仍生效（`enable_policy_update=false` 未变，`action_scale: 1.0` 是 C2 语义变更的必要项、不是 gate 开关）。
+> 只签了动作空间一致性一项。§4 In 表因 C2 cos diag **不签**（活假设 = 想象-真实倒挂）。§5 其余空项（§1–§3 事实、V3 范围、unique-goals 下限）**仍未签**，故 goal 输入**一律未动**；「签字前禁止现 ckpt 加长训 / 翻 yaml」仍生效（`enable_policy_update=false` 未变，`action_scale: 1.0` 是 C2 语义变更的必要项、不是 gate 开关）。
