@@ -291,7 +291,12 @@ class LatentActorCritic:
             u = mean if deterministic else mean + std * torch.randn_like(mean)
             # ``deterministic`` returns the squashed mode/median, not E[a].
             act = self._limits * torch.tanh(u) if self.bounded else u
-        return act.squeeze(0).cpu().numpy().astype(np.float64)
+        a = act.squeeze(0).cpu().numpy().astype(np.float64)
+        if self.bounded:
+            # float32 tanh*limits can overshoot the float64 box by 1 ulp
+            # (0.40000001 vs 0.4); clamp so the emitted action IS the deployed set.
+            a = np.clip(a, -self.action_limits, self.action_limits)
+        return a
 
     def evaluate_actions(
         self, z: np.ndarray, actions: np.ndarray
