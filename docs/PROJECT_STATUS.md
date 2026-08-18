@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**，但事前判据的第二个合取项（首动作 cos<0）**未验** —— 训后 §A a0 已转前向 (+0.567)，①-eval 逐 ep cos 未报（该数**不在** gate 产物里，出 cos 的是 `v4_progress_diag.py`，须重跑）⇒ 下一件 = **两步只读诊断**：① 读已落盘 `signals.1.scan.rejections` 分清 n=5 是扫描期被拒还是评测期丢局；② 对 C2 ckpt 跑 `v4_progress_diag.py` 取**轨迹级** cos。**洞 4**（08-18 读码）：评测 `goal_rel0` 由构造 ≡ `[+30,0,0]` 恒定，不是分布 ⇒ 首动作 cos 退化为 `sign(a0_x)`、§4 In 表在 t=0 信息量为 0，`cos<0` 只够判「**待签**」（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1 洞 4）。`enable_policy_update` 仍 **false**。
+**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**。C2 cos diag **DONE**：mean first-act cos **+0.806 / +0.762**（≥0）⇒ **不签** §4 In 表。活假设 = **想象-真实倒挂**（imagΣG ~85 vs real ~−5）。洞 4 仍成立：评测 `goal_rel0` 由构造 ≈ `[+30,0,z]`，不是方位分布。下一件 = 另案查 WM 转移 / z0 域差，**不是** In 表 goal concat、**不是**再训现 π（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1）。`enable_policy_update` 仍 **false**。
 
 ---
 
@@ -154,7 +154,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | C2 已从零重训（`v4_ac_ckpt_20260818_c2_fromscratch`）；① **FAIL** n=5 非全权（−7.43 / −3.53）；④ PASS；**`clip_insufficient`**。In 表 [其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
+| **V4** | C2 已从零重训；① **FAIL** n=5 非全权；④ PASS；**`clip_insufficient`**。cos diag：**不签** §4 In 表（mean cos +0.81/+0.76）；[提案其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
 
 ---
 

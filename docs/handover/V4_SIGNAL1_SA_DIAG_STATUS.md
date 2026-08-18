@@ -1,6 +1,6 @@
 # V4 §A / §A.3 imagined return decomp (125, 2026-08-18)
 
-- **status**: **C2 重跑 DONE** — `n_action_clipped=0`；H100 从零重训 DONE；① 再 gate **FAIL**（两跑均 **n=5 < 8**，`authoritative=false`）。pre-C2 数字仍为审计链，不覆盖。
+- **status**: **C2 重跑 DONE** + **C2 cos diag DONE** — mean first-act cos **+0.806/+0.762** ⇒ **不签** §4 In 表
 - **⚠️ 本文档 A.2–A.4 数字产自 pre-C2 无界策略类**（旧 ckpt 无 `policy_class` ⇒ `unbounded_gaussian_legacy`），可逐位回放。C2 新数字见文末 **「C2 从零重训后重跑」**。
 - **⚠️ 读者先读「A.3 判定作废」再读 §A.4**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；A.4 已跑，倒挂来自无界动作通道，**仍不是 RH 案**
 - **seed=0**：A.4 / A.3traj 同 seed；A.2 两次无 seed 跑（`14d0f06` / `2afcb33`）同 ckpt 同 z0 结果不同（前飞 λG0 47.02→49.65，+5.6%），已 superseded 为审计链
@@ -182,4 +182,20 @@ A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现
 
 对照 M5d unbounded：**−8.74** / heur 8.42。C2 后 ① 仍负，缺口未过 1.10。提案 §4.1：`clip_helped` 要 λG0(π)≤最大前飞 **且** ① 差额缩小——前件不成立（59>47.78）；① 仍 FAIL ⇒ **`clip_insufficient`**。`spurious_pass` 未触发。
 
-**n≥8 未落地**（spawn-in-collision 在 eval 丢局）。数字不得当全权 merge。下一件 = 签 §4 In 表（goal 入 actor），不是再训现 π、不是开 RH、不降 `δ_p`、不翻 yaml。
+**n≥8 未落地**（spawn-in-collision 在 eval 丢局）。数字不得当全权 merge。~~下一件 = 签 §4 In 表（goal 入 actor）~~ ← **已由 C2 cos diag 取代，见下节**。
+
+---
+
+## C2 ①-eval first-act cos（2026-08-18，125 diag）
+
+`v4_progress_diag.py` 同源 harness，C2 ckpt + RH WM，`--imagine-horizon 15`。JSON：`artifacts/v4_progress_diag_c2_seed{0,1}_20260818.json`。
+
+| run | n | mean cos(first_act, goal_body) actor | n cos<0 | Pearson imagΣG vs real | 事前 verdict |
+|---|---|---|---|---|---|
+| seed=0 | 7 | **+0.806** | 0 | +0.588 | do_not_sign |
+| seed=1 | 8 | **+0.762** | 0 | +0.217 | do_not_sign |
+
+- **goal_rel0 方向分布退化**：t=0 body goal ≈ **`[+30, 0, z]`**，azimuth **|θ| ≤ 0.8°**（构造性前向，非宽方位）。
+- **`first_act_xyz_std` x = 0.12 / 0.21**（非 ≈0 恒定偏置）；M5d unbounded 对照 mean cos ≈ **−0.88** — C2 已转前向 first-act，与 §A a0 x=+0.567 一致。
+- **想象-真实倒挂**：mean imagΣG **85 / 87** vs mean real progress **−5.9 / −4.5**；`mean_real_minus_imagined` ≈ **−91**。
+- **处置（事前表）**：两跑 mean cos **同号 ≥ 0** ⇒ **不签** §4 In 表（活假设 = 想象-真实倒挂，In 表 goal concat **不修**这个）。详见 [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md)。
