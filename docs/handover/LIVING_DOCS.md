@@ -13,6 +13,7 @@
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
 | 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **部分签字**：C2 已落地并重训；① 再 gate = **`clip_insufficient`**（n=5 非全权）。§4 In 表 / V3 / unique-goals **仍待签** |
 | 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」；文末 **C2 重跑**：`n_action_clipped=0`，① 仍 FAIL |
+| 2d | [`V4_C2_COS_DIAG_125_PROMPT.md`](V4_C2_COS_DIAG_125_PROMPT.md) / [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) | **进行中（125）**：C2 ①-eval 逐 ep 首动作 cos + `goal_rel0`；cos<0 签 §4，cos≥0 不签 |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -71,7 +72,8 @@
 - 「`action_scale=3.0` 是动作上界 / π 已饱和」—— **否**；`_MLP` 末层裸 `nn.Linear`，它是**增益**，‖a‖ 无上界（`actor_critic.py:200`）。**← 描述 pre-C2**；C2 起 `action_scale` 默认 **1.0** 且是 **pre-tanh 增益**，动作由 `limits ⊙ tanh(u)` **构造性有界**（旧 ckpt 仍按 legacy 类以 3.0 回放）。
 - 「一致性修 = 在 `imagine()` 加一行 clip」—— **不够**（提案 §4.1）。actor 更新是 **REINFORCE**（`actor_critic.py:257`/`:271`，无梯度穿 `dynamics.step`），字面 clip ⇒ 用未夹高斯给夹后动作算 logp（似然错配）+ 探索塌缩（σ=0.607 四维同值 > 后三维上限；盒内采样概率 8.6%，现 ckpt 3.4e-6）。推荐 **C2 有界策略分布**（`a = limits ⊙ tanh(u)` + 雅可比修正），须**从零重训**。**← 已按 C2 落地**（08-18）；`imagine()` 里的 clip 保留为**计数器** `n_action_clipped`（C2 下实测 0），不是修本身。
 - **「C2 已落地 ⇒ V4-① 已修好 / 可以翻 flags」—— 否**（08-18）。C2 已从零重训并再 gate：`n_action_clipped=0`，① **仍 FAIL**（−7.43 / −3.53 vs heur ~9），`enable_policy_update` 仍 **false**。判定 `clip_insufficient`。
-- **「`clip_insufficient` 已判实 ⇒ 直接签 §4 In 表」—— 未验完**（08-18）。该行是**合取式**「① FAIL **且** 首动作 cos<0」，而训后 §A 的 a0 x=**+0.567 已转前向**、**①-eval 逐 ep cos 未报**；π goal-blind ⇒ probe goal 的正 cos **不可**外推到评测 goal 分布。先取那个 cos + `goal_rel0` 分布：cos<0 ⇒ 签 §4；cos≥0 ⇒ 活假设变成「想象-真实回报倒挂」（WM 保真 / z0 域差），**In 表修订不修这个**。见 `V4_GATE_STATUS` §1。
+- **「`clip_insufficient` 已判实 ⇒ 直接签 §4 In 表」—— 未验完**（08-18）。该行是**合取式**「① FAIL **且** 首动作 cos<0」，而训后 §A 的 a0 x=**+0.567 已转前向**、**①-eval 逐 ep cos 未报**；π goal-blind ⇒ probe goal 的正 cos **不可**外推到评测 goal 分布。先取那个 cos + `goal_rel0` 分布：cos<0 ⇒ 签 §4；cos≥0 ⇒ 活假设变成「想象-真实回报倒挂」（WM 保真 / z0 域差），**In 表修订不修这个**。见 `V4_C2_COS_DIAG_125_PROMPT.md`（125 进行中）。
+- **「那个 cos 已在 C2 re-gate 产物里」—— 否**（08-18）。gate partial-1 只落 progress / final_dist / scan（`v4_gate_run_partials.py:228-234`），**无 cos 无动作**。出 cos 的是 `v4_progress_diag.py`（M5d 跑过 ≈−0.88，**C2 未跑**）。要 4090 渲染器。
 - **「训后 λG0 59.09 > 最大前飞 47.78 ⇒ 又在薅想象」—— 否**（08-18）。事前 `clip_helped` 行写的「λG0(π)≤最大前飞」隐含「纯前飞是盒内最优」，**四自由度盒里不成立**。`goal_rel` 30→17.8 = 闭合 **12.2 m**，H=15 × 上限 1.0 m/步 ⇒ 盒内理论上限 15 m 的 **81%** ⇒ 是真接近目标。**不**重开 RH 案。
 - **「① n=5 只是样本少一点」—— 不止**（08-18）。spawn-in-collision 丢的是**杂乱起点** ⇒ 存活局偏开阔空间，**非随机**丢失。FAIL 方向对 n 稳健（补 3 局须各 ≈37.9 / 33.7，heuristic 每局仅 ~8.7），但**两跑均非全权**、不得入账干净 gate；**④ PASS 同为非全权**（off-rate 2/5；on-rate=0 ⇒ ④b 大概率 `before_vacuous`）。要全权 ① 须先解 spawn，**不**降 `n`。
 - 「V1 部署侧动作空间已一致」—— **未核**；`planner.default_candidates`（`planner.py:31-42`）在未夹空间打分，到 `collector.py:167` 才夹。**不**重开 08-15 merge，仅记为同源不一致。**← C2 未改这条**：`planner.action_limits` 默认 `None`，V1 部署路径逐位不变（打开须 V1 re-gate）。
@@ -84,6 +86,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) 文末 **C2 重跑**：`n_action_clipped=0`；① **`clip_insufficient`**（n=5 非全权，第二合取项未验）；下一件 = **先取 ①-eval 逐 ep 首动作 cos + `goal_rel0` 方向分布**，再决定签 §4 In 表  
+2. [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) — 125 正在取 C2 ①-eval 逐 ep 首动作 cos + `goal_rel0`（A.3 欠账 ‖a‖ + 想象-真实相关）；cos<0 签 §4，cos≥0 不签  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1
