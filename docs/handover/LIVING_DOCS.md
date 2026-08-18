@@ -1,4 +1,4 @@
-# 活文档阅读清单（2026-08-17）
+# 活文档阅读清单（2026-08-18）
 
 > **用途**：回答「现在该读哪些活文档」。只列**仍在维护 / 决定现状**的入口；历史备忘与已闭合细节按需下钻。  
 > **防误读**：`RUNBOOK_v0.md` §8 晚¹⁹–²² / 任何「merge 从未 exit 0」叙述 = **2026-08-12 快照**，不是现状（V0 已于 08-14 merge PASS）。
@@ -11,8 +11,8 @@
 |---|---|---|
 | 1 | [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) | **当前阶段**一句话：V4 merge 状态、下一轨 |
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
-| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **待签字**；A.3 = **`b3_le_a`** → **先修 RH**，§4 不充分 |
-| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | §A+A.3 **DONE**：碰撞项排除；匹配幅度下 RH 仍偏好 π 后向向量 |
+| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **待签字**；§4 仍不充分，但 A.3 判定（`b3_le_a` → 先修 RH）**已作废**；下一件 = **§A.4** |
+| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | §A+A.3 已跑，**先读末尾「A.3 判定作废」**：臂无效（幅度欠匹配 4.6× + 物理不可实现 + 冲过目标） |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -66,7 +66,9 @@
 - 「n=8 相对冻结 16 越界」—— **2026-08-17 已 re-freeze，n=8 即冻结值**（洞 1 = **事后合法化**，见 `V0_GATE_STATUS` §4；非事前干净通过）。
 - 「n=8 re-freeze 治了 V1-① 擦边」—— **否**；合法性 ≠ 统计功效。① 裕度 0.8 局 / McNemar p≈0.5 见 `V1_GATE_STATUS` §2 + [待签字条款②③](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)。
 - 「V4-① 再训一轮 / 对齐 z0 就能过」—— **否**；现 In 表 `π(a|z)` 对 heuristic **不可稳健达成**。见 [结构提案](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)。
-- 「§A `b>c` 已证明改 In 表就够」—— **否**。A.3 = **`b3_le_a`**：匹配幅度下 RH 仍偏好 π 后向向量（λG0 103.6 > 前飞@3.59 的 59.9）。**先修 RH**，不是签 §4。
+- 「§A `b>c` 已证明改 In 表就够」—— **否**，§4 仍不充分（A.2 只排除碰撞项通道）。
+- 「A.3 = `b3_le_a` ⇒ 先修 RH」—— **否，2026-08-18 已作废**：那条臂无效（① 幅度只匹配第 0 步、欠 ~4.6×，π 轨迹均值 ‖a[:3]‖≈16.5；② 五臂全超部署上限 `body_delta_limits(1/5Hz)`=[1.0,0.4,0.4,0.314]，`imagine()` 不夹；③ (b3) 冲过目标 23.9 m）。**可实现集合内 RH 方向偏好是对的**：(b)=最大前飞 λG0 49.65 vs 最大后退 15.99（3.1×）。下一件 = **§A.4 `--clip-actions`**，见 `V4_GATE_STATUS` §1。
+- 「`action_scale=3.0` 是动作上界 / π 已饱和」—— **否**；`_MLP` 末层裸 `nn.Linear`，它是**增益**，‖a‖ 无上界（`actor_critic.py:200`）。
 - 「④b before=1.0 是测得的干预先于接触」—— **否**；`n_contact=0` 时空过终态，④ 实证=④c。
 - 「headon 可作 V1-② coll OOD」—— **否**；headon `coll_eps=0`。
 - `PROJECT_STATUS.md` / `RUNBOOK_v0.md` §1 若仍写「V1 进行中 / V4 未开始」而与 `V4_GATE_STATUS` 冲突时 → **以 V4 活文档为准**（并应回写那两处）。
@@ -76,6 +78,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md)（A.3 = `b3_le_a`；下一件修 RH）  
+2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) 末尾「A.3 判定作废」（下一件 = **§A.4 只读**，**不**开 RH 案）  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1

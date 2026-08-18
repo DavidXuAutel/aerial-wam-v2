@@ -1,20 +1,37 @@
 #!/usr/bin/env python3
-"""V4 proposal §A / §A.3 — read-only imagined return decomposition.
+"""V4 proposal §A / §A.3 / §A.4 — read-only imagined return decomposition.
 
 §A arms (unit magnitude), same z0 / goal_rel0 / H=15:
   (a) trained π  act_latent(z)
   (b) constant forward  [+1, 0, 0, 0]
   (c) constant retreat  [-1, 0, 0, 0]
 
-§A.3 scale-matched arms — π saturates ‖a‖≈3.4 (action_scale=3), so (b)/(c) at
-unit magnitude cannot tell a *direction* defect from a *magnitude* exploit:
-  (b3) forward at π's measured ‖a0[:3]‖
+§A.3 scale-matched arms — π emits ‖a0[:3]‖≈3.6, so (b)/(c) at unit magnitude
+cannot tell a *direction* defect from a *magnitude* exploit:
+  (b3) forward at π's ‖a[:3]‖ (basis: --match-basis a0 | traj)
   (c3) retreat at the same magnitude
+
+  NOTE (2026-08-18 correction): ``action_scale`` is a GAIN, not a bound —
+  ``_MLP`` ends in a bare ``nn.Linear`` and ``mean = actor(z) * action_scale``
+  (``actor_critic.py:200``), so ‖a‖ is unbounded and 3.6 is NOT saturation.
+  ``--match-basis a0`` (the §A.3 default, kept for reproducibility) matches only
+  step 0; π's *trajectory* mean ‖a[:3]‖ is several times larger, so an a0-matched
+  arm is under-matched. Use ``traj`` for any new magnitude claim.
+
+§A.4 realizable-set arms — ``imagine()`` never clips the action, but every
+deployed path does (``collector.py:167`` / ``airsim_env.py:170`` clip to
+``body_delta_limits(1/step_hz)`` = [1.0, 0.4, 0.4, 0.314] m at step_hz=5). So
+the §A/§A.3 arms all sit OUTSIDE the physically realizable action set and the
+comparison measures "unbounded beats bounded" — a foregone conclusion at
+w_progress:w_maneuver = 100:1. ``--clip-actions`` puts every arm inside the
+deployed set (arm (b) then *is* the maximal realizable forward step) so the
+direction question can be asked on the action space the vehicle actually has.
 
 Reports Σ progress / p_coll / maneuver terms, Σ reward, λ-return
 (λ=0.95, γ=0.997), plus per-step progress / p_coll / ‖a‖ / ‖goal_rel‖ so that
 "imagination believes π arrives" (z-transition infidelity) is separable from
-"RH over-rewards big actions" (reward scaling). Does not write ckpts, yaml, or train.
+"RH over-rewards big actions" (reward scaling). Does not write ckpts, yaml, or
+train; ``--clip-actions`` wraps the POLICY only and leaves ``imagine()`` untouched.
 
 Usage (125, offline, no renderer):
   source experiments/aerial/scripts/env_4090.sh
@@ -24,6 +41,8 @@ Usage (125, offline, no renderer):
     --actor-ckpt experiments/aerial/rl/artifacts/v4_ac_ckpt_20260817_wm_rh_goal_rgb/v4_ac_latest.pt \\
     --wm-ckpt experiments/aerial/rl/artifacts/wm_ckpt_r60_rh_20260816/wm_step_1000.pt \\
     --out artifacts/v4_imagine_return_decomp_20260818.json
+
+  # §A.4 (realizable set):  --clip-actions --seed 0
 """
 from __future__ import annotations
 
@@ -45,6 +64,24 @@ class _ConstPolicy:
 
     def act_latent(self, z: np.ndarray) -> np.ndarray:
         return self._a.copy()
+
+
+class _ClippedPolicy:
+    """§A.4 — wrap any arm so its action is the one the vehicle would execute.
+
+    ``imagine()`` applies no action bound; ``collector`` / ``airsim_env`` clip to
+    ``body_delta_limits(dt)`` before stepping. Wrapping the POLICY (not
+    ``imagine``) keeps this diagnostic read-only while putting every arm inside
+    the deployed action set.
+    """
+
+    def __init__(self, inner: Any, limits: np.ndarray, clip_fn: Any) -> None:
+        self._inner = inner
+        self._limits = np.asarray(limits, dtype=np.float64).reshape(4)
+        self._clip = clip_fn
+
+    def act_latent(self, z: np.ndarray) -> np.ndarray:
+        return self._clip(self._inner.act_latent(z), self._limits)
 
 
 def _repo_root(explicit: Optional[str]) -> Path:
@@ -168,6 +205,84 @@ def _apply_a3(summary: Dict[str, Any], init_goal_dist: float) -> Dict[str, Any]:
     }
 
 
+def _apply_a4(
+    summary: Dict[str, Any],
+    limits: np.ndarray,
+    step_hz: float,
+    unclipped_pi_act_norm3_mean: Optional[float] = None,
+) -> Dict[str, Any]:
+    """§A.4 — the direction question asked inside the REALIZABLE action set.
+
+    Every arm is clipped to ``body_delta_limits(1/step_hz)``, so arm (b)
+    ``[+1,0,0,0]`` *is* the maximal realizable forward step at step_hz=5 and arm
+    (a) is the deployed policy (π's direction, executable magnitude).
+
+    Pre-committed (written before the run):
+      λG0(b) ≥ λG0(a)   → verdict ``fwdmax_ge_pi``. The §A/§A.3 rank inversion was
+                          the UNBOUNDED-ACTION channel, not RH direction. Disposition:
+                          make ``imagine()`` clip to the deployed limits (consistency
+                          red line, not a threshold change), then re-run §A/§A.3 and
+                          re-derive the ① root cause. NOT an RH case; ``b3_le_a`` is
+                          void because its arm was unrealizable.
+      λG0(a) > λG0(b)   → verdict ``pi_gt_fwdmax``. RH prefers π's direction even
+                          when the magnitude is executable ⇒ A.2 branch 2 CONFIRMED:
+                          fix RH before the §4 In-table revision.
+    Either way: report ``clip_shrink_ratio`` (unclipped ÷ clipped mean ‖a[:3]‖) as
+    the size of the train/deploy action-space mismatch, and ``arrived`` per arm.
+    Neither branch relaxes ``δ_p=0.10``, ``n=8``, or any yaml flag.
+    """
+    a = summary.get("a_pi")
+    b = summary.get("b_forward")
+    c = summary.get("c_retreat")
+    if a is None or b is None or c is None:
+        return {"verdict": "not_run", "disposition": "clipped arms missing"}
+
+    lam_a = float(a["mean_lambda_G0"])
+    lam_b = float(b["mean_lambda_G0"])
+    lam_c = float(c["mean_lambda_G0"])
+    clipped_pi = float(a["act_norm3_mean"])
+    shrink = (
+        float(unclipped_pi_act_norm3_mean) / clipped_pi
+        if unclipped_pi_act_norm3_mean and clipped_pi > 1e-9
+        else None
+    )
+
+    if lam_b >= lam_a:
+        verdict = "fwdmax_ge_pi"
+        disposition = (
+            "inversion was the unbounded-action channel: imagine() must clip to "
+            "body_delta_limits(1/step_hz) like the deployed path, then re-run §A/§A.3. "
+            "b3_le_a is void (unrealizable arm); this is NOT an RH case."
+        )
+    else:
+        verdict = "pi_gt_fwdmax"
+        disposition = (
+            "RH prefers π's direction at executable magnitude → A.2 branch 2 confirmed: "
+            "fix RH before the §4 In-table revision."
+        )
+    return {
+        "clipped": True,
+        "step_hz": float(step_hz),
+        "body_delta_limits": np.asarray(limits, dtype=float).tolist(),
+        "lambda_G0_a_pi_clipped": lam_a,
+        "lambda_G0_b_forward_max": lam_b,
+        "lambda_G0_c_retreat_max": lam_c,
+        "verdict": verdict,
+        "disposition": disposition,
+        "pi_act_norm3_mean_clipped": clipped_pi,
+        "pi_act_norm3_mean_unclipped": unclipped_pi_act_norm3_mean,
+        "clip_shrink_ratio": shrink,
+        "arrived": {
+            k: bool(float(v["goal_dist_min_mean"]) <= float(v.get("success_dist_m") or 0.0))
+            for k, v in summary.items()
+        },
+        "note": (
+            "arm (b) [+1,0,0,0] equals the maximal realizable forward step at "
+            "step_hz=5 (body_delta_limits(0.2) = [1.0, 0.4, 0.4, 0.314])."
+        ),
+    }
+
+
 def _apply_a2(summary: Dict[str, Any]) -> Dict[str, Any]:
     b = summary["b_forward"]
     c = summary["c_retreat"]
@@ -235,8 +350,35 @@ def main() -> int:
         "--match-scale",
         type=float,
         default=0.0,
-        help="§A.3 constant-arm ‖a[:3]‖; 0 = auto from π's measured first action",
+        help="§A.3 constant-arm ‖a[:3]‖; 0 = auto from π (see --match-basis)",
     )
+    p.add_argument(
+        "--match-basis",
+        choices=("a0", "traj"),
+        default="a0",
+        help=(
+            "auto --match-scale basis. 'a0' = π's first action only (the §A.3 run's "
+            "behaviour, kept for reproducibility — UNDER-matches π's trajectory); "
+            "'traj' = π's mean ‖a[:3]‖ over the horizon (correct magnitude match)"
+        ),
+    )
+    p.add_argument(
+        "--clip-actions",
+        action="store_true",
+        help=(
+            "§A.4: clip every arm to body_delta_limits(1/step_hz) — the same cap "
+            "collector/airsim_env apply — so all arms are physically realizable. "
+            "Wraps the policy only; imagine() is untouched. Skips the §A.3 arms "
+            "(they degenerate onto (b)/(c) once clipped)"
+        ),
+    )
+    p.add_argument(
+        "--step-hz",
+        type=float,
+        default=0.0,
+        help="control rate for --clip-actions; 0 = read env.step_hz from --config",
+    )
+    p.add_argument("--seed", type=int, default=0, help="numpy seed (imagine/encode sample)")
     p.add_argument("--out", default="artifacts/v4_imagine_return_decomp.json")
     args = p.parse_args()
 
@@ -252,9 +394,18 @@ def main() -> int:
         compute_lambda_returns,
     )
     from experiments.aerial.rl.dataset import load_dataset
+    from experiments.aerial.rl.env.action import body_delta_limits, clip_body_delta
     from experiments.aerial.rl.imagination import imagine
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.train_rl import load_torch_dynamics
+
+    np.random.seed(int(args.seed))
+    try:
+        import torch as _torch
+
+        _torch.manual_seed(int(args.seed))
+    except Exception:  # torch absent → numpy seed is all we can pin
+        pass
 
     cfg = yaml.safe_load((root / args.config).read_text()) or {}
     reward_cfg = RewardConfig(**(cfg.get("reward") or {})) if cfg.get("reward") else RewardConfig()
@@ -298,9 +449,22 @@ def main() -> int:
     goal_rel0 = np.tile(np.array([fwd, left, up, dist], dtype=np.float32), (n, 1))
     body_vel0 = np.zeros((n, 3), dtype=np.float32)
 
+    # §A.4 — realizable action set (same cap the deployed path applies).
+    step_hz = float(args.step_hz) if float(args.step_hz) > 0 else float(
+        ((cfg.get("env") or {}).get("step_hz") or 5.0)
+    )
+    limits = body_delta_limits(1.0 / step_hz)
+    if args.clip_actions:
+        print(
+            f"[§A.4] clipping every arm to body_delta_limits(1/{step_hz:g}) = "
+            f"{np.round(limits, 4).tolist()} (collector.py:167 / airsim_env.py:170)"
+        )
+
     arms: Dict[str, Any] = {}
 
     def _run_arm(name: str, pol: Any, const_scale: Optional[float] = None) -> Dict[str, Any]:
+        if args.clip_actions:
+            pol = _ClippedPolicy(pol, limits, clip_body_delta)
         roll = imagine(
             dynamics, pol, z0, int(args.horizon),
             reward_cfg=reward_cfg,
@@ -362,24 +526,49 @@ def main() -> int:
     a2 = _apply_a2(arms)
     print("[§A] A.2", json.dumps(a2, indent=2))
 
-    # Pass 2 — §A.3 scale-matched arms at π's own first-action magnitude.
-    scale = float(args.match_scale) if float(args.match_scale) > 0 else float(
-        arms["a_pi"]["act0_norm3_mean"]
-    )
-    print(f"[§A.3] match_scale={scale:.4f} (0 → auto from π ‖a0[:3]‖)")
-    arms["b3_forward_scaled"] = _run_arm(
-        "b3_forward_scaled", _ConstPolicy(np.array([+scale, 0.0, 0.0, 0.0])), scale
-    )
-    arms["c3_retreat_scaled"] = _run_arm(
-        "c3_retreat_scaled", _ConstPolicy(np.array([-scale, 0.0, 0.0, 0.0])), scale
-    )
+    if args.clip_actions:
+        # Pass 2 is skipped: a constant arm at ‖a‖>limit clips back onto (b)/(c),
+        # so the scale-matched arms carry no extra information once realizable.
+        scale = 0.0
+        a3 = {
+            "verdict": "not_run_clipped",
+            "disposition": "scale-matched arms degenerate onto (b)/(c) under --clip-actions",
+        }
+        a4 = _apply_a4(arms, limits, step_hz, unclipped_pi_act_norm3_mean=None)
+        print("[§A.4] A.4", json.dumps(a4, indent=2))
+    else:
+        # Pass 2 — §A.3 scale-matched arms at π's own magnitude.
+        basis_key = "act0_norm3_mean" if args.match_basis == "a0" else "act_norm3_mean"
+        scale = float(args.match_scale) if float(args.match_scale) > 0 else float(
+            arms["a_pi"][basis_key]
+        )
+        print(
+            f"[§A.3] match_scale={scale:.4f} (basis={args.match_basis}: "
+            f"a0={arms['a_pi']['act0_norm3_mean']:.3f} "
+            f"traj={arms['a_pi']['act_norm3_mean']:.3f})"
+        )
+        arms["b3_forward_scaled"] = _run_arm(
+            "b3_forward_scaled", _ConstPolicy(np.array([+scale, 0.0, 0.0, 0.0])), scale
+        )
+        arms["c3_retreat_scaled"] = _run_arm(
+            "c3_retreat_scaled", _ConstPolicy(np.array([-scale, 0.0, 0.0, 0.0])), scale
+        )
 
-    a3 = _apply_a3(arms, float(np.linalg.norm([fwd, left, up])))
-    print("[§A.3] A.3", json.dumps(a3, indent=2))
+        a3 = _apply_a3(arms, float(np.linalg.norm([fwd, left, up])))
+        print("[§A.3] A.3", json.dumps(a3, indent=2))
+        a4 = {
+            "verdict": "not_run",
+            "disposition": "pass --clip-actions to test the realizable action set (§A.4)",
+        }
 
     out = {
         "read_only": True,
         "n_starts": n,
+        "seed": int(args.seed),
+        "clip_actions": bool(args.clip_actions),
+        "step_hz": step_hz,
+        "body_delta_limits": np.asarray(limits, dtype=float).tolist(),
+        "match_basis": str(args.match_basis),
         "horizon": int(args.horizon),
         "goal_rel0": [fwd, left, up, dist],
         "body_vel0": "zeros (deploy-like)",
@@ -397,6 +586,7 @@ def main() -> int:
         "arms": arms,
         "A2": a2,
         "A3": a3,
+        "A4": a4,
         "match_scale": scale,
     }
     out_path = Path(args.out).expanduser()
