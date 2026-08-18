@@ -2,7 +2,8 @@
 
 > **状态**：**待签字**（2026-08-18）。文书先落地；**未**改代码 / frozen ① 阈值 / yaml。  
 > **先例**：2026-08-11 ④ — shield 触发与 1.5 m 度量对齐使 ④ **结构性不可过** → **修订规格（被测系统）**，不继续调参、不降阈值。  
-> **本提案同类**：goal-blind `π(a|z)` 在 goal-directed ① 上对 heuristic **结构性不可达** → 修订 Actor/Critic **In 表**，**不**降 `δ_p=0.10`，**不**加长训当前 π。
+> **本提案同类**：goal-blind `π(a|z)` 在 goal-directed ① 上对 heuristic **不可稳健达成** → 修订 Actor/Critic **In 表**，**不**降 `δ_p=0.10`，**不**加长训当前 π。  
+> **签字前置**：先做 **§A 只读诊断**（**第一件要做的事**）。§A 决定 §4 是否**充分**——若想象目标本身偏好后退，仅改 In 表修不好。
 
 ---
 
@@ -10,11 +11,51 @@
 
 | 轴 | 是什么 | 不是什么 |
 |---|---|---|
-| **本缺口** | 规格规定策略看不见 goal + 训练塌成单 goal → ① 不可达 | 想象 horizon / RH / z0 RGB 域差的「再调一轮」 |
+| **本缺口** | 规格规定策略看不见 goal + 训练塌成单 goal → ① 不可**稳健**达成 | 想象 horizon / z0 RGB 域差的「再调一轮」 |
+| **想象目标方向性**（§A） | reward 各项在想象里是否**偏好后退** —— **未排除**，须只读判定 | 不是本提案要改的 In 表；但决定 In 表修订**是否充分** |
 | **n re-freeze** | 合法性（评测 n） | 不改变 π 无 goal 的结构 |
 | **V1-① 功效条款②③** | 碰撞率统计功效 | 与本条无关 |
 
 **禁止的下一步**：在现 In 表下 `longer train`。预测方向与 M5c→M5d 相同：**更差**。
+
+---
+
+## A. 签字前置只读诊断（**第一件要做的事**）
+
+**为什么必须先做**：§1–§2 的机制解释了首动作**恒定**（对 goal 不敏感），但**没有**解释方向为**负**。训练 mock goal `start→[30,0,5]` 与部署实测 `goal_body0 ≈ [+30, 0, 0.85]` **同向偏前**——「把那一个 goal 的动作烙进 `π(z)`」应预测 cos **正**，实测却是饱和后退 `[-1, -0.4, -0.4]`。若真因在**想象目标本身偏好后退**，改 In 表 + 多样 goal **不会**修好，而已付出「规格修订 + H100 重训 + 一轮 gate」。
+
+**只读**：不写 ckpt、不改 yaml、不改规格、不训练、不翻 `enable_policy_update`。
+
+### A.0 已静态排除（本次核过，无需再跑）
+
+| 嫌疑 | 结论 |
+|---|---|
+| `advance_goal_rel_body` 符号 | **正确**：`g[:3] = g[:3] - disp`（`goal_features.py:71`）→ 前向动作**减少**剩余距离。不是符号 bug |
+| `maneuver` 惩罚 | `maneuver = ‖a‖`（`imagination.py`）→ 与**方向无关**，不能产生方向性偏好 |
+
+⇒ 想象里唯一能产生**方向性**偏好的项只剩 `out.progress`（学习到的 RH 输出）与 `out.p_coll`。
+
+### A.1 想象回报逐项分解（要跑）
+
+ckpt：`v4_ac_ckpt_20260817_wm_rh_goal_rgb/v4_ac_latest.pt` + RH WM `wm_step_1000.pt`。在 ① 同源 headon z0 上调 `imagine(..., horizon=15, goal_rel0=<实测 body-frame goal>)`，三臂各报逐项和：
+
+| 臂 | 动作 |
+|---|---|
+| (a) π 自身 | 训练后 actor 的 `act_latent(z)` |
+| (b) 前飞常量 | `[+1, 0, 0, 0]` |
+| (c) 后退常量 | `[-1, 0, 0, 0]` |
+
+**必报**：`Σ progress 项` · `Σ p_coll 项` · `Σ maneuver 项` · `Σ reward` · λ-return（λ=0.95, γ=0.997）。
+
+### A.2 判据（**先写死**，避免事后解释）
+
+| 观测 | 判定 | 处置 |
+|---|---|---|
+| (c) λ-return **≥** (b)，差额主要来自 **`p_coll` 项** | 想象内 **①/④ 权衡被碰撞项主导**——后退即想象最优。这同时解释「④ PASS 与 ① −8.74 并存」 | §4 In 表修订**必要但不充分**：**先**另开 reward 配平案，否则重训必复现负 ① |
+| (c) ≥ (b)，差额主要来自 **`progress` 项** | RH 的 progress 对方向学错 | 先修 RH（另案），再执行 §4 |
+| (b) **>** (c) | 想象目标方向无误；负 ① 来自部署端（单 goal 烙印 + z0 域差） | §4 **可直接执行**，本提案充分 |
+
+三种结局都**不**降 `δ_p=0.10`、都**不**翻 yaml。
 
 ---
 
@@ -55,16 +96,20 @@ M5d 权威 300 iter（STATUS：`_mock_goal_episode`）想象全部针对这一�
 | M5d goal+z0 | 3.05 | 强 → 把**那一个**固定方向烙进 `π(z)` | **−8.74**（更差） |
 | 125 逐 ep 诊 | — | — | 首动作 cos(goal_body) **≈−0.88** vs heur **≈+0.99** |
 
-修好 conditioning 反而更差，是该假设的**预测方向**（强化了部署端错误信号），不是意外。
+第三行出处：[`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) — script `experiments/aerial/scripts/v4_progress_diag.py`（`37e5cb9`）· JSON `artifacts/v4_progress_diag_20260817.json` · log `logs/v4_progress_diag_20260817.log` · n=7 scored（1 spawn drop）。
+
+**该假设解释到哪一步（不夸大）**：解释了首动作**恒定**、对 goal 不敏感，以及 M5c→M5d 幅度**放大**（弱定向 → 强行烙一个固定方向）。**未**解释方向为**负**：训练 goal 与部署 goal 同向偏前，烙印假设本应预测 cos 正。方向的成因待 **§A** 判定。
 
 ---
 
-## 3. 为什么现规格下 ① 数学上不可达
+## 3. 为什么现规格下 ① 不可**稳健**达成
 
 ①：`mean_progress_actor ≥ mean_progress_heuristic × 1.10`。  
 progress = 朝 **goal** 的位移。heuristic 吃 `goal_getter`（稳定 +7~+11）。
 
-goal-blind `π(a|z)` 要赢，唯一途径是 **goal 泄漏进 z**。z = RGB(+深度头) RSSM latent；3-D 航点不在图像里，**无泄漏通道**。故在现 In 表下 ① **不可达**。
+goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄漏进 z**。z = RGB(+深度头) RSSM latent；3-D 航点不在图像里，**无泄漏通道**。故现 In 表下 π 只能输出与 goal 无关的行为。
+
+**精确边界（不说过头）**：这**不是**「数学上恒为负」。obstacle-facing 起点下 goal 系统性偏前（实测 `goal_body0 ≈ [+30, 0, 0.85]`），一个 goal-blind 的**常量前飞**策略能拿到正 progress，甚至可能逼近 heuristic。所以准确表述是 ① **不可稳健达成**：任何过门只能来自「评测 goal 恰好与烙印方向同向」的偶然，换 annotation/goal 几何即失效。**该偶然属凑过，不接受**（见 §4 明确不做）。
 
 与 ④「触发对齐 1.5 m → 结构性不可过」同类：继续调 shield / 继续训 AC **都不是**处置。
 
@@ -79,20 +124,24 @@ goal-blind `π(a|z)` 要赢，唯一途径是 **goal 泄漏进 z**。z = RGB(+�
 | Actor In | `act_latent(z)` | `act_latent(z, goal_rel)` 或 `π([z ‖ goal_rel])`；deploy 必须喂 **同一** body-frame `goal_rel` |
 | Critic In | `V(z)` | `V(z, goal_rel)`（剩余距离进 value） |
 | ① 阈值 | `δ_p=0.10` vs Heuristic | **不动** |
-| 权威 AC 训 | 允许 length-1 mock | mock 单 goal **仅诊断**；权威训须 **多样 annotation/① 同源 goal**（签字填最少 unique goals / episodes） |
+| 权威 AC 训 | 允许 length-1 mock | mock 单 goal **仅诊断**；权威训须 **多样 goal**，与 ① 评测**同分布、不同实例**（禁止拿评测 accepted start 当训练集）（签字填最少 unique goals / episodes） |
+| ① 再 gate 的 n | M5d ① 实跑 **n=7** | accepted **≥ 8**（frozen §4.1 re-freeze 2026-08-17；`v4_metrics.py:46` 下 n<8 → `authoritative=false`）。因 spawn drop，请起点须**多请**以确保落到 8 |
 | yaml | `enable_policy_update=false` | merge 前仍 false |
 
-**明确不做**：降 1.10；把 ① 改成 N/A 冒充 PASS；在现 π 上加长训；为过门关掉 shield。
+**明确不做**：降 1.10；把 ① 改成 N/A 冒充 PASS；在现 π 上加长训；为过门关掉 shield；**以固定前向偏置（goal-blind 常量）冒充定向能力**（§3 精确边界）。
 
-**签字后才动代码**：`actor_critic.py` + `imagination.py` `act_latent` + deploy + 单测 + H100 重训 + 125 ① 再 gate。
+**签字后才动代码**（且须 §A 判定为「§4 充分」或已先落 reward 配平案）：`actor_critic.py` + `imagination.py` `act_latent` + deploy + 单测 + H100 重训 + 125 ① 再 gate（n≥8）。
 
 ---
 
 ## 5. 签字清单
 
+- [ ] **先做 §A 只读诊断**（第一件事）；A.2 判定结果 = ______（(c)≥(b)/p_coll 主导 · (c)≥(b)/progress 主导 · (b)>(c)）
 - [ ] 接受 §1–§3 为**已发生结构事实**（写入 `V4_GATE_STATUS`；M5c/M5d 仍诚实 FAIL）
 - [ ] 接受 §4：改 In 表，**不**改 `δ_p`
-- [ ] 权威训最少 unique goals = ______（建议 ≥ ① 评测同源 annotation，且 ≫ 1）
+- [ ] **V3 范围裁定**：为 actor/critic MLP 增加 `goal_rel` 输入是否触及「goal-input 属 V3，本周期不给 RSSM 加 goal 张量输入」？裁定 = ______（不触及 / 触及需另开 V3 案）。*提案方读法：不触及——RSSM 完全不动，只加策略/价值 MLP 的输入维。*
+- [ ] ① 再 gate 的 accepted n ≥ **8** 已确认（M5d 的 n=7 为非全权）
+- [ ] 权威训最少 unique goals = ______（建议 ≫ 1，且与 ① 评测同分布、不同实例）
 - [ ] 在签字前 **禁止** 现 ckpt 加长训 / 翻 yaml
 
-**签字栏**：日期 ______ · unique-goals 下限 ______
+**签字栏**：日期 ______ · A.2 判定 ______ · V3 裁定 ______ · unique-goals 下限 ______

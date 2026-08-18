@@ -37,8 +37,17 @@ Not a deploy-only miss. Two stacked defects:
 1. **Spec**: V4-MVP In table is `act_latent(z)` / `V(z)` — goal never enters π. Implementation is faithful.
 2. **Train**: M5d 300 iter used `_mock_goal_episode()` (one start→`[30,0,5]`). Phase 2 headon RGB was a 2-iter probe, not diverse-goal AC.
 
-Together: `π(z)` brands one goal’s action. Deploy goals differ → anti-align (this diag). M5c `goal_rel≈0` → weak policy (−3.17); M5d strong single-goal reward → **worse** (−8.74). **Longer train on current π is predicted to worsen.**
+Together: `π(z)` brands one goal’s action, insensitive to the deploy goal. M5c `goal_rel≈0` → weak policy (−3.17); M5d strong single-goal reward → **worse** (−8.74). **Longer train on current π is predicted to worsen.**
 
-① vs Heuristic is **structurally unreachable** without goal leaking into z (RGB RSSM has no 3-D waypoint channel). Same class as 08-11 ④ (spec revision, not more tuning). Proposal: [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md).
+① vs Heuristic is **not robustly reachable** without goal leaking into z (RGB RSSM has no 3-D waypoint channel). Same class as 08-11 ④ (spec revision, not more tuning). Proposal: [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md).
+
+### Scope of this root cause — what it does NOT explain (2026-08-18)
+
+Two corrections to the wording above:
+
+1. **Not "structurally unreachable" in the strict sense.** Goals here are systematically body-forward (`goal_body0 ≈ [+30, 0, 0.85]`), so a goal-blind *constant-forward* policy would score positive progress. The honest claim is **not robustly reachable**: any pass would ride on "eval goals happen to align with the branded direction". Riding that is 凑过 and is now explicitly forbidden (proposal §3 / §4 明确不做).
+2. **Branding does not explain the *negative sign*.** Line above ("Deploy goals differ → anti-align") is inconsistent with this doc's own ep0 numbers: the train goal `start→[30,0,5]` and the deploy goal `[+30, 0, 0.85]` are **both forward**, so branding predicts cos **positive**, not a saturated retreat `[-1,-0.4,-0.4]` on *every* scored ep. Branding explains the **constancy** and the M5c→M5d magnitude growth; the **direction** is unexplained.
+
+Statically ruled out as the cause of directionality: `advance_goal_rel_body` sign is correct (`g[:3] = g[:3] - disp`, `goal_features.py:71` — forward *reduces* remaining distance), and `maneuver = ‖a‖` is direction-agnostic. Remaining suspects: the learned RH `progress` output and `p_coll`. If `p_coll` dominates in imagination, retreat *is* the imagined optimum — which would also explain why ④ PASSes (0.000 collisions) while ① is −8.74. Read-only discriminator + pre-committed decision rule: proposal **§A**. Until §A resolves, do **not** assume the In-table revision alone is sufficient.
 
 `enable_policy_update` remains **false**.
