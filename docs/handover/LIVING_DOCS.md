@@ -13,7 +13,8 @@
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
 | 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **部分签字**：C2 已落地并重训；① = **`clip_insufficient`**。**§4 In 表搁置**（C2 cos≥0）。V3 / unique-goals **仍待签** |
 | 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」；文末 **C2 重跑** + **cos diag** |
-| 2d | [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) | **DONE**：C2 ①-eval cos **+0.806 / +0.762** ⇒ **不签** §4 In 表（想象-真实倒挂；洞 4：`goal_rel0` 构造性前向） |
+| 2d | [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) | **DONE**：C2 ①-eval cos **+0.806 / +0.762** ⇒ **不签** §4 In 表（想象-真实倒挂；洞 4：`goal_rel0` 构造性前向）。**先读顶部「复核」块**：本轮记 `unclassified`；**RH 案重开**（RH 高估 4.2×，排序反转）；n=5 归因已翻转为**评测期** |
+| 2e | [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md) | **DONE**：RH vs Δ‖g‖ **非 1:1**（π 6.66× / 前飞 4.18× / 后退反号）⇒ 重开 RH 签字材料 |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -68,16 +69,21 @@
 - 「n=8 re-freeze 治了 V1-① 擦边」—— **否**；合法性 ≠ 统计功效。① 裕度 0.8 局 / McNemar p≈0.5 见 `V1_GATE_STATUS` §2 + [待签字条款②③](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)。
 - 「V4-① 再训一轮 / 对齐 z0 就能过」—— **否（再训现 π）**；C2 已从零重训仍 FAIL。**对齐 z0 / WM 保真**是 08-18 后的**活假设**（cos≥0 后的倒挂），尚未验证、不得当「就能过」。见 [cos STATUS](V4_C2_COS_DIAG_125_STATUS.md)。
 - 「§A `b>c` 已证明改 In 表就够」—— **否**，§4 仍不充分（A.2 只排除碰撞项通道）。
-- 「A.3 = `b3_le_a` ⇒ 先修 RH」—— **否，2026-08-18 已作废**：那条臂无效（① 幅度只匹配第 0 步、欠 ~4.6×，π 轨迹均值 ‖a[:3]‖≈16.5；② 五臂全超部署上限 `body_delta_limits(1/5Hz)`=[1.0,0.4,0.4,0.314]，`imagine()` 不夹；③ (b3) 冲过目标 23.9 m）。**可实现集合内 RH 方向偏好是对的**。A.4 seed=0 已实测：夹后最大前飞 λG0 **47.64 ≥** π_clipped **18.25**（`fwdmax_ge_pi`）⇒ 倒挂来自无界动作通道，**确诊不是 RH 案**。裁定已签 = **C2**（08-18，代码已落地），见 `V4_GATE_STATUS` §1/§3。
+- 「A.3 = `b3_le_a` ⇒ 先修 RH」—— **否，2026-08-18 已作废**：那条臂无效（① 幅度只匹配第 0 步、欠 ~4.6×，π 轨迹均值 ‖a[:3]‖≈16.5；② 五臂全超部署上限 `body_delta_limits(1/5Hz)`=[1.0,0.4,0.4,0.314]，`imagine()` 不夹；③ (b3) 冲过目标 23.9 m）。**可实现集合内 RH 方向偏好是对的**。A.4 seed=0 已实测：夹后最大前飞 λG0 **47.64 ≥** π_clipped **18.25**（`fwdmax_ge_pi`）⇒ 倒挂来自无界动作通道，~~**确诊不是 RH 案**~~。裁定已签 = **C2**（08-18，代码已落地），见 `V4_GATE_STATUS` §1/§3。**← 「确诊不是 RH 案」已于 08-18 晚复核推翻**：A.3 作废只证那条臂**不可实现**，A.4 只证**方向**偏好在夹后是对的，**两者都没检验幅度校准** ⇒ **RH 案重开**（见下条新记）。
+- **「RH 案已排除」—— 否，2026-08-18 已重开（幅度校准轴）**。C2 训后 §A：(b) 最大前飞 yaw **恒 0** ⇒ 15 步 × 上限 1.0 m = **恰好 15.0 m** 闭合（`‖goal‖ 30→15.0` 印证），RH `Σprogress` **+62.60** ⇒ **高估 4.2×**；π 闭合 12.2 m 得 **+81.64** ⇒ **6.7×**。**几何排序**（15.0 > 12.2）与 **RH 排序**（81.64 > 62.60）**相反** ⇒ 倒挂在**可实现集合内、想象内部**已存在，**不需要真机**。校准曲线**已跑**（[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)）：**非 1:1**，π **6.66×** / 前飞 **4.18×**（yaw≡0 ⇒ 与漏转 yaw 无关）/ 后退 **反号** −0.62 ⇒ 判定 **`sign_reopen_rh_progress_head`**。下一件 = **签「重开 RH progress 头」**，改码未动。
+- **「`advance_goal_rel_body` 已静态验过没问题」—— 只验了符号，没验旋转**（08-18）。它只做 `g[:3] -= a[:3]`（`goal_features.py:60-73`），**不按 `a[3]`（yaw delta）旋转** body-frame goal，而 `imagine()` 逐步用它传播 RH conditioning（`imagination.py:164-165`）⇒ **yaw≠0 的臂** conditioning 失真（π 有 yaw ⇒ 它的 12.2 m 不可靠；(b) yaw≡0 **不受影响**）。**未修，改动会动 §A 全部数字 ⇒ 须签字。**
 - 「`action_scale=3.0` 是动作上界 / π 已饱和」—— **否**；`_MLP` 末层裸 `nn.Linear`，它是**增益**，‖a‖ 无上界（`actor_critic.py:200`）。**← 描述 pre-C2**；C2 起 `action_scale` 默认 **1.0** 且是 **pre-tanh 增益**，动作由 `limits ⊙ tanh(u)` **构造性有界**（旧 ckpt 仍按 legacy 类以 3.0 回放）。
 - 「一致性修 = 在 `imagine()` 加一行 clip」—— **不够**（提案 §4.1）。actor 更新是 **REINFORCE**（`actor_critic.py:257`/`:271`，无梯度穿 `dynamics.step`），字面 clip ⇒ 用未夹高斯给夹后动作算 logp（似然错配）+ 探索塌缩（σ=0.607 四维同值 > 后三维上限；盒内采样概率 8.6%，现 ckpt 3.4e-6）。推荐 **C2 有界策略分布**（`a = limits ⊙ tanh(u)` + 雅可比修正），须**从零重训**。**← 已按 C2 落地**（08-18）；`imagine()` 里的 clip 保留为**计数器** `n_action_clipped`（C2 下实测 0），不是修本身。
-- **「C2 已落地 ⇒ V4-① 已修好 / 可以翻 flags」—— 否**（08-18）。C2 已从零重训并再 gate：`n_action_clipped=0`，① **仍 FAIL**（−7.43 / −3.53 vs heur ~9），`enable_policy_update` 仍 **false**。判定 `clip_insufficient`。
-- **「`clip_insufficient` 已判实 ⇒ 直接签 §4 In 表」—— 否**（08-18 cos diag DONE）。mean cos actor **+0.806 / +0.762**（≥0）⇒ 事前表 **不签** In 表；活假设 = 想象-真实倒挂（imagΣG ~85 vs real ~−5）。见 [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md)。
+- **「C2 已落地 ⇒ V4-① 已修好 / 可以翻 flags」—— 否**（08-18）。C2 已从零重训并再 gate：`n_action_clipped=0`，① **仍 FAIL**（−7.43 / −3.53 vs heur ~9），`enable_policy_update` 仍 **false**。~~判定 `clip_insufficient`。~~ **← 08-18 复核：本轮应记 `unclassified`** —— `clip_insufficient` 是合取「① FAIL **且** 首动作 cos<0」，cos 实测 **+0.806/+0.762** ⇒ 第二项假、该行**不成立**，观测落在事前三行**之外**（事前表不改写，见提案 §4.1 注记）。
+- **「`clip_insufficient` 已判实 ⇒ 直接签 §4 In 表」—— 否**（08-18 cos diag DONE）。mean cos actor **+0.806 / +0.762**（≥0）⇒ 事前表 **不签** In 表；活假设 = 想象-真实倒挂（imagΣG ~85 vs real ~−5）。见 [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md)。（该行本身亦**不成立**，本轮记 `unclassified`，见上。）
+- **「`cos_path_goal` 有负 ep ⇒ 还是要签 In 表」—— 否**（08-18 复核）。`cos_path_goal` mean **+0.075 / +0.098**（≈85°，负 ep 3/7 与 2/8）是本跑最强的数，形态 = 「t=0 朝前、整条路径几乎垂直于目标」= **跟踪丢失**；但**洞 4** 使 In 表在本 harness 上无效：训练侧只有一个 `_mock_goal_episode()`、评测侧 |az| ≤ 0.8° ⇒ goal 对 actor 是**常量输入、可被 bias 完全吸收**，表达力增量 **0**。要让 In 表有意义，须先有**多样 goal**（提案 unique-goals 下限，仍待签）。
+- **「想象-真实倒挂只能靠查 WM 转移 / z0 域差」—— 否，有更便宜的一步**（08-18）。倒挂在**想象内部、可实现集合内**就能看到（(b) 臂几何 15.0 m vs RH +62.60）⇒ 先做 **RH 校准曲线**（零渲染零训练零改码），只有它接近 1:1 时才走 WM/z0 那条贵路。**已跑，非 1:1**（π 6.66× / 前飞 4.18× / 后退反号）⇒ WM/z0 那条路**本周期不走**，先修 RH。见 [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)。
+- **「Pearson +0.59 说明想象与真实相关」—— 无功效**（08-18）。+0.588（n=7，p≈**0.17**）/ +0.217（n=8，p≈**0.61**），两跑差 2.7×。且 **`mean_real_minus_imagined ≈ −91` 混了 horizon**（想象 15 步 vs 真实整局 ≤200 步），不是校准误差；要量化须取**同窗口**。
 - **「那个 cos 已在 C2 re-gate 产物里」—— 否**（08-18）。gate partial-1 只落 progress / final_dist / scan，**无 cos 无动作**。出 cos 的是 `v4_progress_diag.py`（M5d ≈−0.88；C2 **+0.76~+0.81**）。
 - **「评测 `goal_rel0` 是一个分布」—— 否，是构造性常量**（08-18 洞 4 + 实测）。`goal_dist_m=30.0` + `goal=start+heading*30` + spawn yaw=heading ⇒ t=0 body goal ≈ `[+30,0,z]`（diag |az|≤0.8°）。正 cos **不能**读成「随 goal 转向」。
 - **「n=5 = 扫描期 spawn_collision」—— 否**（08-18 读盘）。seed=0：accepted 9 → scored 5（评测期丢）；`rejections.open_ahead=708` 是扫描期拒收。键名 **`rejections`**（不是 `rej`）。修扫描拒收 ≠ 修 `_run_one_resilient→None`。
-- **「训后 λG0 59.09 > 最大前飞 47.78 ⇒ 又在薅想象」—— 否**（08-18）。事前 `clip_helped` 行写的「λG0(π)≤最大前飞」隐含「纯前飞是盒内最优」，**四自由度盒里不成立**。`goal_rel` 30→17.8 = 闭合 **12.2 m**，H=15 × 上限 1.0 m/步 ⇒ 盒内理论上限 15 m 的 **81%** ⇒ 是真接近目标。**不**重开 RH 案。
-- **「① n=5 只是样本少一点」—— 不止**（08-18）。spawn-in-collision 丢的是**杂乱起点** ⇒ 存活局偏开阔空间，**非随机**丢失。FAIL 方向对 n 稳健（补 3 局须各 ≈37.9 / 33.7，heuristic 每局仅 ~8.7），但**两跑均非全权**、不得入账干净 gate；**④ PASS 同为非全权**（off-rate 2/5；on-rate=0 ⇒ ④b 大概率 `before_vacuous`）。要全权 ① 须先解 spawn，**不**降 `n`。
+- **「训后 λG0 59.09 > 最大前飞 47.78 ⇒ 又在薅想象」—— 否**（08-18）。事前 `clip_helped` 行写的「λG0(π)≤最大前飞」隐含「纯前飞是盒内最优」，**四自由度盒里不成立**。`goal_rel` 30→17.8 = 闭合 **12.2 m**，H=15 × 上限 1.0 m/步 ⇒ 盒内理论上限 15 m 的 **81%** ⇒ 是真接近目标。~~**不**重开 RH 案。~~ **← 「不重开 RH 案」已推翻**（08-18 复核）：goal 在正前方 ⇒ 前飞即闭合最优，侧向/垂向不可能多闭合一米，59.09−47.78 的盈余只能来自 **RH 幅度校准**（见上面「RH 案已排除 —— 否」条）。「12.2 m 是真接近目标」这半句仍成立，但它本身也依赖失真的 yaw 记账 ⇒ 只有 (b) 臂的 15.0 m 是干净的。
+- **「① n=5 是 spawn 扫描丢的 / 存活局偏开阔空间」—— 否，2026-08-18 已撤回**。gate 两跑 `accepted` = **9 / 8**（扫描期被拒会**补扫**到数），掉到 scored=5 发生在**评测期**；同 seed 同构造的 cos diag 拿到 **n=7 / n=8**（seed=1 零丢局）⇒ 病灶在 **gate 的评测循环**（`_run_one_resilient→None`，或 ④ on/off 配对那条路径），**不是** spawn 的性质，「选择偏差」论据**不得再引**。仍然成立的部分：FAIL 方向对 n 稳健（补 3 局须各 ≈37.9 / 33.7，heuristic 每局仅 ~8.7），**两跑均非全权**、不得入账干净 gate，**④ PASS 同为非全权**（off-rate 2/5；on-rate=0 ⇒ ④b 大概率 `before_vacuous`）。全权 ① 查评测循环即可，**不**降 `n`。附：`rejections["open_ahead"]` 两跑 **708 vs 15**（47×），扫描行为本身不稳，另记。
 - 「V1 部署侧动作空间已一致」—— **未核**；`planner.default_candidates`（`planner.py:31-42`）在未夹空间打分，到 `collector.py:167` 才夹。**不**重开 08-15 merge，仅记为同源不一致。**← C2 未改这条**：`planner.action_limits` 默认 `None`，V1 部署路径逐位不变（打开须 V1 re-gate）。
 - 「④b before=1.0 是测得的干预先于接触」—— **否**；`n_contact=0` 时空过终态，④ 实证=④c。
 - 「headon 可作 V1-② coll OOD」—— **否**；headon `coll_eps=0`。
@@ -88,6 +94,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) — C2 cos diag **DONE**：mean cos **+0.806/+0.762** ⇒ **不签** §4；下一件 = 想象-真实倒挂另案（WM/z0，非 In 表）  
+2. [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md) — RH 校准曲线 **DONE**：非 1:1（π 6.66× / 前飞 4.18× / 后退反号）⇒ 下一件 = **签重开 RH**（改码未动）；**不签** §4 In 表  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1

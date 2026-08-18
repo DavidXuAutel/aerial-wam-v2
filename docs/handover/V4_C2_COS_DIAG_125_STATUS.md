@@ -19,6 +19,15 @@ Pre-committed: mean cos(first_act, goal_body) **< 0** → 签 §4 In 表；**≥
 
 **固定偏置指纹弱**：`first_act_xyz_std_actor` x 维 **0.12 / 0.21**（非 ≈0），且 `n_cos_first_act_lt0=0`（无 ep 负 cos）。`cos_path_goal` 有负 ep（seed=0 3/7），但 first-act cos 全正。
 
+> **复核（2026-08-18 同日；verdict 与下面所有数字一字不改）** —— 四处记述要改、一处别的结论被推翻：
+> 1. **`clip_insufficient` 本轮应记 `unclassified`**：该行是合取「① FAIL **且** cos<0」，cos ≥0 ⇒ 不成立；「不签」依据是**本 job 的事前表**（PROMPT），不是那行。
+> 2. **本跑最强的数是 `cos_path_goal` +0.075/+0.098（≈85°）**，不是 first-act cos；形态 = 跟踪丢失。仍不签，但理由须写成**洞 4**（训练侧单 `_mock_goal_episode()` + 评测侧 |az|≤0.8° ⇒ goal 是常量输入、可被 bias 吸收，In 表表达力增量 **0**），否则将来会有人拿 `cos_path` 负 ep 重开 In 表。
+> 3. **Pearson 无功效**：+0.588（n=7，p≈**0.17**）/ +0.217（n=8，p≈**0.61**），两跑差 2.7× ⇒ 不得作为下一案依据。**`mean_real_minus_imagined ≈ −91` 混了 horizon**（想象 15 步 vs 真实整局 ≤200 步），不是校准误差；要量化须取**同窗口**（真实前 15 步）。
+> 4. **n=5 归因翻转**：本 job step 0 实测 `accepted` = **9 / 8**（扫描期被拒会补扫到数），掉到 scored=5 发生在**评测期**；同 seed 同构造的本 diag 拿到 **n=7 / n=8**（seed=1 零丢局）⇒ 「n=5 = spawn 扫描 / 存活局偏开阔空间」**无依据、已撤回**，病灶在 gate 的**评测循环**（`_run_one_resilient→None`，或 ④ on/off 配对那条路径）。全权 ① 很可能**不必碰 spawn**，仍**不**降 `n`。
+> 5. **倒挂已定位到 RH 幅度校准，且不需要真机**：`v4_imagine_return_decomp` C2 训后表里，(b) 最大前飞 yaw **恒 0** ⇒ 15 步 × 上限 1.0 m = **恰好 15.0 m** 闭合（`‖goal‖ 30→15.0` 印证），RH `Σprogress` = **+62.60** ⇒ **4.2×**；π 闭合 12.2 m 得 **+81.64** ⇒ **6.7×**；**几何排序**（15.0 > 12.2）与 **RH 排序**（81.64 > 62.60）**相反** ⇒ **RH 案重开**（推翻 `V4_SIGNAL1_SA_DIAG_STATUS` 那句「多出来的 λG0 来自侧向/垂向自由度、不要读成再开 RH 案」）。**RH 校准曲线已跑**（[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)）：非 1:1，π **6.66×** / 前飞 **4.18×** / 后退 **反号** ⇒ **`sign_reopen_rh_progress_head`**。
+> 6. **code lead（未修，须签字）**：`advance_goal_rel_body`（`goal_features.py:60-73`）只做 `g[:3] -= a[:3]`、**不按 `a[3]` 旋转** body goal，而 `imagine()` 逐步用它传播 RH conditioning（`imagination.py:164-165`）⇒ yaw≠0 的臂失真（π 的 12.2 m 亦不可靠；(b) yaw≡0 不受影响 ⇒ 4.2× 干净）。
+> 7. **未报字段**：PROMPT 里要求的 `cos_mean10_act_xy_goal_body_xy` / `mean10_action` 本 STATUS **没写**（JSON 里有，零成本可补）。另 `goal_rel0` up 分量 **0.07–1.04**（非 0，疑为起飞悬停高度与 spawn z 之差，**待一句确认**，非 harness 异源）。
+
 ## Step 0 — gate partials on disk
 
 Partial-1 JSON **confirmed missing** `first_act`, `cos_*`, `goal_rel0` (only progress sums + embedded `scan`).
@@ -76,4 +85,5 @@ Artifacts: `artifacts/v4_progress_diag_c2_seed0_20260818.json`, `artifacts/v4_pr
 ## Disposition
 
 - **§4 In 表**：**不签**（签会白训一轮 In-table 实现）。
-- **下一件**：活假设 = WM 转移保真 / z0 域差 / 想象-真实倒挂；须另案（非 In 表 goal concat）。全权 ① 仍须解 spawn-in-collision；`enable_policy_update` 仍 false。
+- ~~**下一件**：活假设 = WM 转移保真 / z0 域差 / 想象-真实倒挂；须另案（非 In 表 goal concat）。全权 ① 仍须解 spawn-in-collision~~；`enable_policy_update` 仍 false。
+- **下一件（2026-08-18 复核后收窄）**：**先做 RH 校准曲线** —— 用已落盘的 `artifacts/v4_imagine_return_decomp_c2train_a23/a4_20260818.json`（逐步 `progress` 数组已存），逐步对比 RH `out.progress` vs `analytic_progress`（`goal_features.py:86`，几何真值）作斜率/散点。**零渲染、零训练、零改码**，出的是「重开 RH 案」的签字材料。仅当曲线接近 **1:1** 才回到更贵的 **WM 转移保真 / z0 域差**。全权 ① 改查 **gate 评测循环**（不是 spawn 扫描，见复核第 4 条），**不**降 `n`。

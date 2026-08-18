@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**。C2 cos diag **DONE**：mean first-act cos **+0.806 / +0.762**（≥0）⇒ **不签** §4 In 表。活假设 = **想象-真实倒挂**（imagΣG ~85 vs real ~−5）。洞 4 仍成立：评测 `goal_rel0` 由构造 ≈ `[+30,0,z]`，不是方位分布。下一件 = 另案查 WM 转移 / z0 域差，**不是** In 表 goal concat、**不是**再训现 π（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1）。`enable_policy_update` 仍 **false**。
+**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 仍 FAIL（n=5 非全权）；④ PASS。C2 cos **+0.81/+0.76** ⇒ **不签** §4 In 表。RH 校准曲线 **DONE**：想象内部 π **6.66×** / 最大前飞 **4.18×** / 后退 **反号** ⇒ **`sign_reopen_rh_progress_head`**（签字材料已出，改码未动）。下一件 = 签重开 RH progress 头。`enable_policy_update` 仍 **false**。
 
 ---
 

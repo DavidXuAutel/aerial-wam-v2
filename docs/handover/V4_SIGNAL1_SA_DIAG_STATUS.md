@@ -169,7 +169,16 @@ Verdict **`b_gt_c`** — **碰撞项通道排除**（p_coll 差≈0）。A.2 不
 | (b) max forward | +62.60 | +47.78 | +1.0 | **0** | 15.0 |
 | (c) max retreat | +9.28 | +15.91 | −1.0 | **0** | 45.0 |
 
-A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现在**在盒内向前**（不再是无界后退），多出来的 λG0 来自侧向/垂向自由度，**不要**读成「再开 RH 案」。`--clip-actions` 仍 no-op。JSON：`..._c2train_a23_20260818.json` / `..._c2train_a4_20260818.json`。
+A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现在**在盒内向前**（不再是无界后退），~~多出来的 λG0 来自侧向/垂向自由度，**不要**读成「再开 RH 案」~~。`--clip-actions` 仍 no-op。JSON：`..._c2train_a23_20260818.json` / `..._c2train_a4_20260818.json`。
+
+> **更正（2026-08-18，cos diag 后复核；判定 `pi_gt_fwdmax` 与上表数字均不改）**：划掉那半句**是错的**。评测/probe goal 在**正前方**（洞 4：|az| ≤ 0.8°）⇒ **前飞就是盒内闭合最优**，侧向/垂向**不可能**多闭合一米，故 59.09 − 47.78 的盈余**不能**归因于「多出来的自由度」。真实来源是 **RH 幅度校准失准**，本表自身即可证：
+> - **(b) 臂是无可辩驳的**：`a=[+1,0,0,0]`、yaw **恒 0** ⇒ `advance_goal_rel_body` 的记账精确，15 步 × 上限 1.0 m/步 = **恰好 15.0 m** 闭合（本表 `‖goal‖ 30→15.0` 精确印证），而 RH 说 `Σprogress` = **+62.60** ⇒ **高估 4.2×**（`w_progress=1.0` ⇒ Σprogress 就是米；Σmaneuver −0.15 = 15×1.0×0.01 反证权重确已施加）。
+> - **(a) π**：闭合 12.2 m（30→17.8）得 **+81.64** ⇒ **6.7×**。
+> - ⇒ **几何排序** (b) 15.0 > (a) 12.2；**RH 排序** (a) 81.64 > (b) 62.60 —— **反的**。倒挂**不需要真机、不需要 z0 域差**，在**可实现集合内、想象内部**已经存在。
+>
+> ⇒ **RH 案重开**。依据比当初作废的 A.3 硬：A.3 废因是那条臂**不可实现**；(b) 完全可实现。A.4 `fwdmax_ge_pi` 的射程也须收窄 —— 它只证了**方向**偏好在夹后是对的，**从未**检验**幅度校准**。下一件 = **RH 校准曲线**（逐步 `out.progress` vs `analytic_progress`，`goal_features.py:86`），素材已落盘在上面两个 JSON 里，**零渲染零训练零改码**。
+>
+> **code lead（未修，勿顺手改）**：`advance_goal_rel_body`（`goal_features.py:60-73`）只做 `g[:3] -= a[:3]`，**不按 `a[3]`（yaw delta）旋转** body-frame goal，而 `imagine()` 正用它逐步传播 RH 的 conditioning（`imagination.py:164-165`）⇒ **yaw≠0 的臂** conditioning 方向与幅度都失真（π 有 yaw ⇒ 它的 12.2 m 本身也不可靠；(b) yaw≡0 **不受影响**，故 4.2× 这个数是干净的）。这是「倍率随臂变」的具体候选机制；改它会改本节全部数字 ⇒ **走签字**。
 
 ### 125 ① 再 gate
 
@@ -199,3 +208,26 @@ A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现
 - **`first_act_xyz_std` x = 0.12 / 0.21**（非 ≈0 恒定偏置）；M5d unbounded 对照 mean cos ≈ **−0.88** — C2 已转前向 first-act，与 §A a0 x=+0.567 一致。
 - **想象-真实倒挂**：mean imagΣG **85 / 87** vs mean real progress **−5.9 / −4.5**；`mean_real_minus_imagined` ≈ **−91**。
 - **处置（事前表）**：两跑 mean cos **同号 ≥ 0** ⇒ **不签** §4 In 表（活假设 = 想象-真实倒挂，In 表 goal concat **不修**这个）。详见 [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md)。
+
+### 复核（2026-08-18 同日；上表数字与事前 verdict 一字不改）
+
+1. **本轮应记 `unclassified`，不是 `clip_insufficient`**。提案 §4.1 那行是**合取**「① FAIL **且** 首动作 cos < 0」；cos 实测 **+0.806/+0.762** ⇒ 第二项**假** ⇒ 该行**不成立**。观测落在事前三行**之外**（`V4_GATE_STATUS` §1 洞 1 当初已预言此可能）。「不签 §4 In 表」的依据是 **cos-diag 那张后续事前表**（`V4_C2_COS_DIAG_125_PROMPT.md`），**不是** `clip_insufficient`。上文第 183 行的 `⇒ **clip_insufficient**` 按此读。
+2. **本跑最强的数是 `cos_path_goal` = +0.075 / +0.098（≈85°）**，负 ep 3/7 与 2/8 —— 不是 first-act cos（actor +0.81/+0.76 ≈37° 偏；heur **+0.999** ≈2°）。形态 = 「t=0 朝前、整条路径几乎垂直于目标」，即**跟踪丢失**而非首动作错。**仍不签**，理由须换成**洞 4**：训练侧只有一个 `_mock_goal_episode()`、评测侧 |az| ≤ 0.8° ⇒ 两侧 goal 同方向，goal concat 进 actor 是**常量输入、可被 bias 完全吸收**，本 harness 上表达力增量 **0**。（不写死这句，将来会有人拿 `cos_path` 负 ep 重开 In 表。）
+3. **Pearson 不可用**：+0.588（n=7 ⇒ p≈**0.17**）/ +0.217（n=8 ⇒ p≈**0.61**），两跑差 2.7× ⇒ **无证据**，下一案不得建立其上。**`mean_real_minus_imagined ≈ −91` 混了 horizon**（想象 15 步 vs 真实整局 ≤200 步），不是校准误差；要量化须取**同窗口**（真实前 15 步）。
+4. **主结论：RH 幅度校准失准，倒挂在想象内部即可复现** —— 见上节「训后 §A」的更正块（(b) 臂 15.0 m 几何 vs RH +62.60 = 4.2×；排序反转）。⇒ **RH 案重开**。~~下一件 = RH 校准曲线~~ ← **DONE**，见下节。
+5. **`advance_goal_rel_body` 不按 yaw 旋转**（`goal_features.py:60-73` × `imagination.py:164-165`）= 「倍率随臂变」的候选机制，**未修，须签字**。注意：(b) yaw≡0，其 4.18× **不受**这条影响。
+6. 小项：`goal_rel0` up 分量 **0.07–1.04**（非 0，疑为起飞悬停高度与 spawn z 之差，**待一句确认**，非 harness 异源）；PROMPT 里加的 `cos_mean10_act_xy_goal_body_xy` / `mean10_action` **未报**（JSON 里有，零成本可补）；n=5 归因已翻转（**评测期**丢局，不是 spawn 扫描），见 `V4_GATE_STATUS` §1 洞 3 更正。
+
+---
+
+## C2 RH 校准曲线（2026-08-18，125 离线）
+
+脚本 `v4_rh_progress_calib.py`。输入 c2train a23/a4 JSON。`analytic_t = Δ‖g‖` ≡ `analytic_progress`（stub 运动学）。JSON：`artifacts/v4_rh_progress_calib_c2train_20260818.json`。详见 [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)。
+
+| arm | Σ RH | Σ Δ‖g‖ | ratio |
+|---|---|---|---|
+| (a) π | +81.64 | +12.26 | **6.66** |
+| (b) max forward | +62.60 | +14.99 | **4.18** |
+| (c) max retreat | +9.28 | −15.00 | −0.62（RH 均值 +0.62，**反号**） |
+
+形状：t0–t4 近校准；**t≈6 起 RH 6–9 m/步**，几何仍 ~1。判定 **`sign_reopen_rh_progress_head`**。曲线未近 1:1 ⇒ **不**回头查 WM/z0。改码未动。
