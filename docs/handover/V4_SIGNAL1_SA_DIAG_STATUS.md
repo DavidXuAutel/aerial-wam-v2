@@ -1,12 +1,15 @@
 # V4 §A / §A.3 imagined return decomp (125, 2026-08-18)
 
-- **status**: **A.2 done · A.3 done → 判定作废（2026-08-18 复核）· A.4 待跑** (read-only)
-- **⚠️ 读者先读本文末尾的「A.3 判定作废」段**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；下一件 = **§A.4 `--clip-actions`**
-- **无 seed**：A.2 两次跑（`14d0f06` / `2afcb33`）同 ckpt 同 z0 结果不同（前飞 λG0 47.02→49.65，+5.6%）；`--seed` 已补
-- **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`2afcb33` + `--match-scale`)
+- **status**: **A.2 done · A.3 done → 判定作废 · A.4 DONE = `fwdmax_ge_pi`（seed=0）** (read-only)
+- **⚠️ 读者先读「A.3 判定作废」再读 §A.4**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；A.4 已跑，倒挂来自无界动作通道，**仍不是 RH 案**
+- **seed=0**：A.4 / A.3traj 同 seed；A.2 两次无 seed 跑（`14d0f06` / `2afcb33`）同 ckpt 同 z0 结果不同（前飞 λG0 47.02→49.65，+5.6%），已 superseded 为审计链
+- **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`700dbe6` + `--clip-actions` / `--match-basis`)
 - **A.2 JSON**: `artifacts/v4_imagine_return_decomp_20260818.json`
-- **A.3 JSON**: `artifacts/v4_imagine_return_decomp_a3_20260818.json`
+- **A.3 JSON**: `artifacts/v4_imagine_return_decomp_a3_20260818.json`（a0 匹配；判定作废）
 - **A.3 log**: `logs/v4_imagine_return_decomp_a3_20260818.log`
+- **A.4 JSON**: `artifacts/v4_imagine_return_decomp_a4_20260818.json`
+- **A.3traj JSON**（未夹、`--match-basis traj`）: `artifacts/v4_imagine_return_decomp_a3traj_20260818.json`
+- **joint log**: `logs/v4_imagine_return_decomp_a4_a3traj_20260818.log`
 - **ckpt**: `v4_ac_ckpt_20260817_wm_rh_goal_rgb` + RH WM `wm_step_1000.pt`
 - **z0**: headon n=8；`goal_rel0` = ①-eval ep0 `[+30, 0, 0.85]`；`body_vel0=0`
 - **yaml / enable_policy_update**: untouched
@@ -72,5 +75,45 @@ Verdict **`b_gt_c`** — **碰撞项通道排除**（p_coll 差≈0）。A.2 不
 | **(a) > (b)** → `pi_gt_fwdmax` | 幅度可执行时 RH 仍偏好 π 方向 | A.2 第二支**确诊**：先修 RH（另案） |
 
 命令见提案 §A.4。`δ_p=0.10` / `n=8` / yaml 均不动。
+
+> **实测（2026-08-18 seed=0）已填**：触发第一支 **`fwdmax_ge_pi`**，见下一节。上表保留为事前判据，不改写。
+
+---
+
+## A.4 DONE（2026-08-18，seed=0，`--clip-actions`）
+
+125 实测触发**第一支** **`fwdmax_ge_pi`**。limits = `body_delta_limits(1/5)` = **[1.0, 0.4, 0.4, 0.314]**。路径：`~/data`/`~/ckpt` 快捷方式不存在，改用 `dataset_v0_headon_20260811` + `v4_ac_ckpt_20260817_wm_rh_goal_rgb` + `wm_ckpt_r60_rh_20260816/wm_step_1000.pt`（与提案命令一致）。
+
+| Arm | Σ progress | Σ p_coll | Σ maneuver | λ G0 | a0 / ‖a[:3]‖ | ‖goal_rel‖ 30→ |
+|---|---|---|---|---|---|---|
+| (a) π **clipped** | +13.56 | −0.006 | −0.178 | **+18.25** | `[-1.0, -0.309, -0.27, -0.163]` ‖a0[:3]‖=**1.12**；轨迹均值 **1.15** | **45.9**（仍远离；`arrived=false`） |
+| (b) forward max `[+1,0,0,0]` | +62.60 | −0.006 | −0.150 | **+47.64** | unit = 可实现最大前飞 | 15.0（靠近，未到达） |
+| (c) retreat max `[-1,0,0,0]` | +9.28 | −0.006 | −0.150 | +15.87 | unit = 可实现最大后退 | 45.0 |
+
+**(b) 47.64 ≥ (a) 18.25**（差额 29.4）→ 预提交判据 **`fwdmax_ge_pi`**。
+
+- 夹后 π **仍后向**（a0 x=−1.0，饱和到后退上限），但想象目标在可实现集合内**更偏好最大前飞**。倒挂（π 想象赢、真实 ① 输）来自**无界动作通道**，不是 RH 方向偏好。
+- 夹后 (b)>(c) 仍成立（47.64 vs 15.87，3.0×）；与无 seed 口径 49.65/15.99 同号，量级差属 seed 钉死（本跑 seed=0）。
+- p_coll 三臂仍 ≈6e-4（死头）——可实现 1 m/步下碰撞头仍不亮。
+- `enable_policy_update` / yaml / `δ_p` / n **未动**。`imagine()` 本体仍不夹（本跑只包策略）。
+
+**处置（已由事前表锁定）**：在 `imagine()` 落与部署同一 `clip_body_delta`（一致性红线，非阈值），然后重跑 §A。**不是** RH 案；**不**签「§4 充分」。是否本周期落 clip → 提案签字栏「动作空间一致性裁定」（提案方读法：属既有红线修不一致，可先落）。未签字前**不改** `imagination.py`。
+
+### A.3traj 配套（同 seed=0，未夹，`--match-basis traj`）
+
+纠 A.3 那个 a0=3.59 欠匹配。auto `match_scale` = π 轨迹均值 ‖a[:3]‖ = **15.59**（≈作废段反推的 16.5；相对 a0=3.13 为 **5.0×**，相对旧 A.3 的 3.59 为 **4.3×**）。
+
+| Arm | Σ progress | Σ p_coll | Σ maneuver | λ G0 | ‖goal_rel‖ 30→ |
+|---|---|---|---|---|---|
+| (a) π 未夹 | **+143.74** | −0.006 | −2.47 | **+105.00** | **254.2**（未到达） |
+| (b) unit forward | +62.60 | −0.006 | −0.150 | +47.64 | 15.0 |
+| (b3) forward @15.59 | +14.24 | −0.006 | −2.34 | **+18.21** | **203.9**（过冲更狠） |
+| (c3) retreat @15.59 | +49.52 | **−60.14** | −2.34 | +6.12 | 263.9 |
+
+字面仍 `b3_le_a`（18.21 ≤ 105.00）——**预期**：未夹 π 靠顶 ‖a‖ 赢；此条**不**重新打开「先修 RH」。用途是印证作废理由 1：轨迹匹配后 (b3) 过冲 30→204，λG0 掉到 18.21 ≈ A.4 夹后 π 的 18.25。另：(c3)@15.59 的 p_coll **亮了**（Σ −60）——碰撞头在可实现 1 m/步下是死的，只在 15 m/步 OOD 才有信号；死头另案仍成立。
+
+`clip_shrink_ratio` 跨文件：未夹轨迹 15.59 / 夹后 1.15 ≈ **13.6×**（A.4 JSON 内 `pi_act_norm3_mean_unclipped=null`，因 clip 跑未同时保留未夹 π）。
+
+**下一件**：签字「动作空间一致性裁定」；若本周期落，再改 `imagine()` 并重跑 §A。门禁不动。
 
 `enable_policy_update` 仍 **false**。

@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — 「§4 充分」不成立；但 A.3 的 `b3_le_a` 判定 **2026-08-18 已作废**（臂无效：幅度欠匹配 ~4.6×、五臂全超部署上限、(b3) 冲过目标），故 **不开「先修 RH」案**。可实现集合内 RH 方向偏好正确（最大前飞 λG0 49.65 vs 最大后退 15.99）。下一件 = **§A.4 只读（`--clip-actions`）**。  
+**当前：V4-MVP** — 「§4 充分」不成立；A.3 `b3_le_a` **已作废**；A.4 = **`fwdmax_ge_pi`**（夹后前飞 λG0 47.64 ≥ π 18.25）⇒ 倒挂来自无界动作通道，**不开 RH 案**。下一件 = **动作空间一致性裁定**（是否本周期在 `imagine()` 落 clip）。  
 `enable_policy_update` **仍 false**。
 
 ---
@@ -155,7 +155,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | A.3 判定 **已作废**（08-18 复核，臂无效）→ ⏳ **§A.4 只读重测方向**（**不**开 RH 案）；In 表 [待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) 仍**不充分**；`enable_policy_update` 仍 false |
+| **V4** | A.4 = **`fwdmax_ge_pi`**（08-18 seed=0；夹后前飞 47.64 ≥ π 18.25）→ ⏳ **动作空间一致性裁定**（**不**开 RH 案）；In 表 [待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) 仍**不充分**；`enable_policy_update` 仍 false |
 
 ---
 
