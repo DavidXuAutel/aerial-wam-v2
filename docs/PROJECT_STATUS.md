@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**，但事前判据的第二个合取项（首动作 cos<0）**未验** —— 训后 §A a0 已转前向 (+0.567)，①-eval 逐 ep cos 未报 ⇒ 下一件 = **先取该 cos + `goal_rel0` 方向分布**，再决定签 §4 In 表（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1）。`enable_policy_update` 仍 **false**。
+**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**，但事前判据的第二个合取项（首动作 cos<0）**未验** —— 训后 §A a0 已转前向 (+0.567)，①-eval 逐 ep cos 未报（该数**不在** gate 产物里，出 cos 的是 `v4_progress_diag.py`，须重跑）⇒ 下一件 = **两步只读诊断**：① 读已落盘 `signals.1.scan.rejections` 分清 n=5 是扫描期被拒还是评测期丢局；② 对 C2 ckpt 跑 `v4_progress_diag.py` 取**轨迹级** cos。**洞 4**（08-18 读码）：评测 `goal_rel0` 由构造 ≡ `[+30,0,0]` 恒定，不是分布 ⇒ 首动作 cos 退化为 `sign(a0_x)`、§4 In 表在 t=0 信息量为 0，`cos<0` 只够判「**待签**」（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1 洞 4）。`enable_policy_update` 仍 **false**。
 
 ---
 

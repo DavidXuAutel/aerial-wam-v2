@@ -13,7 +13,7 @@
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
 | 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **部分签字**：C2 已落地并重训；① 再 gate = **`clip_insufficient`**（n=5 非全权）。§4 In 表 / V3 / unique-goals **仍待签** |
 | 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」；文末 **C2 重跑**：`n_action_clipped=0`，① 仍 FAIL |
-| 2d | [`V4_C2_COS_DIAG_125_PROMPT.md`](V4_C2_COS_DIAG_125_PROMPT.md) / [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) | **进行中（125）**：C2 ①-eval 逐 ep 首动作 cos + `goal_rel0`；cos<0 签 §4，cos≥0 不签 |
+| 2d | [`V4_C2_COS_DIAG_125_PROMPT.md`](V4_C2_COS_DIAG_125_PROMPT.md) / [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) | **进行中（125）**：C2 ①-eval 逐 ep cos + `goal_rel0`；`cos≥0` 不签 §4，`cos<0` **待签**（洞 4 收紧：`goal_rel0` 恒为 `[30,0,0]`，须补轨迹级 cos） |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -74,6 +74,8 @@
 - **「C2 已落地 ⇒ V4-① 已修好 / 可以翻 flags」—— 否**（08-18）。C2 已从零重训并再 gate：`n_action_clipped=0`，① **仍 FAIL**（−7.43 / −3.53 vs heur ~9），`enable_policy_update` 仍 **false**。判定 `clip_insufficient`。
 - **「`clip_insufficient` 已判实 ⇒ 直接签 §4 In 表」—— 未验完**（08-18）。该行是**合取式**「① FAIL **且** 首动作 cos<0」，而训后 §A 的 a0 x=**+0.567 已转前向**、**①-eval 逐 ep cos 未报**；π goal-blind ⇒ probe goal 的正 cos **不可**外推到评测 goal 分布。先取那个 cos + `goal_rel0` 分布：cos<0 ⇒ 签 §4；cos≥0 ⇒ 活假设变成「想象-真实回报倒挂」（WM 保真 / z0 域差），**In 表修订不修这个**。见 `V4_C2_COS_DIAG_125_PROMPT.md`（125 进行中）。
 - **「那个 cos 已在 C2 re-gate 产物里」—— 否**（08-18）。gate partial-1 只落 progress / final_dist / scan（`v4_gate_run_partials.py:228-234`），**无 cos 无动作**。出 cos 的是 `v4_progress_diag.py`（M5d 跑过 ≈−0.88，**C2 未跑**）。要 4090 渲染器。
+- **「评测 `goal_rel0` 是一个分布」—— 否，是构造性常量**（08-18 读码，洞 4）。`make_obstacle_facing_episodes`：`goal_dist_m=30.0`、`goal = start + heading*30`、spawn `yaw` 与 heading 同一个（`v0_rollout_eval.py:251` / `:386-389`）⇒ 每个 ep `goal_body0` **≡ `[+30,0,0]`**。于是 (i)「首动作 cos<0」退化为 `sign(a0_x)<0`，**不能**证「a0 不随 goal 转」（goal 没转过，该命题不可检验）；`first_act_xyz_std≈0` **不是** goal-blind 指纹；(ii) **§4 In 表在 t=0 信息量为 0** ⇒ 只凭首动作符号签 §4 不足，须看**轨迹级** `cos_path_goal` / `cos_mean10_act_xy_goal_body_xy`。125 指令已加事后注记（`cos<0` → **待签**而非直接签）。
+- **「n=5 = eval 丢局」—— 口径未分清**（08-18）。`scan.rejections["spawn_collision"]`（`v0_rollout_eval.py:398`）是**扫描期候选被拒**（会补扫），真正的评测期丢局是 `_run_one_resilient` 返回 `None`。两者修法不同；落盘键是 **`rejections`**（不是 `rej`）。先读 `signals.1.scan` 分清，再谈修 spawn。
 - **「训后 λG0 59.09 > 最大前飞 47.78 ⇒ 又在薅想象」—— 否**（08-18）。事前 `clip_helped` 行写的「λG0(π)≤最大前飞」隐含「纯前飞是盒内最优」，**四自由度盒里不成立**。`goal_rel` 30→17.8 = 闭合 **12.2 m**，H=15 × 上限 1.0 m/步 ⇒ 盒内理论上限 15 m 的 **81%** ⇒ 是真接近目标。**不**重开 RH 案。
 - **「① n=5 只是样本少一点」—— 不止**（08-18）。spawn-in-collision 丢的是**杂乱起点** ⇒ 存活局偏开阔空间，**非随机**丢失。FAIL 方向对 n 稳健（补 3 局须各 ≈37.9 / 33.7，heuristic 每局仅 ~8.7），但**两跑均非全权**、不得入账干净 gate；**④ PASS 同为非全权**（off-rate 2/5；on-rate=0 ⇒ ④b 大概率 `before_vacuous`）。要全权 ① 须先解 spawn，**不**降 `n`。
 - 「V1 部署侧动作空间已一致」—— **未核**；`planner.default_candidates`（`planner.py:31-42`）在未夹空间打分，到 `collector.py:167` 才夹。**不**重开 08-15 merge，仅记为同源不一致。**← C2 未改这条**：`planner.action_limits` 默认 `None`，V1 部署路径逐位不变（打开须 V1 re-gate）。
@@ -86,6 +88,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) — 125 正在取 C2 ①-eval 逐 ep 首动作 cos + `goal_rel0`（A.3 欠账 ‖a‖ + 想象-真实相关）；cos<0 签 §4，cos≥0 不签  
+2. [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md) — 125 正在取 C2 ①-eval cos（A.3 欠账 ‖a‖ + 想象-真实相关）。**判据已按洞 4 收紧**：`cos≥0` → 不签 §4（不变）；`cos<0` → **待签**，还须轨迹级 `cos_path_goal` / `cos_mean10_...`（`goal_rel0` 恒为 `[30,0,0]`，首动作一格不够）。另需从 `signals.1.scan.rejections` 分清 n=5 是扫描期被拒还是评测期丢局  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1

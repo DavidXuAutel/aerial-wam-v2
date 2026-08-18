@@ -214,6 +214,13 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 
 **精确边界（不说过头）**：这**不是**「数学上恒为负」。obstacle-facing 起点下 goal 系统性偏前（实测 `goal_body0 ≈ [+30, 0, 0.85]`），一个 goal-blind 的**常量前飞**策略能拿到正 progress，甚至可能逼近 heuristic。所以准确表述是 ① **不可稳健达成**：任何过门只能来自「评测 goal 恰好与烙印方向同向」的偶然，换 annotation/goal 几何即失效。**该偶然属凑过，不接受**（见 §4 明确不做）。
 
+> **⚠️ 收紧（2026-08-18 读码，比上段更强，且对 §4 不利）**：上段说的「换 annotation/goal 几何即失效」在**本 harness 上不可检验** —— 评测 goal 是**构造性常量**，不是分布：`make_obstacle_facing_episodes` 用 `goal_dist_m=30.0`，`heading=[cos yaw, sin yaw, 0]`、`goal = start + heading*30`，且 spawn `yaw` 与 heading 是**同一个**（`v0_rollout_eval.py:251` / `:386-389`）⇒ 每个 ep 的 `goal_body0` **≡ `[+30, 0, 0]`**。三个后果：
+> 1. 「a0 不随 goal 转」这个 goal-blind 指纹**测不出来**（goal 从未转过）；`first_act_xyz_std ≈ 0` 同样**不是**指纹。
+> 2. **§4 In 表在 t=0 加不进任何信息**：`goal_rel0` 对所有 ep 相同，喂给 actor/critic 的信息量为 0。In 表的价值只可能在 **t>0 的跟踪**上 ⇒ §1(1)+(2) 单独**不足以**支撑签 §4。
+> 3. §1(2)「部署换 goal 必然错」也**未被检验**：训练 mock goal `[30,0,5]` 与评测 `[30,0,0]` 几乎同向 ⇒ 两者不构成对照。
+>
+> ⇒ 签 §4 前须先跑**已存在**的 `experiments/aerial/scripts/v4_progress_diag.py`（对 C2 ckpt）取**轨迹级** cos：t=0 正、沿 t 翻负 ⇒ 跟踪丢失，§4 有基础；全程正而 progress 仍负 ⇒ 想象-真实倒挂，§4 **不修**。见 [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) §1 洞 4。**本条只收紧、不放松**；§4/§4.1 事前表一字未改。
+
 与 ④「触发对齐 1.5 m → 结构性不可过」同类：继续调 shield / 继续训 AC **都不是**处置。
 
 ---
