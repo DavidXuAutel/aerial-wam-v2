@@ -293,6 +293,14 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 > 2. **`clip_helped` 行第一个合取项当初写错**：「λG0(π_new) ≤ λG0(可实现最大前飞)」隐含「纯前飞是盒内最优」，**四自由度盒里不成立**。实测 59.09 > 47.78 属**预期**而非 exploit —— `goal_rel` 30→17.8 = 闭合 **12.2 m**，H=15 × 前向上限 1.0 m/步 ⇒ 盒内理论最大闭合 15 m，**81%**。⇒ **不**据此重开 RH 案。
 > 3. **`n≥8` 未落地，且缺口非随机**：eval spawn-in-collision 丢掉**杂乱起点**，存活 5 局偏开阔空间 ⇒ 选择偏差（配对比较内部仍公平）。FAIL 方向对 n **稳健**（补 3 局须各 ≈37.9 / 33.7，heuristic 每局仅 ~8.7），但两跑**均非全权**、不得入账为干净 gate；**④ PASS 同为非全权**（off-rate 2/5；on-rate=0 ⇒ ④b 大概率 `before_vacuous`）。要全权 ① 须先解 spawn，**不**降 `n`。
 
+> ⚠️ **第二轮复核（2026-08-18 同日，cos diag DONE 之后；上表与上面三条注记均原文保留）**：
+>
+> 1. **本轮观测落在三行之外 ⇒ 记 `unclassified`，不是 `clip_insufficient`**。上注第 1 条预留的分支已实测走到 **cos ≥ 0**（mean **+0.806 / +0.762**，`n_cos<0=0`）⇒ `clip_insufficient` 的第二个合取项**假**、该行**不成立**；`clip_helped` 前件（λG0(π) ≤ 最大前飞）也不成立（59.09 > 47.78）；`spurious_pass` 需 ① PASS，未触发。⇒ 三行**全不命中**。凡引用「① 判定 = `clip_insufficient`」处均按 **`unclassified`** 读；「不签 §4 In 表」的依据是 **cos-diag 自己的事前表**（`V4_C2_COS_DIAG_125_PROMPT.md`），不是本表。事前表**不改写**。
+> 2. **上注第 3 条的「选择偏差」撤回**。cos diag step 0 读盘：gate 两跑 `accepted` = **9 / 8**（扫描期被拒会补扫到数），掉到 scored=5 发生在**评测期**；同 seed 同构造的 diag 拿到 **n=7 / n=8**（seed=1 零丢局）⇒ 丢局不是 spawn 的性质，病灶在 **gate 评测循环**（`_run_one_resilient→None` 或 ④ on/off 配对）。「存活局偏开阔空间」**无依据、不得再引**；其余（FAIL 对 n 稳健、两跑非全权、④ 同为非全权）不变。全权 ① 很可能**不必碰 spawn**，仍**不**降 `n`。
+> 3. **上注第 2 条末句「不据此重开 RH 案」已被推翻 ⇒ 新增待签项「重开 RH progress 头」**。goal 在正前方（洞 4：|az| ≤ 0.8°）⇒ 前飞即盒内闭合最优，59.09−47.78 的盈余不可能来自侧向/垂向。RH 校准曲线（[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)，离线、零渲染）判 **`sign_reopen_rh_progress_head`**：π **6.66×**（81.64 / 12.26）、最大前飞 **4.18×**（62.60 / 14.99，**yaw ≡ 0** ⇒ 与 `advance_goal_rel_body` 漏转 yaw 无关）、最大后退 **反号**（RH +9.28 对几何 −15.00，逐步 +0.44…+0.98 对 −1.0）；t0–t4 近校准，**t≈6 起 RH 爆到 6–9 m/步**。A.3 作废只证那条臂**不可实现**、A.4 `fwdmax_ge_pi` 只证**方向**偏好在夹后是对的 —— **两者都没检验幅度校准**，射程当初被我写宽了。
+> 4. **另记 code lead（未修，须签字）**：`advance_goal_rel_body`（`goal_features.py:60-73`）只做 `g[:3] -= a[:3]`、**不按 `a[3]`（yaw delta）旋转** body-frame goal，而 `imagine()` 逐步用它传播 RH conditioning（`imagination.py:164-165`）⇒ **yaw≠0 的臂** conditioning 失真（π 有 yaw ⇒ 它的 12.26 m 亦不可靠；(b)/(c) yaw≡0 不受影响，故 4.18× 与反号两个结论是干净的）。改它会动 §A 全部数字。
+> 5. **Pearson 不得作为依据**：+0.588（n=7，p≈0.17）/ +0.217（n=8，p≈0.61），两跑差 2.7×；`mean_real_minus_imagined ≈ −91` 混了 horizon（想象 15 步 vs 真实 ≤200 步），须同窗口重算。
+
 **另记（需核，不重开）**：`planner.default_candidates`（`planner.py:31-42`）同样在**未夹空间**打分，候选里含 `[max(|dx|,1.0), 0, 0, 0]` 这条前飞臂，选出的动作要到 `collector.py:167` 才夹 ⇒ **V1 部署侧存在同源不一致**（打分空间 ≠ 执行空间）。V1-④ 已 PASS，**不**重开 08-15 merge；但若落 C2/一致性修，应**同时覆盖 planner 候选集**。
 
 ---
@@ -302,7 +310,9 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 - [x] **先做 §A 只读诊断**；A.2 = **`(b)>(c)`** → **碰撞项通道已排除**（附带发现：`p_coll≈6e-4` 平到底，碰撞头在想象里近乎死，另案）。
 - [x] §A.3 已跑，字面 `b3_le_a`（λG0 π 103.63 vs 前飞@3.59 59.85）；**复核后作废**：幅度欠匹配 ~4.6×、五臂全在不可实现区、(b3) 过冲扣分。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md)
 - [x] ⚠️ **「§4 充分」不成立**，**且「先修 RH」无依据** —— §A.4（只读，`--clip-actions`，seed=0）判定 = **`fwdmax_ge_pi`**（λG0 47.64 ≥ 18.25）→ 倒挂来自无界动作通道；先落动作空间一致性并重跑 §A。**不是** RH 案。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) A.4 节
-- [x] **动作空间一致性裁定**：裁定 = **C2 有界策略分布**（2026-08-18 签字；**代码已落地 + 从零重训已做**，清单见 §4.1 顶注）。见 **§4.1**：actor 是 REINFORCE，字面 clip 会造成似然错配 + 探索塌缩 ⇒ **C1 不推荐单独落**。① 再 gate = **`clip_insufficient`**（n=5 非全权）
+- [x] **动作空间一致性裁定**：裁定 = **C2 有界策略分布**（2026-08-18 签字；**代码已落地 + 从零重训已做**，清单见 §4.1 顶注）。见 **§4.1**：actor 是 REINFORCE，字面 clip 会造成似然错配 + 探索塌缩 ⇒ **C1 不推荐单独落**。① 再 gate = ~~**`clip_insufficient`**~~ → **`unclassified`**（三行全不命中，见 §4.1 第二轮复核；n=5 非全权，丢局在**评测期**）
+- [ ] **重开 RH progress 头（新增，2026-08-18）**：签字材料 = [`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md) 判定 **`sign_reopen_rh_progress_head`**（π 6.66× / 前飞 4.18×，yaw≡0 / 后退 **反号**；t≈6 起爆到 6–9 m/步）。裁定 = ______（重开并改 RH / 不重开）。**推翻**「A.3 作废 + A.4 `fwdmax_ge_pi` ⇒ 不是 RH 案」（那两条只证臂不可实现与**方向**偏好，未检验**幅度校准**）。范围：只改 RH progress 头的训练/输出标定，**不**改 §4.1 阈值、`δ_p`、`n`、shield / τ / depth 路径；改 RH ⇒ 须**从零重训** AC 并重跑 §A + ① 再 gate。未签字前**不改** `reward_head` / `reward.py` / `w_progress`。
+- [ ] **`advance_goal_rel_body` 漏转 yaw（新增，2026-08-18）**：裁定 = ______（本周期修 / 另案）。修了会改 §A/§A.3/§A.4/校准曲线**全部数字** ⇒ 若修，须重跑并标明新旧口径；(b)/(c) yaw≡0 的结论不受影响。
 - [ ] 接受 §1–§3 为**已发生结构事实**（写入 `V4_GATE_STATUS`；M5c/M5d 仍诚实 FAIL）
 - [ ] 接受 §4：改 In 表，**不**改 `δ_p` — **08-18 C2 cos≥0，In 表修订搁置**（mean cos actor **+0.806 / +0.762**；HEAD `b35d245`；见 [`V4_C2_COS_DIAG_125_STATUS.md`](V4_C2_COS_DIAG_125_STATUS.md)）
 - [ ] **V3 范围裁定**：为 actor/critic MLP 增加 `goal_rel` 输入是否触及「goal-input 属 V3，本周期不给 RSSM 加 goal 张量输入」？裁定 = ______（不触及 / 触及需另开 V3 案）。*提案方读法：不触及——RSSM 完全不动，只加策略/价值 MLP 的输入维。*

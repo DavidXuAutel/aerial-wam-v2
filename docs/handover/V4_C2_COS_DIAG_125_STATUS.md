@@ -86,4 +86,5 @@ Artifacts: `artifacts/v4_progress_diag_c2_seed0_20260818.json`, `artifacts/v4_pr
 
 - **§4 In 表**：**不签**（签会白训一轮 In-table 实现）。
 - ~~**下一件**：活假设 = WM 转移保真 / z0 域差 / 想象-真实倒挂；须另案（非 In 表 goal concat）。全权 ① 仍须解 spawn-in-collision~~；`enable_policy_update` 仍 false。
-- **下一件（2026-08-18 复核后收窄）**：**先做 RH 校准曲线** —— 用已落盘的 `artifacts/v4_imagine_return_decomp_c2train_a23/a4_20260818.json`（逐步 `progress` 数组已存），逐步对比 RH `out.progress` vs `analytic_progress`（`goal_features.py:86`，几何真值）作斜率/散点。**零渲染、零训练、零改码**，出的是「重开 RH 案」的签字材料。仅当曲线接近 **1:1** 才回到更贵的 **WM 转移保真 / z0 域差**。全权 ① 改查 **gate 评测循环**（不是 spawn 扫描，见复核第 4 条），**不**降 `n`。
+- ~~**下一件（2026-08-18 复核后收窄）**：**先做 RH 校准曲线**~~ ← **已跑完**（同日，125 离线，零渲染零训练零改码）：[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)，判定 **`sign_reopen_rh_progress_head`** —— 非 1:1，π **6.66×**（81.64 / 12.26）、前飞 **4.18×**（62.60 / 14.99，yaw≡0）、后退 **反号**（RH +9.28 对几何 −15.00）；形状 t0–t4 近校准、**t≈6 起 RH 爆到 6–9 m/步**而几何仍 ~1。⇒ 曲线未近 1:1 ⇒ **不**走 **WM 转移保真 / z0 域差** 那条贵路（真实 ① ≈ −5 的世界差是 RH 诚实之后才轮到的活）。
+- **下一件**：**签「重开 RH progress 头」**（校准曲线即签字材料），签完才改码。全权 ① 改查 **gate 评测循环**（不是 spawn 扫描，见复核第 4 条），**不**降 `n`；`enable_policy_update` 仍 **false**。

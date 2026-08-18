@@ -154,7 +154,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | C2 已从零重训；① **FAIL** n=5 非全权；④ PASS；**`clip_insufficient`**。cos diag：**不签** §4 In 表（mean cos +0.81/+0.76）；[提案其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
+| **V4** | C2 已从零重训；① **FAIL** n=5 非全权（丢局在**评测期**，非 spawn 扫描）；④ PASS；~~**`clip_insufficient`**~~ → 本轮记 **`unclassified`**（事前行是合取，cos≥0 ⇒ 第二项假）。cos diag：**不签** §4 In 表（mean cos +0.81/+0.76）。**RH 案已重开**：校准曲线 [`V4_RH_CALIB_125_STATUS`](handover/V4_RH_CALIB_125_STATUS.md) 判 **`sign_reopen_rh_progress_head`**（π 6.66× / 前飞 4.18× / 后退反号）⇒ 下一件 = **签重开 RH progress 头**；[提案其余条款待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
 
 ---
 

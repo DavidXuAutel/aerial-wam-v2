@@ -2,7 +2,7 @@
 
 - **status**: **C2 重跑 DONE** + **C2 cos diag DONE** — mean first-act cos **+0.806/+0.762** ⇒ **不签** §4 In 表
 - **⚠️ 本文档 A.2–A.4 数字产自 pre-C2 无界策略类**（旧 ckpt 无 `policy_class` ⇒ `unbounded_gaussian_legacy`），可逐位回放。C2 新数字见文末 **「C2 从零重训后重跑」**。
-- **⚠️ 读者先读「A.3 判定作废」再读 §A.4**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；A.4 已跑，倒挂来自无界动作通道，**仍不是 RH 案**
+- **⚠️ 读者先读「A.3 判定作废」再读 §A.4**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；A.4 已跑，倒挂来自无界动作通道，~~**仍不是 RH 案**~~ ← **2026-08-18 晚已推翻**：A.3 作废只证那条臂**不可实现**、A.4 只证**方向**偏好在夹后是对的，**两者都没检验幅度校准**；C2 训后 (b) 臂（yaw≡0、完全可实现）RH 高估 **4.18×**、(c) 后退 **反号** ⇒ **RH 案已重开**（[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md)，判定 `sign_reopen_rh_progress_head`）
 - **seed=0**：A.4 / A.3traj 同 seed；A.2 两次无 seed 跑（`14d0f06` / `2afcb33`）同 ckpt 同 z0 结果不同（前飞 λG0 47.02→49.65，+5.6%），已 superseded 为审计链
 - **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`700dbe6` + `--clip-actions` / `--match-basis`)
 - **A.2 JSON**: `artifacts/v4_imagine_return_decomp_20260818.json`
@@ -177,6 +177,8 @@ A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现
 > - ⇒ **几何排序** (b) 15.0 > (a) 12.2；**RH 排序** (a) 81.64 > (b) 62.60 —— **反的**。倒挂**不需要真机、不需要 z0 域差**，在**可实现集合内、想象内部**已经存在。
 >
 > ⇒ **RH 案重开**。依据比当初作废的 A.3 硬：A.3 废因是那条臂**不可实现**；(b) 完全可实现。A.4 `fwdmax_ge_pi` 的射程也须收窄 —— 它只证了**方向**偏好在夹后是对的，**从未**检验**幅度校准**。下一件 = **RH 校准曲线**（逐步 `out.progress` vs `analytic_progress`，`goal_features.py:86`），素材已落盘在上面两个 JSON 里，**零渲染零训练零改码**。
+>
+> **已跑（同日）**：[`V4_RH_CALIB_125_STATUS.md`](V4_RH_CALIB_125_STATUS.md) —— 判定 **`sign_reopen_rh_progress_head`**。π **6.66×**（81.64 / 12.26）、(b) **4.18×**（62.60 / 14.99，yaw≡0 ⇒ 与漏转 yaw 无关，本更正块的 4.2× 由逐步曲线独立确认）、(c) 后退 **反号**（RH +9.28 对几何 −15.00，每步 +0.44…+0.98 对 −1.0）—— **比本块更强**：不只是幅度高估，**后退方向的符号都是错的**。形状：t0–t4 近校准，**t≈6 起 RH 爆到 6–9 m/步**而几何仍 ~0.8–1.0。⇒ **RH 案正式重开**；下一件改为**签「重开 RH progress 头」**，签完才改码。曲线未近 1:1 ⇒ **不**走 WM 转移 / z0 域差那条贵路。
 >
 > **code lead（未修，勿顺手改）**：`advance_goal_rel_body`（`goal_features.py:60-73`）只做 `g[:3] -= a[:3]`，**不按 `a[3]`（yaw delta）旋转** body-frame goal，而 `imagine()` 正用它逐步传播 RH 的 conditioning（`imagination.py:164-165`）⇒ **yaw≠0 的臂** conditioning 方向与幅度都失真（π 有 yaw ⇒ 它的 12.2 m 本身也不可靠；(b) yaw≡0 **不受影响**，故 4.2× 这个数是干净的）。这是「倍率随臂变」的具体候选机制；改它会改本节全部数字 ⇒ **走签字**。
 
