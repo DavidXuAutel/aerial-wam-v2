@@ -74,7 +74,7 @@ Artifacts: `experiments/aerial/rl/artifacts/v4_gate_r60_20260817_wm_rh_goal/v4_g
 | train goal_rel | ≈0 (mock, no inject) | **3.05** avg (nonzero) |
 | z0 source | mock encode | headon real RGB |
 
-Goal inject + RGB z0 fixed the train/deploy conditioning gap (nonzero goal_rel, real RGB latents), but ① **regressed** on deploy — imagined returns (92+) do not transfer; actor moves away from goal on real rollouts. Phase 4 candidates: longer train, RH fidelity, deploy vel=0, actor concat goal_rel.
+Goal inject + RGB z0 fixed the train/deploy conditioning gap (nonzero goal_rel, real RGB latents), but ① **regressed** on deploy. **2026-08-18 根因**：规格 `π(a|z)` 无 goal + 300 iter 单 `_mock_goal_episode`；M5d 变差是预测方向。**不要** Phase-4 longer train。见 [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)。
 
 ## Prior baseline (reward-head, 2026-08-16)
 | Signal | Result |

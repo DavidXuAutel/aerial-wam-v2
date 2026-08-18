@@ -30,8 +30,15 @@ Representative ep0: `goal_body0 ≈ [+30, 0, 0.85]` (body forward); heur first a
 
 So “deploy vel=0” is a red herring for encode; the structural gap is **π(a\|z) without goal** vs heuristic **π(a\|goal, proprio)**. Mock train goal `start→[30,0,5]` cannot put goal into z at deploy.
 
-## Implication for next fix
+## Root cause (2026-08-18, recorded)
 
-Priority: **give the actor an explicit goal condition** (concat `goal_rel` / goal-in-body into actor), and/or train on annotation goals matching ① starts — not longer blind imagination train. Until then, imagined return≠deploy progress is expected.
+Not a deploy-only miss. Two stacked defects:
+
+1. **Spec**: V4-MVP In table is `act_latent(z)` / `V(z)` — goal never enters π. Implementation is faithful.
+2. **Train**: M5d 300 iter used `_mock_goal_episode()` (one start→`[30,0,5]`). Phase 2 headon RGB was a 2-iter probe, not diverse-goal AC.
+
+Together: `π(z)` brands one goal’s action. Deploy goals differ → anti-align (this diag). M5c `goal_rel≈0` → weak policy (−3.17); M5d strong single-goal reward → **worse** (−8.74). **Longer train on current π is predicted to worsen.**
+
+① vs Heuristic is **structurally unreachable** without goal leaking into z (RGB RSSM has no 3-D waypoint channel). Same class as 08-11 ④ (spec revision, not more tuning). Proposal: [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md).
 
 `enable_policy_update` remains **false**.

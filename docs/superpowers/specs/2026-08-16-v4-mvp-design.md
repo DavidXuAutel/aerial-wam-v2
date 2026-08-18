@@ -22,8 +22,8 @@
 |---|---|
 | 训练 | 纯想象 AC：λ-return + REINFORCE（或等价 policy gradient）+ 熵正则 + value stop-grad |
 | 接入 | `corrector.py` 现有插入点；`imagine()` + torch RSSM `step` |
-| Actor | `act_latent(z)`（或 `h‖z`）；输出 4-D 运动学动作 |
-| Critic | `V(z)` on latent |
+| Actor | `act_latent(z)`（或 `h‖z`）；输出 4-D 运动学动作。**2026-08-18 记载**：此接口 **看不见 goal**（非实现 bug）。在 ① vs Heuristic 下 **结构性不可达** — 待签字修订见 [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](../../handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；签字前 **禁止** 现 π 加长训 |
+| Critic | `V(z)` on latent（同上，goal 不进 value） |
 | 评测 | V0 ② 同 harness progress；安全：V0 ④ ratio≤0.80 且 hard coll 不差于 V1-① 权威对照 |
 | 门控 | yaml `enable_policy_update` 默认 **false**；仅 merge PASS 后 flip |
 
@@ -154,4 +154,5 @@ v4:
 
 ## 9. 变更记录
 
+- **2026-08-18** — 记载：In 表 goal-blind + 单 mock goal 使 ① 结构性不可达（M5d 变差为预测方向）。修订待签字，**本文件 In 表尚未改**。
 - **2026-08-16** — 用户确认：MVP=A、训练分期=C、实现=方案1 Corrector 内嵌；本规格首版；125 离线 agent 执行 M0–M4。

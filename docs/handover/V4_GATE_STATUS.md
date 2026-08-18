@@ -8,8 +8,9 @@
 
 ## 1. 一句话结论（2026-08-17）
 
-**Goal+z0 track done — merge FAIL（① −8.74 / ④ PASS）** — goal inject + headon RGB z0 fixed train conditioning (goal_rel 0→3.05) but ① **regressed** vs RH-only (−3.17→−8.74); ④ still beats remeasured v1 (0.000 vs 0.429).  
-**① 诊断（2026-08-17）**：见 [V4_PROGRESS_DIAG_125_STATUS](V4_PROGRESS_DIAG_125_STATUS.md) — actor 首动作与 goal **反号**（cos≈−0.88）；heuristic cos≈+0.99；根因候选 = deploy actor **无 goal 输入**。  
+**Goal+z0 track done — merge FAIL（① −8.74 / ④ PASS）** — ① **现规格下结构性不可达**（不是差一点）。  
+根因两叠加：(1) In 表规定 `act_latent(z)` / `V(z)`，goal 只进想象 reward；(2) 权威 300 iter 只有 `_mock_goal_episode()` 一对 start→goal。修好 conditioning（M5d）把**那一个**方向烙进 `π(z)`，① 从 −3.17 **退到** −8.74。逐 ep：首动作 cos≈−0.88 vs heur ≈+0.99。  
+**处置同类 08-11 ④**：修订 Actor/Critic In 表，**不**加长训、**不**降 `δ_p`。待签字：[V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)。  
 `enable_policy_update` **仍 false**。  
 **Governance**：2026-08-17 frozen `n_eval_episodes=8`；V4 `n<8` → `authoritative=false`（洞 1 已关）。
 
@@ -41,6 +42,7 @@
 - **2026-08-16(M5)** — 125 4090 rollout (stub encode): ① FAIL / ④ PASS; yaml 未翻。
 - **2026-08-16(encode-train)** — Align train+deploy to torch WM encode; H100 300 iters; re-gate `v4_gate_r60_20260816_wm`: ① FAIL, ④ FAIL; merge FAIL; yaml 未翻.
 - **2026-08-16(reward-head)** — M5c done: RH finetune 1000 steps (`wm_ckpt_r60_rh_20260816`); AC 300 iters; re-gate `v4_gate_r60_20260816_wm_rh`: ① FAIL, ④ PASS; merge FAIL; yaml 未翻.
+- **2026-08-18** — **① 结构性不可达入账**：In 表 goal-blind + 单 mock goal；M5d 变差是预测方向。待签字改 In 表（不降 ①、不加长训）。提案 `V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`。
 - **2026-08-17(goal+z0)** — M5d done: goal inject + headon RGB z0 AC 300 iters (`v4_ac_ckpt_20260817_wm_rh_goal_rgb`); re-gate `v4_gate_r60_20260817_wm_rh_goal`: ① FAIL (−8.74), ④ PASS; merge FAIL; yaml 未翻.
 
 ---
