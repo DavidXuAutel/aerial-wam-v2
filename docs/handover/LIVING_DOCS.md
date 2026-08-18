@@ -11,8 +11,8 @@
 |---|---|---|
 | 1 | [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) | **当前阶段**一句话：V4 merge 状态、下一轨 |
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
-| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **待签字**（§A = `b>c`，§4 充分） |
-| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | §A 只读分解 **DONE**：前飞优于后退 |
+| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **待签字**（§A = `b>c` 只排除碰撞项通道；**「§4 充分」未成立**，待 §A.3） |
+| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | §A 只读分解 **DONE**：前飞优于后退；但 π 想象 λG0 +104.7 vs 真实 ① −8.74 = **排序倒挂**（幅度约 35× 欠罚）→ 下一件 **§A.3 幅度匹配臂** |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -65,7 +65,8 @@
 - 「`_v0_gate --merge` 从未 exit 0」「仍在 Step 6 合拢」类 8/12 备忘。
 - 「n=8 相对冻结 16 越界」—— **2026-08-17 已 re-freeze，n=8 即冻结值**（洞 1 = **事后合法化**，见 `V0_GATE_STATUS` §4；非事前干净通过）。
 - 「n=8 re-freeze 治了 V1-① 擦边」—— **否**；合法性 ≠ 统计功效。① 裕度 0.8 局 / McNemar p≈0.5 见 `V1_GATE_STATUS` §2 + [待签字条款②③](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)。
-- 「V4-① 再训一轮 / 对齐 z0 就能过」—— **否**；现 In 表 `π(a|z)` 对 heuristic **不可稳健达成**。§A：想象**不**偏好后退。下一件是 **签字 §4 In 表**。见 [结构提案](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)。
+- 「V4-① 再训一轮 / 对齐 z0 就能过」—— **否**；现 In 表 `π(a|z)` 对 heuristic **不可稳健达成**。见 [结构提案](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)。
+- 「§A `b>c` 已证明改 In 表就够」—— **否**；`b>c` 只排除**碰撞项**通道。π 想象 λG0 **+104.7** 却真实 ① **−8.74**（前飞 +47.0 / heur +8.42）= **排序倒挂**，机制是**幅度约 35× 欠罚**（顶满 ‖a‖ 即想象最优，方向次要）。下一件是 **§A.3 幅度匹配臂**（只读），**不是**签 §4。
 - 「④b before=1.0 是测得的干预先于接触」—— **否**；`n_contact=0` 时空过终态，④ 实证=④c。
 - 「headon 可作 V1-② coll OOD」—— **否**；headon `coll_eps=0`。
 - `PROJECT_STATUS.md` / `RUNBOOK_v0.md` §1 若仍写「V1 进行中 / V4 未开始」而与 `V4_GATE_STATUS` 冲突时 → **以 V4 活文档为准**（并应回写那两处）。
@@ -75,6 +76,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. `V4_GOAL_Z0_125_STATUS.md`（若 in_progress）  
+2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md)（§A 倒挂；下一件 §A.3）  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1

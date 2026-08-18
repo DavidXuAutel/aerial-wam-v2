@@ -27,7 +27,7 @@
 ## 2. 一句话结论（2026-08-17）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — ① **不可稳健达成**（goal-blind In 表 + 单 mock goal；方向为负待 §A）。待签字改 In 表。  
+**当前：V4-MVP** — ① 不可稳健达成；§A = 想象**前飞优于后退**（仅排除碰撞项通道）。但 π 想象 λG0 **+104.7** vs 真实 ① **−8.74** = **排序倒挂**（幅度约 35× 欠罚）→ 下一件 **§A.3 幅度匹配臂**（只读），**「§4 充分」未成立**。  
 `enable_policy_update` **仍 false**。
 
 ---
@@ -155,7 +155,7 @@ Gate 命令里的 `--depth-ckpt` / `--dataset` 用 **`~/aerial-rl-skeleton/.../a
 | **洞 2 ④b 空过** | ✅ **关闭**（2026-08-17）：空过为终态；实证=④c |
 | **洞 3 V1-② coll N/A** | ✅ 定义关闭；r60 诊断 + **held-out 20260817** `pos=20` / AUROC 0.977 / usable coll ep=8（`coll_claimed`）；**不改** 08-15 merge |
 | **V1-① 功效②③** | ⏳ **待签字**：[提案](handover/V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)；脆弱（0.8 局 / McNemar p≈0.5）已记；与 n re-freeze **正交** |
-| **V4** | §A **`b>c`**（想象不偏好后退）；In 表修订 [待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
+| **V4** | §A **`b>c`**（碰撞项通道排除）；但**排序倒挂**（π 想象 +104.7 / 真实 ① −8.74）→ ⏳ **§A.3 幅度匹配臂**（只读）后才谈 In 表修订 [待签字](handover/V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)；`enable_policy_update` 仍 false |
 
 ---
 
