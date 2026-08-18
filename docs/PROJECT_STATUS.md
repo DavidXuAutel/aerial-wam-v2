@@ -27,8 +27,7 @@
 ## 2. 一句话结论（2026-08-18）
 
 **✅ V0 / V1 均已 merge PASS。**  
-**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**。下一件 = 签 §4 In 表。`enable_policy_update` 仍 **false**。  
-`enable_policy_update` **仍 false**。
+**当前：V4-MVP** — C2 有界策略已落地并**从零重训**；`n_action_clipped=0`。① 再 gate **仍 FAIL**（−7.43 / −3.53 vs heur ~9，两跑 **n=5 < 8** 非全权）；④ PASS。判定 **`clip_insufficient`**，但事前判据的第二个合取项（首动作 cos<0）**未验** —— 训后 §A a0 已转前向 (+0.567)，①-eval 逐 ep cos 未报 ⇒ 下一件 = **先取该 cos + `goal_rel0` 方向分布**，再决定签 §4 In 表（详见 [V4_GATE_STATUS](handover/V4_GATE_STATUS.md) §1）。`enable_policy_update` 仍 **false**。
 
 ---
 
