@@ -1,54 +1,40 @@
-# V4 §A imagined return decomp (125, 2026-08-18)
+# V4 §A / §A.3 imagined return decomp (125, 2026-08-18)
 
-- **status**: **done** (read-only)
-- **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`14d0f06`)
-- **JSON**: `artifacts/v4_imagine_return_decomp_20260818.json`
-- **log**: `logs/v4_imagine_return_decomp_20260818.log`
+- **status**: **A.2 done · A.3 done** (read-only)
+- **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`2afcb33` + `--match-scale`)
+- **A.2 JSON**: `artifacts/v4_imagine_return_decomp_20260818.json`
+- **A.3 JSON**: `artifacts/v4_imagine_return_decomp_a3_20260818.json`
+- **A.3 log**: `logs/v4_imagine_return_decomp_a3_20260818.log`
 - **ckpt**: `v4_ac_ckpt_20260817_wm_rh_goal_rgb` + RH WM `wm_step_1000.pt`
-- **z0**: headon `dataset_v0_headon_20260811` n=8 encode; `goal_rel0` = ①-eval ep0 `[+30, 0, 0.85]`; `body_vel0=0`
-- **H / λ / γ**: 15 / 0.95 / 0.997
+- **z0**: headon n=8；`goal_rel0` = ①-eval ep0 `[+30, 0, 0.85]`；`body_vel0=0`
 - **yaml / enable_policy_update**: untouched
 
-## A.2 (pre-committed)
+## A.2 (unit magnitude; collision channel)
 
-| Arm | Σ progress | Σ p_coll | Σ maneuver | Σ reward | λ G0 | a0 |
-|---|---|---|---|---|---|---|
-| (a) π | **+143.42** | −0.005 | −2.47 | +140.94 | **+104.72** | **[-2.92, -1.37, -0.92, -0.73]** |
-| (b) forward `[+1,0,0,0]` | +61.50 | −0.005 | −0.15 | +61.35 | **+47.02** | [1,0,0,0] |
-| (c) retreat `[-1,0,0,0]` | +9.32 | −0.005 | −0.15 | +9.17 | **+15.90** | [-1,0,0,0] |
+| Arm | Σ progress | Σ p_coll | Σ maneuver | λ G0 | a0 |
+|---|---|---|---|---|---|
+| (a) π | **+142.23** | −0.006 | −2.47 | **+103.63** | `[-3.13, -1.23, -0.18, -0.05]` ‖a0[:3]‖=**3.59** |
+| (b) forward `[+1,0,0,0]` | +65.72 | −0.006 | −0.15 | +49.65 | unit |
+| (c) retreat `[-1,0,0,0]` | +9.51 | −0.006 | −0.15 | +15.99 | unit |
 
-**(c) λG0 ≱ (b)** → verdict **`b_gt_c`**.  
-`(c)−(b)` 由 **progress** 主导（−52.18）；p_coll 差 **~0**；maneuver 差 0。
+Verdict **`b_gt_c`** — **碰撞项通道排除**（p_coll 差≈0）。A.2 不足以判 §4 充分（幅度通道）。
 
-**判定（限于本判据）**：想象目标**不**偏好后退；负 ① **不是**「想象里 ①/④ 被碰撞项主导」。**碰撞项通道排除，成立。**
+## A.3 (scale-matched; 2026-08-18)
 
-## ⚠️ 「§4 可直接执行」不成立 — A.2 判据有洞（2026-08-18 更正）
+`match_scale=3.591`（auto from π ‖a0[:3]‖）。
 
-原本此处写「按提案 A.2：§4 In 表修订可直接执行」。**撤回**。A.2 三行判据只比较 (b) 与 (c) 两个**单位幅度**常量，**从未把任何一臂与 π 自己比**，因此结构上探测不到**幅度通道**。而本表第一行暴露的正是幅度通道：
+| Arm | Σ progress | Σ p_coll | Σ maneuver | λ G0 | ‖goal_rel‖ 30→ |
+|---|---|---|---|---|---|
+| (a) π | **+142.23** | −0.006 | −2.47 | **+103.63** | **253.9**（未到达；OOD） |
+| (b3) forward @3.59 | +83.39 | −0.006 | −0.54 | **+59.85** | 23.9（靠近） |
+| (c3) retreat @3.59 | +8.80 | −0.006 | −0.54 | +15.31 | 83.9 |
 
-| | 想象 λG0 | 真实 ① |
-|---|---|---|
-| (a) π | **+104.72**（最高） | **−8.74**（最低） |
-| (b) forward / heuristic | +47.02 | **+8.42** |
+**(b3) λG0 59.85 ≰ (a) 103.63** → 预提交判据 **`b3_le_a`**.
 
-**排序倒挂**：想象把 π 排在常量前飞的 2.2 倍之上，现实把它排在 heuristic 之下十几个单位 —— 这是想象目标被薅（命门 A）的直接证据。机制是**幅度**，不是碰撞项：
+- 匹配幅度下 RH **仍更偏好 π 那个后向向量**（Σprogress 142 vs 前飞 83），不是「只是幅度更大」。
+- `pi_imagined_arrival=false`：‖goal_rel‖ **涨**到 254，不是收到 0 → **不是** z 转移「以为到达」。
+- 幅度欠罚比 ≈ **33×**（相对单位前飞）。
 
-- π `a0` 模长 ≈ **3.36**（`action_scale=3` 饱和）；幅度 3.4× 换来 Σprogress 2.3×。
-- 代价端 Σmaneuver 仅 −0.15 → −2.47：**progress +81.92 对惩罚 +2.32，约 35× 欠罚**。
-- ⇒ 想象最优解是「顶满 ‖a‖」，方向退化为次要项；顶满的向量在真机指向后方，① 即塌。
+**处置（A.2 第二支）**：**先修 RH（另案）**，再执行 §4 In 表。**不签「§4 充分」。** 多样 goal / 加 `goal_rel` 不能代替这次判定。
 
-**Residual 段原处置更正**：排除 `p_coll` 配平案 ✅ 仍成立；但「此残差可在 In 表落地后的重训里用多样 goal 消化」**无依据** —— 多样 goal 修的是**方向条件化**，不改变「回报随幅度涨、惩罚跟不上」。加 `goal_rel` 后 π 仍会顶满幅度，只是**可能**顶向前方。可能 ≠ 已验证。
-
-**未报的三项**：(1) `goal_rel` 被推 OOD —— `g ← g − a[:3]`，后退臂 15 步把 ‖goal_rel‖ 从 30 推到 ≈80（训练 ~30），故 (a)/(c) 的 progress 都是 OOD 查询，(c) 作为对照偏弱；(2) (a) 的逐步动作 / `‖goal_rel‖` 轨迹未报 —— 若想象里 ‖goal_rel‖ 收到 ~0（以为到达），病灶在 **z 转移保真**而非 RH 标定；(3) `goal_rel0` 只用 ep0 一个 `[+30, 0, 0.85]` 套在 8 个 z0 上，是 probe，**不能**读成 goal 分布覆盖。
-
-## Next — §A.3 幅度匹配补跑（只读，已入脚本）
-
-脚本已追加 (b3) `[+3.36,0,0,0]` / (c3) `[-3.36,0,0,0]`（`--match-scale`，0=自动取 π 实测 ‖a0[:3]‖）与五臂逐步 `progress_t` / `p_coll_t` / `‖a_t‖` / `‖goal_rel‖_t`。判据先写死（提案 §A.3）：
-
-| 观测 | 处置 |
-|---|---|
-| **(b3) λG0 > (a)** | RH 方向偏好在 π 的幅度下存活 ⇒ §4 **充分**；幅度欠罚作为**已知 exploit 入账**，再 gate 强制报 ‖a‖ 分布 + 想象-真实回报相关性 |
-| **(b3) ≤ (a)** | 匹配幅度下 RH 仍偏好 π 的后向向量 ⇒ A.2 第二支：**先修 RH（另案）**，再执行 §4 |
-| (a) `‖goal_rel‖` 收到 ≤ `success_dist_m` | 想象以为已到达 ⇒ 病灶在 **z 转移保真**，另案 |
-
-`enable_policy_update` 仍 **false**；A.3 前**不**签「§4 充分」。
+`enable_policy_update` 仍 **false**。
