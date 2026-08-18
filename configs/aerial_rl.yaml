@@ -158,6 +158,15 @@ v4:
   entropy_scale: 3.0e-4
   actor_lr: 1.0e-4
   critic_lr: 1.0e-4
+  # C2 action-space consistency (2026-08-18, proposal §4.1): the policy
+  # distribution is bounded BY CONSTRUCTION — a = limits ⊙ tanh(u) with
+  # limits = body_delta_limits(1/env.step_hz), the same box collector.py:167
+  # clips to. There is no yaml switch to turn that off: §A.4 showed the
+  # unbounded action channel is what produced V4-①'s rank inversion.
+  # ``action_scale`` is now a PRE-tanh gain (it used to be a raw output gain,
+  # i.e. an unbounded magnitude multiplier). Keep 1.0 — larger only saturates
+  # tanh and flattens the gradient.
+  action_scale: 1.0
   device: cpu
 
 # Optional OpenFly annotation of episodes (start/goal poses). null -> single

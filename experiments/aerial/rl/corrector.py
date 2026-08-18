@@ -173,15 +173,28 @@ class SerialCorrectorLoop:
         goal_rel0 = np.stack([goal_rel_from_obs(t.obs) for t in transitions], axis=0)
         body_vel0 = np.stack([body_vel_from_obs(t.obs) for t in transitions], axis=0)
         z0 = np.stack([self.dynamics.encode(t.obs) for t in transitions], axis=0)
+        # Imagine inside the DEPLOYED action set (C2, 2026-08-18): the AC owns the
+        # box (= ``body_delta_limits(1/step_hz)``) and its sampling law already
+        # respects it, so this is a no-op guard whose ``n_action_clipped`` counter
+        # is what proves the two spaces agree.
+        ac = getattr(self, "actor_critic", None)
+        act_limits = getattr(ac, "action_limits", None) if ac is not None else None
         rollout = imagine(
             self.dynamics, self.imagination_policy, z0, self.config.imagine_horizon,
             reward_cfg=getattr(self.collector, "reward_cfg", None),  # match real weights + bonus
             goal_rel0=goal_rel0,
             body_vel0=body_vel0,
+            action_limits=act_limits,
         )
+        if rollout.n_action_clipped:
+            logger.warning(
+                "imagined actions left the deployed box %d times (policy_class=%s) — "
+                "imagined and deployed action spaces disagree",
+                int(rollout.n_action_clipped),
+                getattr(getattr(ac, "config", None), "policy_class", "?"),
+            )
         mean_abs_goal_rel = float(np.mean(np.abs(goal_rel0)))
         mean_progress = float(rollout.progress.mean())
-        ac = getattr(self, "actor_critic", None)
         if ac is not None:
             ac_out = ac.update(rollout)
             return {

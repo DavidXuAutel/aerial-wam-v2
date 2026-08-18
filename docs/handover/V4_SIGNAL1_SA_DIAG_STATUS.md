@@ -1,6 +1,7 @@
 # V4 §A / §A.3 imagined return decomp (125, 2026-08-18)
 
-- **status**: **A.2 done · A.3 done → 判定作废 · A.4 DONE = `fwdmax_ge_pi`（seed=0）** (read-only)
+- **status**: **A.2 done · A.3 done → 判定作废 · A.4 DONE = `fwdmax_ge_pi`（seed=0）；处置写法已修正（C1 不够，见末节）→ 「动作空间一致性裁定」已签 = **C2 有界策略分布**（2026-08-18，代码已落地）** (read-only)
+- **⚠️ 本文档全部数字产自 pre-C2 无界策略类**（ckpt 无 `policy_class` ⇒ 载入判为 `unbounded_gaussian_legacy`），保留为**审计链**、可逐位回放；`v4_imagine_return_decomp.py` 只 evaluate 不训练，故仍能复现。**下一件 = 用 C2 从零重训后的 π 重跑 §A/§A.3/§A.4**，届时 `n_action_clipped` 应为 **0**（`--clip-actions` 成为 no-op），本文档**另起新节**记录、不覆盖旧数字。
 - **⚠️ 读者先读「A.3 判定作废」再读 §A.4**：`b3_le_a` 字面成立但臂无效，「先修 RH」**不成立**；A.4 已跑，倒挂来自无界动作通道，**仍不是 RH 案**
 - **seed=0**：A.4 / A.3traj 同 seed；A.2 两次无 seed 跑（`14d0f06` / `2afcb33`）同 ckpt 同 z0 结果不同（前飞 λG0 47.02→49.65，+5.6%），已 superseded 为审计链
 - **script**: `experiments/aerial/scripts/v4_imagine_return_decomp.py` (`700dbe6` + `--clip-actions` / `--match-basis`)
@@ -97,7 +98,7 @@ Verdict **`b_gt_c`** — **碰撞项通道排除**（p_coll 差≈0）。A.2 不
 - p_coll 三臂仍 ≈6e-4（死头）——可实现 1 m/步下碰撞头仍不亮。
 - `enable_policy_update` / yaml / `δ_p` / n **未动**。`imagine()` 本体仍不夹（本跑只包策略）。
 
-**处置（已由事前表锁定）**：在 `imagine()` 落与部署同一 `clip_body_delta`（一致性红线，非阈值），然后重跑 §A。**不是** RH 案；**不**签「§4 充分」。是否本周期落 clip → 提案签字栏「动作空间一致性裁定」（提案方读法：属既有红线修不一致，可先落）。未签字前**不改** `imagination.py`。
+**处置（已由事前表锁定）**：在 `imagine()` 落与部署同一 `clip_body_delta`（一致性红线，非阈值），然后重跑 §A。**不是** RH 案；**不**签「§4 充分」。是否本周期落 clip → 提案签字栏「动作空间一致性裁定」（提案方读法：属既有红线修不一致，可先落）。未签字前**不改** `imagination.py`。 ← **此处「落 clip」的写法已由本文末节修正（判定不变，只是 C1 不够）；原文保留不改写。**
 
 ### A.3traj 配套（同 seed=0，未夹，`--match-basis traj`）
 
@@ -114,6 +115,34 @@ Verdict **`b_gt_c`** — **碰撞项通道排除**（p_coll 差≈0）。A.2 不
 
 `clip_shrink_ratio` 跨文件：未夹轨迹 15.59 / 夹后 1.15 ≈ **13.6×**（A.4 JSON 内 `pi_act_norm3_mean_unclipped=null`，因 clip 跑未同时保留未夹 π）。
 
-**下一件**：签字「动作空间一致性裁定」；若本周期落，再改 `imagine()` 并重跑 §A。门禁不动。
+---
+
+## ⚠️ A.4 处置措辞不足：字面 clip ≠ 一致性修（2026-08-18 复核）
+
+**判定 `fwdmax_ge_pi` 与「不是 RH 案」都成立**；被撤的只是处置的**写法** —— 事前表里我写「在 `imagine()` 落与部署同一 clip」，只定了 clip 的**位置**，没检查它落进的是什么**估计量**。
+
+读码事实：`imagine()` 纯 numpy 无梯度；actor 更新是 **REINFORCE** —— `corrector.py:176` → `actor_critic.update(rollout)`，`update()` 把 **`rollout.actions`** 交给 `evaluate_actions(z,a)` 算 `logp = Normal(mean,std).log_prob(a)` 再乘优势（`actor_critic.py:214-226`/`:257`/`:271`），**无梯度穿 `dynamics.step`**。
+
+于是字面 clip = 用**未夹高斯**给**夹后动作**算 logp：
+
+1. **似然错配** —— 夹后动作在盒面上，真实采样律是「盒内截断 + 盒面点质量」的混合，`Normal.log_prob` 不是它的密度 ⇒ REINFORCE 无偏性前提破掉。
+2. **探索塌缩（可算）** —— `_log_std` 初值 −0.5 ⇒ σ=**0.6065** 四维同值，而上限 [1.0,0.4,0.4,0.3142]：σ 是后三维上限的 1.5–1.9 倍。逐维夹概率（mean=0）9.9%/51.0%/51.0%/60.4% ⇒ 四维**全在盒内**仅 **8.6%**；按现 ckpt mean `a0` 算 **3.4e-6** ⇒ 每个样本都是盒面原子，状态内动作方差≈0 ⇒ **学不出方向**。
+
+⇒ 选项 **C1 字面 clip（不推荐单独落）/ C2 有界策略分布 `a = limits ⊙ tanh(u)` + 雅可比修正 logp（推荐，须从零重训）/ C3 pathwise（本周期不做）**，事前判据（`clip_helped` / `clip_insufficient` / `spurious_pass`）见提案 **§4.1**。
+
+**另记（需核，不重开）**：`planner.default_candidates`（`planner.py:31-42`）也在**未夹空间**打分（含 `[max(|dx|,1.0),0,0,0]` 前飞臂），到 `collector.py:167` 才夹 ⇒ V1 部署侧同源不一致。V1-④ 已 PASS，**不**重开 08-15 merge；若落 C2 应同时覆盖候选集。
+
+**下一件**：签字「动作空间一致性裁定」（C1/C2/C3/不落）；落哪个都在签字后才动代码，然后重跑 §A。门禁不动。
 
 `enable_policy_update` 仍 **false**。
+
+---
+
+## ✅ 裁定 = C2，代码已落地（2026-08-18）
+
+- 采样律改成 **`a = limits ⊙ tanh(u)`**、`logp` 减 / `ent` 加 `Σ log(limits(1−y²))`；`limits = body_delta_limits(1/step_hz)`，`step_hz=5.0` ⇒ **`[1.0, 0.4, 0.4, 0.31415927]`**（与 `collector.py:167` 同一组数）。`action_scale` **3.0 → 1.0** 并降级为 **pre-tanh gain**。
+- 本文档所有 pre-C2 数字**可回放**：保留 `policy_class="unbounded_gaussian_legacy"`，且 `load_from_checkpoint` 见到缺 `policy_class` 的旧 payload 自动判 legacy 并 warn（两类张量形状相同，否则会**静默**载入新律）。但 `update()` 对 legacy **抛 `RuntimeError`** ⇒ 失效 ckpt **不可能被 warm-start**（红线「干净重训禁 warm-start 失效 ckpt」落成代码）。
+- 「clip 已成 no-op」将来是**测出来**的：`ImaginedRollout.n_action_clipped` 计数 + `corrector` 在 `>0` 时 warn。C2 下单测实测 **0**；对故意越界策略（`[9,0,0,0]`，5 步）实测 **5**。
+- 上文「另记」的 `planner.default_candidates`：`planner.action_limits` **默认 `None`** ⇒ V1 08-15 已 merge 的部署打分**逐位不变**（打开须 V1 re-gate，本周期不打开）。同源不一致**仍记在案、未修**。
+- 验证：Mac 无 torch ⇒ 纯 numpy 独立验密度积分 1.000000/1.000000/1.000016/1.000000、熵恒等式 MC −2.129664 vs 解析 −2.128682；上文 σ=0.6065、8.6%、3.4e-6 全部复算一致。全量 `pytest experiments/aerial/rl/tests/` = **227 passed / 6 skipped**（6 例 torch 门控，**须在 H100/125 复跑**）；`_v4_gate --self-check` **PASS**。
+- **未做**：§A/§A.3/§A.4 重跑、H100 从零重训、125 ① 再 gate（`n≥8`）。`enable_policy_update` 仍 **false**。

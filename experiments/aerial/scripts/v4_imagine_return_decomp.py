@@ -31,7 +31,13 @@ Reports Σ progress / p_coll / maneuver terms, Σ reward, λ-return
 (λ=0.95, γ=0.997), plus per-step progress / p_coll / ‖a‖ / ‖goal_rel‖ so that
 "imagination believes π arrives" (z-transition infidelity) is separable from
 "RH over-rewards big actions" (reward scaling). Does not write ckpts, yaml, or
-train; ``--clip-actions`` wraps the POLICY only and leaves ``imagine()`` untouched.
+train.
+
+C2 (2026-08-18): a bounded π (``--fresh-c2`` or a ``tanh_bounded_v1`` ckpt)
+passes ``action_limits`` into ``imagine()`` so ``n_action_clipped`` is a real
+measurement. Under C2 it must be **0** (the clip is a no-op). Loading a pre-C2
+ckpt still replays unbounded (legacy); that path will NOT report 0. ``--clip-actions``
+still wraps the POLICY only.
 
 Usage (125, offline, no renderer):
   source experiments/aerial/scripts/env_4090.sh
@@ -379,6 +385,16 @@ def main() -> int:
         help="control rate for --clip-actions; 0 = read env.step_hz from --config",
     )
     p.add_argument("--seed", type=int, default=0, help="numpy seed (imagine/encode sample)")
+    p.add_argument(
+        "--fresh-c2",
+        action="store_true",
+        help=(
+            "ignore --actor-ckpt and build a random-init tanh_bounded_v1 actor "
+            "matching the WM latent dim / env.step_hz. Pre-train smoke: "
+            "n_action_clipped must be 0. After H100 from-scratch train, drop this "
+            "flag and pass the new C2 ckpt."
+        ),
+    )
     p.add_argument("--out", default="artifacts/v4_imagine_return_decomp.json")
     args = p.parse_args()
 
@@ -389,6 +405,7 @@ def main() -> int:
     import yaml
 
     from experiments.aerial.rl.actor_critic import (
+        ActorCriticConfig,
         ImaginationActorPolicy,
         LatentActorCritic,
         compute_lambda_returns,
@@ -411,9 +428,9 @@ def main() -> int:
     reward_cfg = RewardConfig(**(cfg.get("reward") or {})) if cfg.get("reward") else RewardConfig()
     wm_cfg = cfg.get("world_model", {}) or {}
 
-    actor_ckpt = Path(args.actor_ckpt).expanduser()
-    if not actor_ckpt.is_absolute():
-        actor_ckpt = root / actor_ckpt
+    actor_ckpt_arg = Path(args.actor_ckpt).expanduser()
+    if not actor_ckpt_arg.is_absolute():
+        actor_ckpt_arg = root / actor_ckpt_arg
     wm_ckpt = Path(args.wm_ckpt).expanduser()
     if not wm_ckpt.is_absolute():
         wm_ckpt = root / wm_ckpt
@@ -425,14 +442,46 @@ def main() -> int:
         wm_cfg, wm_ckpt, device=str(args.device),
         success_dist_m=float(reward_cfg.success_dist_m),
     )
-    actor_ac = LatentActorCritic.load_from_checkpoint(actor_ckpt, device=str(args.device))
-    if int(actor_ac.config.latent_dim) != int(dynamics.latent_dim):
-        print(
-            f"[§A] latent mismatch actor={actor_ac.config.latent_dim} "
-            f"wm={dynamics.latent_dim}",
-            file=sys.stderr,
+
+    step_hz_cfg = float(args.step_hz) if float(args.step_hz) > 0 else float(
+        ((cfg.get("env") or {}).get("step_hz") or 5.0)
+    )
+    v4_cfg = cfg.get("v4") or {}
+    if args.fresh_c2:
+        actor_ac = LatentActorCritic(
+            config=ActorCriticConfig(
+                latent_dim=int(dynamics.latent_dim),
+                lambda_gae=float(v4_cfg.get("lambda_gae", 0.95)),
+                gamma=float(v4_cfg.get("gamma", 0.997)),
+                entropy_scale=float(v4_cfg.get("entropy_scale", 3.0e-4)),
+                actor_lr=float(v4_cfg.get("actor_lr", 1.0e-4)),
+                critic_lr=float(v4_cfg.get("critic_lr", 1.0e-4)),
+                action_scale=float(v4_cfg.get("action_scale", 1.0)),
+                step_hz=step_hz_cfg,
+                device=str(args.device),
+            )
         )
-        return 2
+        actor_ckpt = Path("fresh_c2_random_init")
+        print(
+            f"[§A] --fresh-c2: policy_class={actor_ac.config.policy_class} "
+            f"latent_dim={actor_ac.config.latent_dim} "
+            f"limits={np.round(actor_ac.action_limits, 4).tolist()} "
+            f"(ignoring --actor-ckpt {actor_ckpt_arg})"
+        )
+    else:
+        actor_ckpt = actor_ckpt_arg
+        actor_ac = LatentActorCritic.load_from_checkpoint(actor_ckpt, device=str(args.device))
+        if int(actor_ac.config.latent_dim) != int(dynamics.latent_dim):
+            print(
+                f"[§A] latent mismatch actor={actor_ac.config.latent_dim} "
+                f"wm={dynamics.latent_dim}",
+                file=sys.stderr,
+            )
+            return 2
+        print(
+            f"[§A] loaded policy_class={actor_ac.config.policy_class} "
+            f"bounded={actor_ac.bounded} from {actor_ckpt}"
+        )
 
     episodes = load_dataset(ds_path, skip_quarantined=True)
     if not episodes:
@@ -450,14 +499,20 @@ def main() -> int:
     body_vel0 = np.zeros((n, 3), dtype=np.float32)
 
     # §A.4 — realizable action set (same cap the deployed path applies).
-    step_hz = float(args.step_hz) if float(args.step_hz) > 0 else float(
-        ((cfg.get("env") or {}).get("step_hz") or 5.0)
-    )
+    step_hz = float(step_hz_cfg)
     limits = body_delta_limits(1.0 / step_hz)
+    # C2: pass limits into imagine() so n_action_clipped is measured, not assumed.
+    # Legacy audit replay keeps action_limits=None (bit-for-bit pre-C2).
+    imagine_limits = actor_ac.action_limits if actor_ac.bounded else None
     if args.clip_actions:
         print(
             f"[§A.4] clipping every arm to body_delta_limits(1/{step_hz:g}) = "
             f"{np.round(limits, 4).tolist()} (collector.py:167 / airsim_env.py:170)"
+        )
+    if imagine_limits is not None:
+        print(
+            f"[§A] imagine(action_limits={np.round(imagine_limits, 4).tolist()}) "
+            f"policy_class={actor_ac.config.policy_class} — n_action_clipped must be 0"
         )
 
     arms: Dict[str, Any] = {}
@@ -470,6 +525,7 @@ def main() -> int:
             reward_cfg=reward_cfg,
             goal_rel0=goal_rel0,
             body_vel0=body_vel0,
+            action_limits=imagine_limits,
         )
         terms = _term_sums(roll.progress, roll.p_coll, roll.actions, roll.done, reward_cfg)
         values = actor_ac.value(roll.z)  # [B, H+1]
@@ -497,6 +553,7 @@ def main() -> int:
             "goal_dist_max_mean": float(np.mean(gdist.max(axis=1))),
             "goal_dist_final_mean": float(np.mean(gdist[:, -1])),
             "success_dist_m": float(reward_cfg.success_dist_m),
+            "n_action_clipped": int(roll.n_action_clipped),
             "per_step": {
                 "progress": np.mean(roll.progress, axis=0).tolist(),
                 "p_coll": np.mean(roll.p_coll, axis=0).tolist(),
@@ -514,6 +571,7 @@ def main() -> int:
             f"λG0={rec['mean_lambda_G0']:+.3f} "
             f"‖a0‖={rec['act0_norm3_mean']:.3f} "
             f"goal_d {gdist[:, 0].mean():.1f}→{rec['goal_dist_final_mean']:.1f} "
+            f"n_clip={rec['n_action_clipped']} "
             f"a0={np.round(mean_act0, 3).tolist()}"
         )
         return rec
@@ -580,6 +638,12 @@ def main() -> int:
             "w_maneuver": reward_cfg.w_maneuver,
         },
         "actor_ckpt": str(actor_ckpt),
+        "fresh_c2": bool(args.fresh_c2),
+        "policy_class": str(actor_ac.config.policy_class),
+        "bounded": bool(actor_ac.bounded),
+        "n_action_clipped": {
+            k: int(v.get("n_action_clipped", 0)) for k, v in arms.items()
+        },
         "wm_ckpt": str(wm_ckpt),
         "wm_step": wm_payload.get("step"),
         "dataset": str(ds_path),

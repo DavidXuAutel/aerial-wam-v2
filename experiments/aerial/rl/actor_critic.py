@@ -7,15 +7,48 @@ for the actor (DreamerV3 §2.5 — **no PPO**).
 
 The actor exposes ``act_latent(z) -> [4]`` for ``imagine()``; the critic
 estimates ``V(z)`` on latent states.
+
+ACTION SPACE (C2, 2026-08-18 — see ``V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL``
+§4.1): the policy distribution is **bounded** by construction —
+``u ~ N(mean, std)``, ``a = action_limits ⊙ tanh(u)`` with the tanh Jacobian
+correction in ``log_prob`` — so every sampled action already lies inside the
+deployed set ``body_delta_limits(1/step_hz)`` and the deployment-side clip
+(``collector.py:167``) is a no-op.
+
+Why not "just clip in ``imagine()``" (option C1, rejected): the actor update is
+REINFORCE / score-function (``update()`` feeds ``rollout.actions`` back through
+``evaluate_actions``; no gradient crosses ``dynamics.step``, ``imagine()`` being
+pure numpy). A literal clip would (a) score boundary atoms under an unclipped
+Gaussian — a biased likelihood — and (b) collapse exploration, since the single
+isotropic ``std = exp(-0.5) = 0.607`` exceeds three of the four per-axis limits
+at 5 Hz (0.4 / 0.4 / 0.314), leaving P(all four dims interior) ≈ 8.6% at
+``mean = 0``.
+
+``policy_class="unbounded_gaussian_legacy"`` reproduces the pre-C2 sampling law
+**for audit replay only** (§A / §A.3 / §A.4 numbers); ``update()`` refuses it, so
+the invalidated policy class can never be warm-started into training.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
+from experiments.aerial.rl.env.action import DEFAULT_STEP_HZ, body_delta_limits
 from experiments.aerial.rl.imagination import ImaginedRollout
+
+logger = logging.getLogger(__name__)
+
+#: Bounded (tanh-squashed) policy distribution — C2, the training default.
+POLICY_TANH_BOUNDED = "tanh_bounded_v1"
+#: Pre-C2 unbounded diagonal Gaussian. Load-and-evaluate only (audit replay).
+POLICY_UNBOUNDED_LEGACY = "unbounded_gaussian_legacy"
+_POLICY_CLASSES = (POLICY_TANH_BOUNDED, POLICY_UNBOUNDED_LEGACY)
+
+#: Keeps ``atanh`` finite when an off-policy action sits on/outside the box.
+_TANH_EPS = 1.0e-6
 
 try:
     import torch
@@ -40,8 +73,37 @@ class ActorCriticConfig:
     actor_lr: float = 1.0e-4
     critic_lr: float = 1.0e-4
     grad_clip: float = 100.0
-    action_scale: float = 3.0
+    #: Pre-tanh gain on the actor head under C2 (it was a raw output gain, and
+    #: thus an unbounded magnitude multiplier, before 2026-08-18). Keep at 1.0:
+    #: larger values pre-saturate tanh and kill the gradient.
+    action_scale: float = 1.0
+    #: Sampling law; see module docstring. Legacy is replay-only.
+    policy_class: str = POLICY_TANH_BOUNDED
+    #: Control rate the action box is derived from — must match ``env.step_hz``,
+    #: which is what ``collector`` clips against. Measured, never guessed.
+    step_hz: float = DEFAULT_STEP_HZ
+    #: Per-axis action bound; ``None`` -> ``body_delta_limits(1/step_hz)``, the
+    #: single source of truth shared with the deployed path.
+    action_limits: Optional[Tuple[float, ...]] = None
     device: str = "cpu"
+
+    def __post_init__(self) -> None:
+        if self.policy_class not in _POLICY_CLASSES:
+            raise ValueError(
+                f"policy_class must be one of {_POLICY_CLASSES}, got {self.policy_class!r}"
+            )
+        ad = int(self.action_dim)
+        if self.action_limits is None:
+            lim = body_delta_limits(1.0 / float(self.step_hz))
+            self.action_limits = tuple(float(x) for x in np.asarray(lim).reshape(-1)[:ad])
+        else:
+            self.action_limits = tuple(float(x) for x in self.action_limits)
+        if len(self.action_limits) != ad:
+            raise ValueError(
+                f"action_limits {self.action_limits} does not match action_dim={ad}"
+            )
+        if min(self.action_limits) <= 0.0:
+            raise ValueError(f"action_limits must be positive, got {self.action_limits}")
 
 
 def _require_torch() -> None:
@@ -133,6 +195,7 @@ class LatentActorCritic:
     _critic_opt: Any = field(default=None, repr=False)
     _log_std: Any = field(default=None, repr=False)
     _device: Any = field(default=None, repr=False)
+    _limits: Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _require_torch()
@@ -141,6 +204,9 @@ class LatentActorCritic:
         ld, ad, hd = int(cfg.latent_dim), int(cfg.action_dim), int(cfg.hidden_dim)
         self._actor = _MLP(ld, ad, hd).to(self._device)
         self._critic = _MLP(ld, 1, hd).to(self._device)
+        self._limits = torch.as_tensor(
+            np.asarray(cfg.action_limits, dtype=np.float32), device=self._device,
+        )
         self._log_std = nn.Parameter(
             torch.zeros(ad, device=self._device) - 0.5,
         )
@@ -163,6 +229,8 @@ class LatentActorCritic:
                 entropy_scale=float(cfg.get("entropy_scale", 3.0e-4)),
                 actor_lr=float(cfg.get("actor_lr", 1.0e-4)),
                 critic_lr=float(cfg.get("critic_lr", 1.0e-4)),
+                action_scale=float(cfg.get("action_scale", ActorCriticConfig.action_scale)),
+                step_hz=float(cfg.get("step_hz", DEFAULT_STEP_HZ)),
                 device=str(cfg.get("device", "cpu")),
             )
             return cls(config=ac_cfg)
@@ -173,6 +241,10 @@ class LatentActorCritic:
                 entropy_scale=float(getattr(cfg, "entropy_scale", 3.0e-4)),
                 actor_lr=float(getattr(cfg, "actor_lr", 1.0e-4)),
                 critic_lr=float(getattr(cfg, "critic_lr", 1.0e-4)),
+                action_scale=float(
+                    getattr(cfg, "action_scale", ActorCriticConfig.action_scale)
+                ),
+                step_hz=float(getattr(cfg, "step_hz", DEFAULT_STEP_HZ)),
                 device=str(getattr(cfg, "device", "cpu")),
             )
         )
@@ -196,7 +268,18 @@ class LatentActorCritic:
             return out.reshape(orig[0])
         return out.reshape(orig[0], orig[1])
 
-    def _action_dist(self, z_t: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:
+    @property
+    def bounded(self) -> bool:
+        """True when the policy distribution is the C2 tanh-squashed one."""
+        return self.config.policy_class == POLICY_TANH_BOUNDED
+
+    @property
+    def action_limits(self) -> np.ndarray:
+        """Per-axis action bound (= deployed ``body_delta_limits(1/step_hz)``)."""
+        return np.asarray(self.config.action_limits, dtype=np.float64)
+
+    def _pre_dist(self, z_t: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:
+        """Pre-squash Gaussian ``(mean, std)``. Under legacy this IS the action dist."""
         mean = self._actor(z_t) * float(self.config.action_scale)
         std = torch.exp(self._log_std).clamp(min=1e-4, max=2.0)
         return mean, std
@@ -204,30 +287,55 @@ class LatentActorCritic:
     def act_latent(self, z: np.ndarray, *, deterministic: bool = False) -> np.ndarray:
         z_t = self._z_tensor(z)
         with torch.no_grad():
-            mean, std = self._action_dist(z_t)
-            if deterministic:
-                act = mean
-            else:
-                act = mean + std * torch.randn_like(mean)
+            mean, std = self._pre_dist(z_t)
+            u = mean if deterministic else mean + std * torch.randn_like(mean)
+            # ``deterministic`` returns the squashed mode/median, not E[a].
+            act = self._limits * torch.tanh(u) if self.bounded else u
         return act.squeeze(0).cpu().numpy().astype(np.float64)
 
     def evaluate_actions(
         self, z: np.ndarray, actions: np.ndarray
     ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
-        """Log-prob and entropy for taken actions (diagonal Gaussian)."""
+        """Log-prob and entropy for taken actions.
+
+        Bounded (C2): ``a = limits ⊙ tanh(u)``, so
+        ``log p(a) = log N(u; mean, std) - Σ log(limits ⊙ (1 - tanh²u))`` and the
+        entropy carries the same Jacobian term (a single-sample estimate; it is
+        gradient-free w.r.t. the actor, so ``entropy_scale`` keeps its meaning as
+        the coefficient on ``Σ log_std``).
+
+        Off-box actions (other policies' arms, or replayed corpora) are clamped
+        into the open box before ``atanh`` — that is a diagnosis path only; the
+        C2 policy cannot emit them.
+        """
         z_t = self._z_tensor(z)
         a_t = torch.as_tensor(actions, dtype=torch.float32, device=self._device)
         if a_t.ndim == 1:
             a_t = a_t.unsqueeze(0)
-        mean, std = self._action_dist(z_t)
+        mean, std = self._pre_dist(z_t)
         dist = torch.distributions.Normal(mean, std)
-        logp = dist.log_prob(a_t).sum(-1)
-        ent = dist.entropy().sum(-1)
+        if not self.bounded:
+            return dist.log_prob(a_t).sum(-1), dist.entropy().sum(-1), self._critic(z_t).squeeze(-1)
+        y = (a_t / self._limits).clamp(-1.0 + _TANH_EPS, 1.0 - _TANH_EPS)
+        u = torch.atanh(y)
+        log_det = (torch.log(self._limits) + torch.log1p(-y * y)).sum(-1)
+        logp = dist.log_prob(u).sum(-1) - log_det
+        ent = dist.entropy().sum(-1) + log_det
         return logp, ent, self._critic(z_t).squeeze(-1)
 
     def update(self, rollout: ImaginedRollout) -> Dict[str, Any]:
         """One imagination AC step on a batched ``ImaginedRollout``."""
         cfg = self.config
+        if not self.bounded:
+            # Red line: the pre-C2 unbounded policy class is invalidated (its
+            # imagined action space is not the deployed one — §A.4). It stays
+            # loadable for audit replay, but must never be warm-started.
+            raise RuntimeError(
+                "refusing to train policy_class="
+                f"{cfg.policy_class!r}: the pre-C2 unbounded Gaussian is invalidated "
+                "(imagined action space != deployed set; see proposal §4.1). "
+                "Retrain from scratch with policy_class=" + POLICY_TANH_BOUNDED
+            )
         z = np.asarray(rollout.z, dtype=np.float64)
         acts = np.asarray(rollout.actions, dtype=np.float64)
         rews = np.asarray(rollout.rewards, dtype=np.float64)
@@ -294,10 +402,24 @@ class LatentActorCritic:
         *,
         device: Optional[str] = None,
     ) -> "LatentActorCritic":
-        """Restore actor/critic weights saved by ``train_v4_ac``."""
+        """Restore actor/critic weights saved by ``train_v4_ac``.
+
+        A payload with no ``policy_class`` predates C2 (2026-08-18) and is
+        restored as ``POLICY_UNBOUNDED_LEGACY`` so §A/§A.3/§A.4 replay exactly.
+        Such a checkpoint is evaluate-only: ``update()`` refuses it. The tensor
+        shapes are identical across the two classes, so this auto-detect is the
+        only thing standing between an old ckpt and a silently-wrong warm start.
+        """
         _require_torch()
         payload = torch.load(str(path), map_location="cpu", weights_only=False)
-        raw_cfg = payload.get("config") or {}
+        raw_cfg = dict(payload.get("config") or {})
+        if "policy_class" not in raw_cfg:
+            raw_cfg["policy_class"] = POLICY_UNBOUNDED_LEGACY
+            logger.warning(
+                "%s has no policy_class -> loading as %s (pre-C2 unbounded Gaussian, "
+                "audit replay only; training on it is refused)",
+                path, POLICY_UNBOUNDED_LEGACY,
+            )
         fields = set(ActorCriticConfig.__dataclass_fields__)
         ac_cfg = ActorCriticConfig(
             **{k: raw_cfg[k] for k in fields if k in raw_cfg}

@@ -11,8 +11,8 @@
 |---|---|---|
 | 1 | [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) | **当前阶段**一句话：V4 merge 状态、下一轨 |
 | 2 | [`V4_PROGRESS_DIAG_125_STATUS.md`](V4_PROGRESS_DIAG_125_STATUS.md) | **① 诊断 DONE**：反目标飞；规格 goal-blind + 单 mock goal |
-| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **待签字**；§4 仍不充分；A.4 = **`fwdmax_ge_pi`**（不是 RH 案）；下一件 = **动作空间一致性裁定** |
-| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」再读 **A.4 DONE**：夹后前飞 47.64 ≥ π 18.25 |
+| 2b | [`V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md`](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md) | **部分签字**：动作空间一致性 = **C2 有界策略分布**（08-18 已签，**代码已落地**，见 §4.1 顶注）；§4 In 表 / V3 / unique-goals **仍待签**、未动。**① 尚未再 gate** |
+| 2c | [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) | 先读「A.3 判定作废」再读 **A.4 DONE**：夹后前飞 47.64 ≥ π 18.25；末节 = **C2 已落地**（全文数字产自 pre-C2 legacy 策略类，留作审计链） |
 | 3 | [`V4_GOAL_Z0_125_STATUS.md`](V4_GOAL_Z0_125_STATUS.md) | 已完成的 goal+z0 轨（① 仍 FAIL） |
 | 4 | [`ACCESS.md`](ACCESS.md) | 校园直连：`cursor-125` / H100 hop；异地备用 `cursor-125-public` |
 | 5 | [`../superpowers/specs/2026-08-16-v4-mvp-design.md`](../superpowers/specs/2026-08-16-v4-mvp-design.md) | V4-MVP In/Out、①/④ 判据（规格，非日志） |
@@ -67,8 +67,11 @@
 - 「n=8 re-freeze 治了 V1-① 擦边」—— **否**；合法性 ≠ 统计功效。① 裕度 0.8 局 / McNemar p≈0.5 见 `V1_GATE_STATUS` §2 + [待签字条款②③](V1_SIGNAL1_POWER_REFREEZE_PROPOSAL.md)。
 - 「V4-① 再训一轮 / 对齐 z0 就能过」—— **否**；现 In 表 `π(a|z)` 对 heuristic **不可稳健达成**。见 [结构提案](V4_SIGNAL1_STRUCTURAL_REFREEZE_PROPOSAL.md)。
 - 「§A `b>c` 已证明改 In 表就够」—— **否**，§4 仍不充分（A.2 只排除碰撞项通道）。
-- 「A.3 = `b3_le_a` ⇒ 先修 RH」—— **否，2026-08-18 已作废**：那条臂无效（① 幅度只匹配第 0 步、欠 ~4.6×，π 轨迹均值 ‖a[:3]‖≈16.5；② 五臂全超部署上限 `body_delta_limits(1/5Hz)`=[1.0,0.4,0.4,0.314]，`imagine()` 不夹；③ (b3) 冲过目标 23.9 m）。**可实现集合内 RH 方向偏好是对的**。A.4 seed=0 已实测：夹后最大前飞 λG0 **47.64 ≥** π_clipped **18.25**（`fwdmax_ge_pi`）⇒ 倒挂来自无界动作通道，**确诊不是 RH 案**。下一件 = **动作空间一致性裁定**，见 `V4_GATE_STATUS` §1。
-- 「`action_scale=3.0` 是动作上界 / π 已饱和」—— **否**；`_MLP` 末层裸 `nn.Linear`，它是**增益**，‖a‖ 无上界（`actor_critic.py:200`）。
+- 「A.3 = `b3_le_a` ⇒ 先修 RH」—— **否，2026-08-18 已作废**：那条臂无效（① 幅度只匹配第 0 步、欠 ~4.6×，π 轨迹均值 ‖a[:3]‖≈16.5；② 五臂全超部署上限 `body_delta_limits(1/5Hz)`=[1.0,0.4,0.4,0.314]，`imagine()` 不夹；③ (b3) 冲过目标 23.9 m）。**可实现集合内 RH 方向偏好是对的**。A.4 seed=0 已实测：夹后最大前飞 λG0 **47.64 ≥** π_clipped **18.25**（`fwdmax_ge_pi`）⇒ 倒挂来自无界动作通道，**确诊不是 RH 案**。裁定已签 = **C2**（08-18，代码已落地），见 `V4_GATE_STATUS` §1/§3。
+- 「`action_scale=3.0` 是动作上界 / π 已饱和」—— **否**；`_MLP` 末层裸 `nn.Linear`，它是**增益**，‖a‖ 无上界（`actor_critic.py:200`）。**← 描述 pre-C2**；C2 起 `action_scale` 默认 **1.0** 且是 **pre-tanh 增益**，动作由 `limits ⊙ tanh(u)` **构造性有界**（旧 ckpt 仍按 legacy 类以 3.0 回放）。
+- 「一致性修 = 在 `imagine()` 加一行 clip」—— **不够**（提案 §4.1）。actor 更新是 **REINFORCE**（`actor_critic.py:257`/`:271`，无梯度穿 `dynamics.step`），字面 clip ⇒ 用未夹高斯给夹后动作算 logp（似然错配）+ 探索塌缩（σ=0.607 四维同值 > 后三维上限；盒内采样概率 8.6%，现 ckpt 3.4e-6）。推荐 **C2 有界策略分布**（`a = limits ⊙ tanh(u)` + 雅可比修正），须**从零重训**。**← 已按 C2 落地**（08-18）；`imagine()` 里的 clip 保留为**计数器** `n_action_clipped`（C2 下实测 0），不是修本身。
+- **「C2 已落地 ⇒ V4-① 已修好 / 可以翻 flags」—— 否**（08-18）。落地的只有**采样律**；**从零重训未做、§A 未重跑、① 未再 gate**（`n≥8`），`enable_policy_update` 仍 **false**。① 判据仍是 `mean_progress_actor ≥ heuristic×1.10`，最近实测 **−8.74 FAIL**；再 gate 时按提案 §4.1 事前判据 `clip_helped`/`clip_insufficient`/`spurious_pass` 读（**单一 goal 方向上过 ≠ 过**）。
+- 「V1 部署侧动作空间已一致」—— **未核**；`planner.default_candidates`（`planner.py:31-42`）在未夹空间打分，到 `collector.py:167` 才夹。**不**重开 08-15 merge，仅记为同源不一致。**← C2 未改这条**：`planner.action_limits` 默认 `None`，V1 部署路径逐位不变（打开须 V1 re-gate）。
 - 「④b before=1.0 是测得的干预先于接触」—— **否**；`n_contact=0` 时空过终态，④ 实证=④c。
 - 「headon 可作 V1-② coll OOD」—— **否**；headon `coll_eps=0`。
 - `PROJECT_STATUS.md` / `RUNBOOK_v0.md` §1 若仍写「V1 进行中 / V4 未开始」而与 `V4_GATE_STATUS` 冲突时 → **以 V4 活文档为准**（并应回写那两处）。
@@ -78,6 +81,6 @@
 ## E. 最短路径（5 分钟对齐）
 
 1. `V4_GATE_STATUS.md` §1  
-2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) 「A.3 判定作废」+ **A.4 DONE = `fwdmax_ge_pi`**（**不**开 RH 案；下一件 = 动作空间一致性裁定）  
+2. [`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) 「A.3 判定作废」+ **A.4 DONE = `fwdmax_ge_pi`**（**不**开 RH 案）+ 末节 **C2 已落地**；下一件 = **重跑 §A → 从零重训 → ① 再 gate**  
 3. `ACCESS.md`  
 4. 需要 V0/V1 数字时再打开 `V0_GATE_STATUS` / `V1_GATE_STATUS` 的 §1

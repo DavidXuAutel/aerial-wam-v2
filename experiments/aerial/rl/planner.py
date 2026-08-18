@@ -50,9 +50,22 @@ class ImaginationPlanner:
     horizon: int = 5
     reward_cfg: Optional[RewardConfig] = None
     candidate_fn: Any = field(default=default_candidates)
+    #: Optional deployed action box. ``None`` (default) keeps the V1-merged
+    #: behaviour: candidates are scored in the UNCLIPPED space and only clipped
+    #: later at ``collector.py:167`` — a same-origin inconsistency with §A.4,
+    #: logged 2026-08-18 but deliberately NOT changed by default, since flipping
+    #: it would alter the V1 deployed path and require a V1 re-gate.
+    action_limits: Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         self.horizon = int(self.horizon)
+        if self.action_limits is not None:
+            lim = np.abs(np.asarray(self.action_limits, dtype=np.float64).reshape(-1))
+            if lim.shape != (4,) or not np.all(lim > 0):
+                raise ValueError(
+                    f"action_limits must be 4 positive values, got {self.action_limits!r}"
+                )
+            self.action_limits = lim
         if self.horizon < 1:
             raise ValueError("horizon must be >= 1")
         if self.horizon > MAX_IMAGINATION_HORIZON:
@@ -71,6 +84,9 @@ class ImaginationPlanner:
         candidates = list(self.candidate_fn(np.asarray(base_action, dtype=np.float64)))
         if not candidates:
             return np.asarray(base_action, dtype=np.float64).reshape(4)
+        if self.action_limits is not None:
+            lim = self.action_limits
+            candidates = [np.clip(c, -lim, lim) for c in candidates]
 
         best_a = candidates[0]
         best_score = -np.inf
@@ -81,6 +97,7 @@ class ImaginationPlanner:
                 z0[None, :],
                 self.horizon,
                 reward_cfg=self.reward_cfg,
+                action_limits=self.action_limits,
             )
             score = float(roll.returns[0])
             if score > best_score:

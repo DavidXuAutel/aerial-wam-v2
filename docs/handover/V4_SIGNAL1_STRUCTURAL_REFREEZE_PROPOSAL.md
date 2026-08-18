@@ -1,9 +1,9 @@
 # V4-① 结构性不可达：规格修订待签字
 
-> **状态**：**待签字**（2026-08-18）。文书先落地；**未**改代码 / frozen ① 阈值 / yaml。  
+> **状态**：**部分签字**（2026-08-18）。**已签 = 动作空间一致性裁定 C2**（代码已落地：`actor_critic.py` / `imagination.py` / `corrector.py` / `planner.py` / `train_rl.py` / `train_v4_ac.py` / `configs/aerial_rl.yaml` + 新单测；清单见 §4.1 顶注）。**其余仍待签**（§1–§3 事实 / §4 In 表 / V3 范围 / unique-goals 下限）⇒ In 表与 goal 输入**未动**，frozen ① 阈值（`δ_p=0.10`、`n≥8`）**未动**，`enable_policy_update` **仍 false**。  
 > **先例**：2026-08-11 ④ — shield 触发与 1.5 m 度量对齐使 ④ **结构性不可过** → **修订规格（被测系统）**，不继续调参、不降阈值。  
 > **本提案同类**：goal-blind `π(a|z)` 在 goal-directed ① 上对 heuristic **不可稳健达成** → 修订 Actor/Critic **In 表**，**不**降 `δ_p=0.10`，**不**加长训当前 π。  
-> **签字前置**：§A **已跑** → A.2 = **`(b)>(c)`**（碰撞项已排除）。§A.3 **已跑** → 字面 `b3_le_a`，但 **该判定作废**。§A.4 **已跑（seed=0）** → **`fwdmax_ge_pi`**（夹后最大前飞 λG0 47.64 ≥ π_clipped 18.25）。⚠️ **「§4 充分」仍不成立**，**「先修 RH」也无依据** —— 倒挂来自无界动作通道。下一件 = **动作空间一致性裁定**（是否本周期在 `imagine()` 落 clip）。
+> **签字前置**：§A **已跑** → A.2 = **`(b)>(c)`**（碰撞项已排除）。§A.3 **已跑** → 字面 `b3_le_a`，但 **该判定作废**。§A.4 **已跑（seed=0）** → **`fwdmax_ge_pi`**（夹后最大前飞 λG0 47.64 ≥ π_clipped 18.25）。⚠️ **「§4 充分」仍不成立**，**「先修 RH」也无依据** —— 倒挂来自无界动作通道。**动作空间一致性裁定已签 = C2 有界策略分布**（「在 `imagine()` 加一行 clip」= **C1，已否决单独落** —— actor 是 REINFORCE，会似然错配 + 探索塌缩）。下一件 = **重跑 §A/§A.3/§A.4（`n_action_clipped` 应为 0）→ H100 从零重训 → 125 ① 再 gate（`n≥8`；判据 `clip_helped`/`clip_insufficient`/`spurious_pass` 已事前写死于 §4.1）**。
 
 ---
 
@@ -13,7 +13,7 @@
 |---|---|---|
 | **本缺口** | 规格规定策略看不见 goal + 训练塌成单 goal → ① 不可**稳健**达成 | 想象 horizon / z0 RGB 域差的「再调一轮」 |
 | **想象目标方向性**（§A / A.3 / A.4） | **可实现集合内** RH 方向偏好正确。A.4 seed=0：最大前飞 λG0 **47.64 ≥** π_clipped **18.25**（`fwdmax_ge_pi`）；无 seed 口径前飞 49.65 vs 后退 15.99（3.1×）。π 只靠**跑出可实现集合** 才赢 | 不是本提案要改的 In 表；**确诊不是** RH 案；下一件 = 动作空间一致性裁定 |
-| **动作空间一致性**（§A.4，**新**） | `imagine()` 不夹动作；部署 `collector.py:167`/`airsim_env.py:170` 夹到 `body_delta_limits(0.2)`=[1.0,0.4,0.4,0.314] | 不是阈值、不是关罩；是把既有红线「训练路径与部署一致」落到**动作轴** |
+| **动作空间一致性**（§A.4 / **§4.1**） | `imagine()` 不夹动作；部署 `collector.py:167`/`airsim_env.py:170` 夹到 `body_delta_limits(0.2)`=[1.0,0.4,0.4,0.314]。且 actor 更新是 **REINFORCE**（`actor_critic.py:257`/`:271`，无梯度穿 `dynamics.step`）⇒ 修法必须落在**采样律**上，不是加一行 clip | 不是阈值、不是关罩；是把既有红线「训练路径与部署一致」落到**动作轴**。选项 C1/C2/C3 + 事前判据见 §4.1 |
 | **n re-freeze** | 合法性（评测 n） | 不改变 π 无 goal 的结构 |
 | **V1-① 功效条款②③** | 碰撞率统计功效 | 与本条无关 |
 
@@ -145,6 +145,8 @@ source experiments/aerial/scripts/env_4090.sh && $PYTHON_BIN experiments/aerial/
 两支都**不**降 `δ_p=0.10`、**不**动 `n=8`、**不**翻 yaml。
 
 > **实测（2026-08-18，seed=0，`700dbe6`）**：触发第一支 **`fwdmax_ge_pi`**。λG0 (b)=**47.64** ≥ (a)=**18.25**；(c)=15.87。π 夹后仍后向但落在 limits 内。JSON：`artifacts/v4_imagine_return_decomp_a4_20260818.json`。配套 traj 匹配：`match_scale=15.59`，(b3)@15.59 λG0 18.21 / 过冲 30→203.9；`..._a3traj_20260818.json`。事前表原文保留。
+>
+> ⚠️ **第一支的「处置」措辞不足（2026-08-18 复核，原文不改写）**：**判定** `fwdmax_ge_pi` 成立、「不是 RH 案」成立；但处置里写的「在 `imagine()` 里落与部署同一的 clip」只指定了 clip 的**位置**，没检查它落进的是什么**估计量** —— actor 是 REINFORCE，字面照做会似然错配 + 探索塌缩。选项 C1/C2/C3 与新的事前判据见 **§4.1**。
 
 命令（125，离线，无渲染器）：
 
@@ -233,7 +235,52 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 
 **签字后才动代码**（当前 **A.3 作废、A.4 = `fwdmax_ge_pi`** → In 表**不签充分**；也**不**开 RH 案）：`actor_critic.py` + `imagination.py` `act_latent` + deploy + 单测 + H100 重训 + 125 ① 再 gate（n≥8）。
 
-**独立于本提案、可先落的一致性修**（不属 In 表、不需 ① 判定）：`imagine()` 用 `clip_body_delta(a, body_delta_limits(1/step_hz))` 夹动作，与 `collector.py:167` / `airsim_env.py:170` 同函数同上限。理由是既有红线「训练路径与 V1 部署一致」在**动作轴**上目前不成立（部署夹 [1.0,0.4,0.4,0.314]，想象不夹；A.4 夹后 π ‖a[:3]‖=1.15，未夹轨迹 15.59，shrink ≈13.6×）。这是**修不一致**，不是调阈值、不是关罩、不是为凑过。**§A.4 已确认量级（`fwdmax_ge_pi`）**；是否本周期落 → 签字栏裁定。未签前不改 `imagination.py`。
+**独立于本提案、可先落的一致性修**（不属 In 表、不需 ① 判定）：想象里的动作集合应与部署一致 —— 部署夹 `clip_body_delta(a, body_delta_limits(1/step_hz))`=[1.0,0.4,0.4,0.314]（`collector.py:167` / `airsim_env.py:170`），想象不夹（A.4 夹后 π ‖a[:3]‖=1.12，未夹轨迹 15.59，shrink ≈13.9×）。这是**修不一致**（既有红线「训练路径与 V1 部署一致」在动作轴上不成立），不是调阈值、不是关罩、不是为凑过。**§A.4 已确认量级（`fwdmax_ge_pi`）**。**但「在 `imagine()` 里加一行 clip」这个具体写法不够 —— 见 §4.1。** 未签前不改 `imagination.py`。
+
+### 4.1 一致性修怎么落（裁定材料，2026-08-18 新增）
+
+> **✅ 已裁定 = C2（2026-08-18 签字），代码已落地。** 落地清单（逐条对应下表 C2 行的「代价 / 风险」）：
+>
+> - `actor_critic.py`：`policy_class`（默认 `tanh_bounded_v1`）/ `step_hz` / `action_limits`（`None` ⇒ `body_delta_limits(1/step_hz)`）三个 config 字段；`act_latent` 出 `limits ⊙ tanh(u)`；`evaluate_actions` 的 `logp` 减、`ent` 加 `Σ log(limits(1−y²))`；`action_scale` **3.0 → 1.0** 且降级为 **pre-tanh gain**（不是弃用，是显式降级）。
+> - **红线落成代码**：`update()` 对 legacy 策略类抛 `RuntimeError`；`load_from_checkpoint` 见到**缺** `policy_class` 的旧 payload 自动判 legacy 并 warn（两类张量形状相同 ⇒ 否则旧 ckpt 会**静默**载入新策略类）。legacy 保留是为了 §A/§A.3/§A.4 能逐位回放，**只可 replay 不可训**。
+> - `imagination.py`：keyword-only `action_limits`（默认 `None` = 历史行为）+ `ImaginedRollout.n_action_clipped`；`corrector.py` 传 `ac.action_limits` 并在 `>0` 时 warn ⇒ 「clip 成 no-op」是**测出来**的，不是假设。
+> - `planner.py`：`action_limits` **默认 `None`**，即 V1 08-15 已 merge 的行为**不变**（打开 = 改 V1 部署路径 ⇒ 须 V1 re-gate，本周期不打开）。见本节末「另记」。
+> - 单测 `tests/test_action_space_consistency.py`（18 例，torch 门控）；`_v4_gate --self-check` **PASS**；Mac 全量 `pytest experiments/aerial/rl/tests/` = **227 passed / 6 skipped**。
+> - Mac 无 torch ⇒ 用**纯 numpy 独立**验证 C2 的数学：密度在盒上积分 = 1.000000 / 1.000000 / 1.000016 / 1.000000（四组参数）；熵恒等式 MC −2.129664 vs 解析 −2.128682（差 9.8e-4）；本节所引 σ=0.6065、8.57%、3.4e-6 全部复算一致。torch 门控的 6 例**须在 H100/125 复跑**。
+> - **未做（下一件）**：§A/§A.3/§A.4 重跑（应见 `n_action_clipped=0`）→ H100 **从零重训**（禁 warm-start 现 ckpt）→ 125 ① 再 gate（`n≥8`），判据按本节末表 `clip_helped`/`clip_insufficient`/`spurious_pass`。
+> - **未动**：`δ_p=0.10`、`n≥8`、`enable_policy_update=false`、`w_progress`/`w_maneuver`/`success_bonus`、shield / τ / depth 路径、RSSM（V3 边界）。
+
+**先说结论：A.4 判据里我写的处置「在 `imagine()` 落与部署同一 clip」按字面落，不够，且大概率有害。洞在提案方（我）—— 我只指定了 clip 的位置，没检查它落进的是什么估计量。**
+
+读码事实（本次逐行核过）：
+
+- `imagine()` 是**纯 numpy、无梯度**（docstring + `imagination.py:116-137`）。
+- actor 更新是 **REINFORCE（score-function）**，不是 pathwise：`corrector.py:176` `imagine(...)` → `actor_critic.update(rollout)`；`update()` 取 **`rollout.actions`** 交给 `evaluate_actions(z, a)`，用 `logp = Normal(mean, std).log_prob(a)` 加权 λ-return 优势（`actor_critic.py:214-226`、`:257`、`:271`）。**没有任何梯度穿过 `dynamics.step`。**
+
+所以「在 `imagine()` 里夹」= 把**夹后**动作写进 `rollout.actions`，再用**未夹的高斯**给它算 logp。两个后果：
+
+1. **似然错配 ⇒ 估计量有偏**。夹后动作落在盒**面**上；真实采样律是「盒内截断连续部分 + 盒面上的点质量」的混合，`Normal.log_prob` 不是该律的对数密度。REINFORCE 的无偏性前提直接破掉 —— 这不是「近似」，是用错了似然。
+2. **探索塌缩（可算出来）**。`_log_std` 初值 −0.5（`actor_critic.py:144-146`）⇒ σ=**0.6065**，**四维同值**，而上限各维不同 [1.0, 0.4, 0.4, 0.3142]：σ 已是后三维上限的 **1.5–1.9 倍**。逐维被夹概率（mean=0）= **9.9% / 51.0% / 51.0% / 60.4%** ⇒ 单步四维**全落盒内**只有 **8.6%**；按当前 mean `a0=[-3.13,-1.23,-0.18,-0.05]` 算是 **3.4e-6** ⇒ 实际上**每个**样本都是盒面原子，同一 z 下动作只剩几个角点，**状态内动作方差≈0 ⇒ 学不出方向偏好**。
+
+三个选项：
+
+| 选项 | 做法 | 优点 | 代价 / 风险 | 提案方读法 |
+|---|---|---|---|---|
+| **C1** 字面 clip | `imagine()` 夹 `a`，其余不动 | 一行；想象动作=部署动作 | 上面两条：似然错配（REINFORCE 有偏）+ 探索塌缩（盒内概率 8.6% → 现 ckpt 3.4e-6） | **不推荐单独落** |
+| **C2 有界策略分布（推荐）** | 采样律本身进盒：`u~N(mean,std)`，`a = limits ⊙ tanh(u)`，logp 加 tanh 雅可比修正；`imagine()` 再夹一道作为 no-op 断言 | logp 是真实采样律的密度 ⇒ REINFORCE **无偏**；σ 自动相对各维上限归一；无界通道**结构性关闭**（不靠惩罚、不靠调权重）；部署无需再夹（夹成恒等） | 改**策略类** ⇒ 必须**从零重训**（禁 warm-start 现 ckpt，红线）；`action_scale=3.0` 语义被 `limits` 取代（须显式弃用或降级为 pre-tanh gain）；ckpt schema + 单测 + `_v4_gate --self-check` 需更新 | **推荐**：这才是把「训练=部署」真正落到动作轴 |
+| **C3** 改成 pathwise 再夹 | 把想象重写成可微 torch 路径，直接对 λ-return 反传 | 与 DreamerV3 原版一致 | `imagine()` 纯 numpy、WM `dynamics.step` 无 torch 图 ⇒ 工作量最大 | 本周期**不做** |
+
+**若裁定落 C2 —— 事前判据（先写死，避免事后解释）**。顺序：改策略类 → 单测 + `--self-check` → 重跑 §A/§A.3/§A.4（应见 clip 成为 no-op）→ **从零重训** → 125 ① 再 gate（`n≥8`）：
+
+| 观测 | 判定 | 处置 |
+|---|---|---|
+| 重跑 §A：λG0(π_new) ≤ λG0(可实现最大前飞)，且 ① 对 heuristic 的差额**缩小** | `clip_helped` | 一致性修有效；In 表是否仍需改，由 ① 数字说话（`δ_p=0.10` / `n≥8` **不动**） |
+| ① 仍 FAIL 且首动作 cos 仍 <0 | `clip_insufficient` | §1(1)(2) 确认为主因 ⇒ 签 §4 In 表（goal 入 actor/critic）+ 多样 goal |
+| ① PASS 但只在**单一** goal 方向上成立 | `spurious_pass` | **不算过**（§3 精确边界：固定前向偏置冒充定向能力）⇒ 必须多 unique goal 复测 |
+
+门禁不动：`δ_p=0.10`、`n≥8`、`enable_policy_update=false`、shield / τ / depth 路径不动。
+
+**另记（需核，不重开）**：`planner.default_candidates`（`planner.py:31-42`）同样在**未夹空间**打分，候选里含 `[max(|dx|,1.0), 0, 0, 0]` 这条前飞臂，选出的动作要到 `collector.py:167` 才夹 ⇒ **V1 部署侧存在同源不一致**（打分空间 ≠ 执行空间）。V1-④ 已 PASS，**不**重开 08-15 merge；但若落 C2/一致性修，应**同时覆盖 planner 候选集**。
 
 ---
 
@@ -242,7 +289,7 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 - [x] **先做 §A 只读诊断**；A.2 = **`(b)>(c)`** → **碰撞项通道已排除**（附带发现：`p_coll≈6e-4` 平到底，碰撞头在想象里近乎死，另案）。
 - [x] §A.3 已跑，字面 `b3_le_a`（λG0 π 103.63 vs 前飞@3.59 59.85）；**复核后作废**：幅度欠匹配 ~4.6×、五臂全在不可实现区、(b3) 过冲扣分。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md)
 - [x] ⚠️ **「§4 充分」不成立**，**且「先修 RH」无依据** —— §A.4（只读，`--clip-actions`，seed=0）判定 = **`fwdmax_ge_pi`**（λG0 47.64 ≥ 18.25）→ 倒挂来自无界动作通道；先落动作空间一致性并重跑 §A。**不是** RH 案。数字：[`V4_SIGNAL1_SA_DIAG_STATUS.md`](V4_SIGNAL1_SA_DIAG_STATUS.md) A.4 节
-- [ ] **动作空间一致性裁定**：`imagine()` 是否本周期就落 `clip_body_delta`？裁定 = ______（A.4 = `fwdmax_ge_pi` 后填；提案方读法：属「训练=部署」既有红线的修不一致，不属新增功能）
+- [x] **动作空间一致性裁定**：裁定 = **C2 有界策略分布**（2026-08-18 签字；**代码已落地**，清单见 §4.1 顶注）。见 **§4.1**：actor 是 REINFORCE，字面 clip 会造成似然错配 + 探索塌缩（盒内采样概率 8.6%，现 ckpt 3.4e-6）⇒ **C1 不推荐单独落**。C2 属「训练=部署」既有红线的修不一致，但改策略类 ⇒ **须从零重训（禁 warm-start 现 ckpt）—— 该重训尚未做**
 - [ ] 接受 §1–§3 为**已发生结构事实**（写入 `V4_GATE_STATUS`；M5c/M5d 仍诚实 FAIL）
 - [ ] 接受 §4：改 In 表，**不**改 `δ_p`
 - [ ] **V3 范围裁定**：为 actor/critic MLP 增加 `goal_rel` 输入是否触及「goal-input 属 V3，本周期不给 RSSM 加 goal 张量输入」？裁定 = ______（不触及 / 触及需另开 V3 案）。*提案方读法：不触及——RSSM 完全不动，只加策略/价值 MLP 的输入维。*
@@ -250,4 +297,6 @@ goal-blind `π(a|z)` 要**按 goal 调整方向**，唯一途径是 **goal 泄�
 - [ ] 权威训最少 unique goals = ______（建议 ≫ 1，且与 ① 评测同分布、不同实例）
 - [ ] 在签字前 **禁止** 现 ckpt 加长训 / 翻 yaml
 
-**签字栏**：日期 ______ · A.3 判定 **`b3_le_a`（已测，已作废）** · **A.4 判定 `fwdmax_ge_pi`（已测）** · 动作空间一致性裁定 ______ · V3 裁定 ______ · unique-goals 下限 ______
+**签字栏**：日期 **2026-08-18（部分签字）** · A.3 判定 **`b3_le_a`（已测，已作废）** · **A.4 判定 `fwdmax_ge_pi`（已测）** · 动作空间一致性裁定 **C2 有界策略分布（已签字 + 代码已落地，见 §4.1 顶注）** · V3 裁定 ______（**未签**） · unique-goals 下限 ______（**未签**）
+
+> 只签了动作空间一致性一项。§5 其余空项（§1–§3 事实、§4 In 表、V3 范围、unique-goals 下限）**仍未签**，故 §4 的 In 表/goal 输入**一律未动**；「签字前禁止现 ckpt 加长训 / 翻 yaml」仍生效（`enable_policy_update=false` 未变，`action_scale: 1.0` 是 C2 语义变更的必要项、不是 gate 开关）。

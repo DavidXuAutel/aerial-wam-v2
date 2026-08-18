@@ -261,6 +261,10 @@ def _build_actor_critic(cfg: Any, latent_dim: int) -> Optional[Any]:
         from experiments.aerial.rl.actor_critic import ActorCriticConfig, LatentActorCritic
     except RuntimeError:
         return None
+    # C2 (2026-08-18): the policy's action box comes from the SAME ``step_hz``
+    # the env is built with, so the bounded policy distribution and the
+    # deployment-side clip (``collector.py:167``) agree by construction.
+    step_hz = float(_get(_get(cfg, "env", {}), "step_hz", 30.0))
     ac_cfg = ActorCriticConfig(
         latent_dim=int(latent_dim),
         lambda_gae=float(_get(v4, "lambda_gae", 0.95)),
@@ -268,9 +272,16 @@ def _build_actor_critic(cfg: Any, latent_dim: int) -> Optional[Any]:
         entropy_scale=float(_get(v4, "entropy_scale", 3.0e-4)),
         actor_lr=float(_get(v4, "actor_lr", 1.0e-4)),
         critic_lr=float(_get(v4, "critic_lr", 1.0e-4)),
+        action_scale=float(_get(v4, "action_scale", 1.0)),
+        step_hz=step_hz,
         device=str(_get(v4, "device", "cpu")),
     )
-    return LatentActorCritic(config=ac_cfg)
+    ac = LatentActorCritic(config=ac_cfg)
+    logger.info(
+        "actor-critic: policy_class=%s step_hz=%.3f action_limits=%s action_scale=%.3f",
+        ac_cfg.policy_class, step_hz, ac_cfg.action_limits, ac_cfg.action_scale,
+    )
+    return ac
 
 
 def build_from_config(cfg: Any) -> SerialCorrectorLoop:

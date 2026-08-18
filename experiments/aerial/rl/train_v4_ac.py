@@ -186,6 +186,19 @@ def main() -> int:
     if loop.actor_critic is None:
         logger.error("actor_critic not built — install torch")
         return 1
+    ac_cfg = loop.actor_critic.config
+    if not loop.actor_critic.bounded:
+        # Red line (C2, 2026-08-18): the pre-C2 unbounded policy class is
+        # invalidated; it may be replayed for audit but never trained.
+        logger.error(
+            "refusing to train policy_class=%s — retrain from scratch (proposal §4.1)",
+            ac_cfg.policy_class,
+        )
+        return 1
+    logger.info(
+        "policy: class=%s action_limits=%s (step_hz=%.3f) action_scale=%.3f",
+        ac_cfg.policy_class, ac_cfg.action_limits, ac_cfg.step_hz, ac_cfg.action_scale,
+    )
 
     reports = loop.run()
     losses = []
@@ -211,6 +224,10 @@ def main() -> int:
         "mean_abs_goal_rel": float(sum(diag_goal_rel) / len(diag_goal_rel)) if diag_goal_rel else None,
         "mean_progress": float(sum(diag_progress) / len(diag_progress)) if diag_progress else None,
         "mean_return": float(sum(diag_return) / len(diag_return)) if diag_return else None,
+        "policy_class": str(ac_cfg.policy_class),
+        "action_limits": [float(x) for x in ac_cfg.action_limits],
+        "action_scale": float(ac_cfg.action_scale),
+        "step_hz": float(ac_cfg.step_hz),
         "device": str(args.device),
         "dynamics_kind": dyn_kind,
         "wm_ckpt": wm_ckpt_path,

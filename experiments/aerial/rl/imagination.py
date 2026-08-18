@@ -12,6 +12,15 @@ reward accrual after a trajectory terminates.
 
 Pure numpy; works with ``StubLatentDynamics`` for offline tests. Imagination
 policies expose ``act_latent(z) -> [4]`` (fallback: ``act(z)``).
+
+ACTION SPACE (2026-08-18): pass ``action_limits`` to hold the imagined action
+set equal to the deployed one (``body_delta_limits(1/step_hz)``, clipped in
+``collector.py:167``). ``ImaginedRollout.n_action_clipped`` counts how often the
+clip actually bit — with the C2 bounded policy it must stay **0**, which is how
+the "clip is a no-op" claim gets measured instead of assumed. Note this clip
+alone is NOT the consistency fix: the actor update is REINFORCE, so a policy
+that can propose out-of-box actions needs its *sampling law* bounded (see
+``actor_critic`` C2 / proposal §4.1), not its samples truncated here.
 """
 from __future__ import annotations
 
@@ -39,6 +48,9 @@ class ImaginedRollout:
     p_coll: np.ndarray       # [B, H]
     progress: np.ndarray     # [B, H]
     done: np.ndarray         # [B, H] bool (cumulative)
+    #: How many (b, t, axis) entries the deployed-action clip actually changed.
+    #: 0 under the C2 bounded policy; > 0 means imagined != deployed action set.
+    n_action_clipped: int = 0
 
     @property
     def returns(self) -> np.ndarray:
@@ -64,6 +76,7 @@ def imagine(
     goal_rel0: Optional[np.ndarray] = None,
     body_vel0: Optional[np.ndarray] = None,
     propagate_goal_rel: bool = True,
+    action_limits: Optional[np.ndarray] = None,
 ) -> ImaginedRollout:
     """Roll ``z0_batch`` forward ``horizon`` steps through ``dynamics``.
 
@@ -71,8 +84,19 @@ def imagine(
     each imagined ``step`` receives aux conditioning for the torch reward head.
     ``propagate_goal_rel`` advances ``goal_rel`` with ``advance_goal_rel_body`` after
     each action (stub-consistent kinematics); ``body_vel`` is held at the start value.
+
+    ``action_limits`` [4] (per-axis, positive) constrains imagined actions to the
+    deployed set; ``None`` leaves the historical unbounded behaviour so pre-C2
+    audit runs replay bit-for-bit.
     """
     cfg = reward_cfg or RewardConfig()
+    if action_limits is None:
+        lim = None
+    else:
+        lim = np.abs(np.asarray(action_limits, dtype=np.float64).reshape(-1))
+        if lim.shape != (4,) or not np.all(lim > 0):
+            raise ValueError(f"action_limits must be 4 positive values, got {action_limits!r}")
+    n_clipped = 0
     z0 = np.atleast_2d(np.asarray(z0_batch, dtype=np.float64))
     batch, latent_dim = z0.shape
     if horizon < 1:
@@ -114,6 +138,10 @@ def imagine(
                 dones[b, t] = True
                 continue
             a = _act_latent(policy, zs[b, t])
+            if lim is not None:
+                a_clipped = np.clip(a, -lim, lim)
+                n_clipped += int(np.count_nonzero(a_clipped != a))
+                a = a_clipped
             step_kw: dict = {}
             if use_aux:
                 step_kw["goal_rel"] = goal_rel_t[b]
@@ -136,4 +164,7 @@ def imagine(
             if use_aux and propagate_goal_rel and alive[b]:
                 goal_rel_t[b] = advance_goal_rel_body(goal_rel_t[b], a)
 
-    return ImaginedRollout(z=zs, actions=acts, rewards=rews, p_coll=pcs, progress=progs, done=dones)
+    return ImaginedRollout(
+        z=zs, actions=acts, rewards=rews, p_coll=pcs, progress=progs, done=dones,
+        n_action_clipped=int(n_clipped),
+    )
