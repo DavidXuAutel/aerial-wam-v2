@@ -10,6 +10,7 @@ from experiments.aerial.rl.v4_zero_eval import (
     check_0d,
     check_support_b,
     clearance_sweep,
+    near_absrel_gt_bins,
     pixel_absrel_stats,
     suggest_delta,
 )
@@ -21,6 +22,17 @@ def test_pixel_absrel_near_domain():
     stats = pixel_absrel_stats(pred, gt, gt_lo=0.0, gt_hi=3.0)
     assert stats["n"] == 2
     assert abs(stats["median_absrel"] - 0.1) < 1e-6
+
+
+def test_near_absrel_gt_bins_split():
+    # (0,1.5]: AbsRel 1.0; (1.5,3]: AbsRel 0.1
+    gt = np.array([1.0, 1.0, 2.0, 2.0])
+    pred = np.array([2.0, 2.0, 2.2, 2.2])
+    bins = near_absrel_gt_bins(pred, gt, edges=(0.0, 1.5, 3.0))
+    assert bins[0]["n_px"] == 2
+    assert abs(bins[0]["p90_absrel"] - 1.0) < 1e-6
+    assert bins[1]["n_px"] == 2
+    assert abs(bins[1]["p90_absrel"] - 0.1) < 1e-6
 
 
 def test_support_b_pass():

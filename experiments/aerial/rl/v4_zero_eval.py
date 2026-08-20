@@ -80,6 +80,29 @@ def pixel_absrel_stats(
     }
 
 
+def near_absrel_gt_bins(
+    pred: np.ndarray,
+    gt: np.ndarray,
+    *,
+    edges: Sequence[float] = (0.0, 1.5, 3.0),
+) -> List[Dict[str, Any]]:
+    """AbsRel stats on ``(edges[i], edges[i+1]]`` GT bins (near-band diagnostics)."""
+    out: List[Dict[str, Any]] = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        st = pixel_absrel_stats(pred, gt, gt_lo=float(lo), gt_hi=float(hi))
+        out.append(
+            {
+                "gt_lo": float(lo),
+                "gt_hi": float(hi),
+                "domain": f"({lo:g}, {hi:g}]",
+                "n_px": st["n"],
+                "median_absrel": st["median_absrel"],
+                "p90_absrel": st["p90_absrel"],
+            }
+        )
+    return out
+
+
 def check_support_b(
     per_frame_near_px: Sequence[int],
     *,
@@ -419,13 +442,20 @@ def run_eval(
     near_stats = pixel_absrel_stats(
         np.asarray(near_pred), np.asarray(near_gt), gt_lo=_NEAR_LO, gt_hi=_NEAR_HI
     )
+    near_gt_bins = near_absrel_gt_bins(
+        np.asarray(near_pred), np.asarray(near_gt), edges=(0.0, 1.5, 3.0)
+    )
     outer_stats = pixel_absrel_stats(
         np.asarray(outer_pred), np.asarray(outer_gt), gt_lo=_OUTER_LO, gt_hi=_OUTER_HI
     )
     sup_b = check_support_b(per_frame_near_px, thr=thr)
     sub_0a = check_0a(near_stats, thr=thr)
-    sub_0b = {**sup_b, "label": "0b"}
-    sub_0c = check_0c(near_stats, thr=thr)
+    sub_0b = {**sup_b, "label": "0b", "near_px_total": sup_b["support_px"]}
+    sub_0c = {
+        **check_0c(near_stats, thr=thr),
+        "gt_bins": near_gt_bins,
+        "note": "gt_bins: AbsRel on (0,1.5] vs (1.5,3.0]; not a PASS criterion — attribution only",
+    }
     sub_0d = check_0d(
         np.asarray(gt_fwd_list),
         np.asarray(dhat_fwd_list),
@@ -486,7 +516,7 @@ def run_eval(
         "episodes": len(episodes),
         "frames_scored": n_frames_total,
         "n_no_depth_frames": n_no_depth,
-        "near_pixel_stats": near_stats,
+        "near_pixel_stats": {**near_stats, "gt_bins": near_gt_bins},
         "outer_pixel_stats": outer_stats,
         "tau_dt": {
             "n_samples": len(dt_samples),
