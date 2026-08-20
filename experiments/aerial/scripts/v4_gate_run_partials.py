@@ -314,6 +314,7 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         if shield_on:
             masks, pool = epool.run_shield_eval_p0c(
                 **kwargs, tau_predictor=tau_pred, both_arms_unshielded=False,
+                dynamics=dynamics,
             )
         else:
             masks, pool = epool.run_shield_eval_p0c(

@@ -252,13 +252,25 @@ def test_imagine_rejects_bad_limits():
 
 
 def test_planner_default_keeps_unclipped_candidate_scoring():
-    """V1's 08-15 merged behaviour is NOT silently changed by C2."""
+    """Direct ImaginationPlanner() still defaults to None (V1 unit tests)."""
     planner = ImaginationPlanner(
         StubLatentDynamics(goal=np.array([50.0, 0.0, 0.0]), latent_dim=8), horizon=3,
     )
     assert planner.action_limits is None
     cands = default_candidates(np.array([9.0, 0.0, 0.0, 0.0]))
     assert max(float(abs(c[0])) for c in cands) > 1.0  # still out of the box
+
+
+def test_build_planner_sets_action_limits_from_step_hz():
+    """V4 RUNBOOK P6: deployed planner path clips candidates to body_delta_limits."""
+    from experiments.aerial.rl.train_rl import _build_planner
+
+    cfg = {"planner": {"enable": True, "horizon": 3}, "env": {"step_hz": 5.0}}
+    dyn = StubLatentDynamics(goal=np.array([50.0, 0.0, 0.0]), latent_dim=8)
+    planner = _build_planner(cfg, dyn, RewardConfig())
+    assert planner is not None
+    lim = body_delta_limits(1.0 / STEP_HZ)
+    assert np.allclose(planner.action_limits, lim)
 
 
 def test_planner_action_limits_clips_candidates():

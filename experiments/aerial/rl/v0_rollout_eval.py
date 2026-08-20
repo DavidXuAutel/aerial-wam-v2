@@ -92,6 +92,7 @@ def _run_one_resilient(
     shield: Any = None,
     depth_predictor: Any = None,
     tau_predictor: Any = None,
+    dynamics: Any = None,
     retries: int = 2,
     retry_sleep_s: float = 0.5,
     drop_stats: Optional[Dict[str, int]] = None,
@@ -133,7 +134,7 @@ def _run_one_resilient(
             ep = _run_one(
                 env, policy, episode, max_steps=max_steps, reward_cfg=reward_cfg,
                 shield=shield, depth_predictor=depth_predictor,
-                tau_predictor=tau_predictor,
+                tau_predictor=tau_predictor, dynamics=dynamics,
             )
         except RuntimeError as exc:
             msg = str(exc).lower()
@@ -556,6 +557,7 @@ def _run_one(
     shield: Any = None,
     depth_predictor: Any = None,
     tau_predictor: Any = None,
+    dynamics: Any = None,
 ) -> Episode:
     """Collect a single episode with a throwaway in-memory buffer."""
     buf = ReplayBuffer(capacity_episodes=2, seed=0)
@@ -569,6 +571,7 @@ def _run_one(
         target_hz=0.0,
         depth_predictor=depth_predictor,
         tau_predictor=tau_predictor,
+        dynamics=dynamics,
         # Align to the collector default + the start-scan's spawn_collision reject:
         # a vehicle already colliding AT RESET spawned inside geometry — an invalid
         # start with NO pre-contact window (the shield never got to act). Counting

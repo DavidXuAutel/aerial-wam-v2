@@ -23,6 +23,7 @@ from experiments.aerial.rl.buffer import ReplayBuffer
 from experiments.aerial.rl.collector import RolloutCollector
 from experiments.aerial.rl.corrector import CorrectorConfig, SerialCorrectorLoop
 from experiments.aerial.rl.dynamics import StubLatentDynamics
+from experiments.aerial.rl.env.action import DEFAULT_STEP_HZ, body_delta_limits
 from experiments.aerial.rl.env.obs import PolicyObservation
 from experiments.aerial.rl.reward import DEFAULT_ONLINE_SUCCESS_DIST_M, RewardConfig
 from experiments.aerial.rl.safety import DepthTauShield, NullSafetyShield, ThresholdSafetyShield
@@ -235,10 +236,13 @@ def _build_planner(cfg: Any, dynamics: Any, reward_cfg: RewardConfig) -> Optiona
         return None
     from experiments.aerial.rl.planner import ImaginationPlanner
 
+    step_hz = float(_get(_get(cfg, "env", {}), "step_hz", DEFAULT_STEP_HZ))
+    limits = body_delta_limits(1.0 / step_hz)
     return ImaginationPlanner(
         dynamics,
         horizon=int(_get(pc, "horizon", 5)),
         reward_cfg=reward_cfg,
+        action_limits=limits,
     )
 
 
@@ -343,6 +347,7 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         depth_predictor=_build_depth_predictor(_get(cfg, "world_model", {})),
         tau_predictor=_build_tau_predictor(_get(cfg, "tau_predictor", {})),
         planner=planner,
+        dynamics=dynamics,
     )
     episodes = _load_episodes(cfg)
     latent_dim = int(getattr(dynamics, "latent_dim", 8))

@@ -29,6 +29,7 @@ from experiments.aerial.openfly_actions import primitive_to_delta
 from experiments.aerial.rl.buffer import Episode, ReplayBuffer, Transition
 from experiments.aerial.rl.env.action import DEFAULT_STEP_HZ, body_delta_limits, clip_body_delta
 from experiments.aerial.rl.env.obs import Observation
+from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
 from experiments.aerial.rl.reward import NavigationReward, RewardConfig
 from experiments.aerial.rl.safety import SafetyShield
 
@@ -96,6 +97,7 @@ class RolloutCollector:
         depth_predictor: Optional[Any] = None,
         tau_predictor: Optional[Any] = None,
         planner: Optional[Any] = None,
+        dynamics: Optional[Any] = None,
     ) -> None:
         self.env = env
         self.policy = policy
@@ -119,6 +121,9 @@ class RolloutCollector:
         self.tau_predictor = tau_predictor
         # V1b: optional short-horizon imagination planner (scores candidates).
         self.planner = planner
+        # V4 P2: online WM for live p_coll → should_override(obs, wm_out=...).
+        self.dynamics = dynamics
+        self._latent: Optional[np.ndarray] = None
 
     def collect_episode(self, episode: Optional[Dict[str, Any]] = None) -> tuple[Episode, CollectStats]:
         instruction = str((episode or {}).get("gpt_instruction", ""))
@@ -138,6 +143,8 @@ class RolloutCollector:
         reset_pred = getattr(self.depth_predictor, "reset", None)
         if callable(reset_pred):
             reset_pred()
+        if self.dynamics is not None:
+            self._latent = np.asarray(self.dynamics.encode(obs), dtype=np.float64)
 
         reward = NavigationReward(getattr(self.env, "goal", None), self.reward_cfg)
         reward.reset(getattr(self.env, "goal", None), obs.position)
@@ -182,11 +189,27 @@ class RolloutCollector:
                 tau = self.tau_predictor.predict_tau(obs)
                 if tau is not None:
                     obs.info["tau_pred"] = float(tau)
-            if self.safety is not None and self.safety.should_override(obs):
+            wm_out = None
+            if self.dynamics is not None and self._latent is not None:
+                wm_out = self.dynamics.step(
+                    self._latent,
+                    action,
+                    goal_rel=goal_rel_from_obs(obs),
+                    body_vel=body_vel_from_obs(obs),
+                )
+            if self.safety is not None and self.safety.should_override(obs, wm_out=wm_out):
                 action = clip_body_delta(self.safety.override_action(obs), limits)
                 intervened = True
 
             next_obs, info = self.env.step(action)
+            if self.dynamics is not None and self._latent is not None:
+                out = self.dynamics.step(
+                    self._latent,
+                    action,
+                    goal_rel=goal_rel_from_obs(obs),
+                    body_vel=body_vel_from_obs(obs),
+                )
+                self._latent = np.asarray(out.z_next, dtype=np.float64)
             r, done, terms = reward.step(next_obs, action)
             ep_info = {**info, **terms, "intervention": intervened}
             if goal_xyz is not None:
