@@ -163,42 +163,53 @@ def build_episode_pool(args: argparse.Namespace) -> Tuple[List[Dict[str, Any]], 
         rollout_ds = root / rollout_ds
     cand, cand_yaw = _obstacle_candidate_positions(rollout_ds, min_altitude_m=0.0)
 
-    blocked, blocked_diag = rollout.make_obstacle_facing_episodes(
-        env,
-        int(args.per_layer),
-        cand,
-        seed=int(args.blocked_seed),
-        candidate_yaws=cand_yaw,
-        goal_dist_m=float(args.goal_dist_m),
-        obstacle_max_m=float(args.obstacle_max_m),
-        center_frac=float(args.center_frac),
-        max_scans=int(args.blocked_scan_max),
-        probe_policy=heuristic,
-        probe_steps=int(args.probe_steps),
-        probe_near_m=float(args.probe_near_m),
-        reward_cfg=reward_cfg,
-        preserve_order=True,
-        log_every=50,
-    )
-    for e in blocked:
-        e["layer"] = "blocked"
+    only = str(getattr(args, "only_layer", "both") or "both").strip().lower()
+    if only not in {"both", "open", "blocked"}:
+        raise ValueError(f"--only-layer must be both|open|blocked, got {only!r}")
 
-    open_, open_diag = _scan_open_episodes(
-        env,
-        cand,
-        cand_yaw,
-        n=int(args.per_layer),
-        seed=int(args.open_seed),
-        goal_dist_m=float(args.goal_dist_m),
-        probe_policy=heuristic,
-        reward_cfg=reward_cfg,
-        probe_steps=int(args.probe_steps),
-        arrival_m=arrival_m,
-        obstacle_max_m=float(args.obstacle_max_m),
-        start_clearance_m=float(args.start_clearance_m),
-        center_frac=float(args.center_frac),
-        max_scans=int(args.open_scan_max),
-    )
+    blocked: List[Dict[str, Any]] = []
+    blocked_diag: Dict[str, Any] = {"skipped": True}
+    open_: List[Dict[str, Any]] = []
+    open_diag: Dict[str, Any] = {"skipped": True}
+
+    if only in {"both", "blocked"}:
+        blocked, blocked_diag = rollout.make_obstacle_facing_episodes(
+            env,
+            int(args.per_layer),
+            cand,
+            seed=int(args.blocked_seed),
+            candidate_yaws=cand_yaw,
+            goal_dist_m=float(args.goal_dist_m),
+            obstacle_max_m=float(args.obstacle_max_m),
+            center_frac=float(args.center_frac),
+            max_scans=int(args.blocked_scan_max),
+            probe_policy=heuristic,
+            probe_steps=int(args.probe_steps),
+            probe_near_m=float(args.probe_near_m),
+            reward_cfg=reward_cfg,
+            preserve_order=True,
+            log_every=50,
+        )
+        for e in blocked:
+            e["layer"] = "blocked"
+
+    if only in {"both", "open"}:
+        open_, open_diag = _scan_open_episodes(
+            env,
+            cand,
+            cand_yaw,
+            n=int(args.per_layer),
+            seed=int(args.open_seed),
+            goal_dist_m=float(args.goal_dist_m),
+            probe_policy=heuristic,
+            reward_cfg=reward_cfg,
+            probe_steps=int(args.probe_steps),
+            arrival_m=arrival_m,
+            obstacle_max_m=float(args.obstacle_max_m),
+            start_clearance_m=float(args.start_clearance_m),
+            center_frac=float(args.center_frac),
+            max_scans=int(args.open_scan_max),
+        )
 
     close = getattr(env, "close", None)
     if callable(close):
@@ -207,6 +218,7 @@ def build_episode_pool(args: argparse.Namespace) -> Tuple[List[Dict[str, Any]], 
     pool = blocked + open_
     diag = {
         "per_layer": int(args.per_layer),
+        "only_layer": only,
         "blocked": blocked_diag,
         "open": open_diag,
         "total": len(pool),
@@ -362,7 +374,13 @@ def main() -> int:
     p.add_argument("--vehicle", default="drone_1")
     p.add_argument("--step-hz", type=float, default=5.0)
     p.add_argument("--max-steps", type=int, default=200)
-    p.add_argument("--per-layer", type=int, default=24, help="episodes per S_open and S_blocked")
+    p.add_argument("--per-layer", type=int, default=24, help="episodes per requested layer")
+    p.add_argument(
+        "--only-layer",
+        choices=("both", "open", "blocked"),
+        default="both",
+        help="top-up one layer without rewriting the other (default: both)",
+    )
     p.add_argument("--goal-dist-m", type=float, default=30.0)
     p.add_argument("--approach-dist-m", type=float, default=20.0, help="shorter goals for near-band")
     p.add_argument("--obstacle-max-m", type=float, default=25.0)
@@ -409,9 +427,11 @@ def main() -> int:
             print(f"[p45-collect] scan-only wrote {pool_path} n={len(pool)}")
             return 0
 
-    if len(pool) < 2 * int(args.per_layer):
+    only = str(args.only_layer).strip().lower()
+    target = int(args.per_layer) if only != "both" else 2 * int(args.per_layer)
+    if len(pool) < target:
         print(
-            f"[p45-collect] WARN: pool size {len(pool)} < target {2 * int(args.per_layer)}",
+            f"[p45-collect] WARN: pool size {len(pool)} < target {target} (only_layer={only})",
             file=sys.stderr,
         )
     return collect_pool(args, pool, scan_diag)
