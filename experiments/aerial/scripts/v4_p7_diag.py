@@ -162,12 +162,34 @@ def run_p7_diag(args: argparse.Namespace) -> Dict[str, Any]:
 
     cand, cand_yaw = _obstacle_candidate_positions(rollout_ds, min_altitude_m=0.0)
     goal_dist = float(getattr(args, "goal_dist_m", 30.0))
-    rng = np.random.default_rng(int(args.seed))
-    idx = rng.permutation(len(cand))
 
-    labeled: List[Tuple[int, str, Dict[str, Any]]] = []
+    blocked_eps, blocked_scan = rollout.make_obstacle_facing_episodes(
+        env,
+        int(args.target_n) * 2,
+        cand,
+        seed=int(args.seed),
+        candidate_yaws=cand_yaw,
+        goal_dist_m=goal_dist,
+        obstacle_max_m=25.0,
+        center_frac=0.3,
+        max_scans=int(args.scan_max),
+        probe_policy=heuristic,
+        probe_steps=int(args.probe_steps),
+        probe_near_m=1.5,
+        reward_cfg=reward_cfg,
+        preserve_order=True,
+        log_every=25,
+    )
+    labeled_blocked: List[Tuple[int, str, Dict[str, Any]]] = [
+        (-1, "blocked", epi) for epi in blocked_eps
+    ]
+
+    open_eps: List[Dict[str, Any]] = []
+    open_rej = {"spawn_collision": 0, "too_close": 0, "not_open_ahead": 0, "probe_blocked": 0}
+    rng = np.random.default_rng(int(args.seed) + 1)
+    idx = rng.permutation(len(cand))
     for ci in idx.tolist():
-        if len(labeled) >= int(args.scan_max):
+        if len(open_eps) >= int(args.target_n):
             break
         pos = np.asarray(cand[ci], dtype=np.float64).reshape(3)
         yaw = float(cand_yaw[ci]) if cand_yaw is not None else 0.0
@@ -175,17 +197,42 @@ def run_p7_diag(args: argparse.Namespace) -> Dict[str, Any]:
             [goal_dist * math.cos(yaw), goal_dist * math.sin(yaw), 0.0], dtype=np.float64
         )
         epi = {"pos": np.stack([pos, goal]), "yaw": np.array([yaw, yaw], dtype=np.float64)}
+        try:
+            obs = env.reset(epi)
+        except Exception:  # noqa: BLE001
+            continue
+        if getattr(obs, "collided", False):
+            open_rej["spawn_collision"] += 1
+            continue
+        depth = getattr(obs, "depth", None)
+        if depth is None:
+            continue
+        fwd = rollout._forward_min_depth(depth, center_frac=0.3)
+        if fwd < 3.0:
+            open_rej["too_close"] += 1
+            continue
+        if fwd <= 25.0:
+            open_rej["not_open_ahead"] += 1
+            continue
         layer = _probe_layer(
             env, heuristic, epi, max_steps=int(args.probe_steps), arrival_m=arrival_m, reward_cfg=reward_cfg
         )
-        if layer == "invalid":
+        if layer != "open":
+            open_rej["probe_blocked"] += 1
             continue
-        labeled.append((ci, layer, epi))
+        open_eps.append(epi)
 
-    blocked = [x for x in labeled if x[1] == "blocked"]
-    open_ = [x for x in labeled if x[1] == "open"]
+    labeled_open: List[Tuple[int, str, Dict[str, Any]]] = [
+        (-1, "open", epi) for epi in open_eps
+    ]
+    blocked = labeled_blocked
+    open_ = labeled_open
     rng_diag = np.random.default_rng(int(args.diag_seed))
-    diag_pick = [blocked[i] for i in rng_diag.choice(len(blocked), size=min(int(args.target_n), len(blocked)), replace=False)] if blocked else []
+    diag_pick = (
+        [blocked[i] for i in rng_diag.choice(len(blocked), size=min(int(args.target_n), len(blocked)), replace=False)]
+        if blocked
+        else []
+    )
 
     episodes_out: List[Dict[str, Any]] = []
     c_p7: List[float] = []
@@ -243,6 +290,8 @@ def run_p7_diag(args: argparse.Namespace) -> Dict[str, Any]:
         "accept_seed_reserved": int(args.accept_seed),
         "n_blocked_pool": len(blocked),
         "n_open_pool": len(open_),
+        "open_scan_rejections": open_rej,
+        "blocked_scan": blocked_scan,
         "n_scored": len(episodes_out),
         "C_P7": {
             "n": len(c_p7),
