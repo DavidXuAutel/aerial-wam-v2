@@ -15,7 +15,7 @@
 - [x] P0c formal `--target-n 16 --spare-count 16` — DONE (`v4_gate_p0c_formal_20260820/`; counters in RUNBOOK §1)
 - [x] P1 V1-② — **FAIL** (reward only per §1.2.2; log `artifacts/v4_p1_fidelity_rh_20260820.log`)
 - [x] P2 wiring (`4e76865`) — head AUROC claimed still open
-- [ ] P3 V4-⓪ v2 (⓪a–⓪f) — harness `663d8bb`; H100 retry after `8a4e851` broadcast fix
+- [x] P3 V4-⓪ v2 — **FAIL** (⓪b/⓪c; artifact `artifacts/v4_zero_p3_20260820.json`; no §6 stop → continue) — harness `663d8bb`; H100 retry after `8a4e851` broadcast fix
 - [ ] P4 / P4.5
 - [x] P6 action_limits (`4e76865`)
 - [ ] P7-diag → freeze → P7-accept → P8

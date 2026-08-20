@@ -12,7 +12,22 @@
 
 ---
 
-## INFO | code update | 2026-08-20 | `663d8bb`
+## INFO | P3 result | 2026-08-20
+
+**V4-⓪ v2 FAIL** (harness `663d8bb` / fix `8a4e851`). Artifact: `artifacts/v4_zero_p3_20260820.json`.
+
+| sub | result | note |
+|-----|--------|------|
+| ⓪a | PASS | median AbsRel 0.123 |
+| ⓪b | FAIL | 95 frames with near px (<100) |
+| ⓪c | FAIL | p90 AbsRel 1.38 |
+| ⓪d | PASS | p_miss_trigger 0 |
+| ⓪e | PASS | deployment corpus |
+| ⓪f | PASS | outer band + sweep; `[lo,hi]` null |
+
+No §6 stop for ⓪ FAIL (R-16) → chain continues at P4.
+
+---
 
 **P3 harness:** `experiments/aerial/rl/v4_zero_eval.py` — offline V4-⓪ v2 (⓪a–⓪f), clearance sweep with `band_lo_hi=null` pre-freeze.
 
