@@ -12,9 +12,9 @@
 
 ---
 
-## Open
+## INFO | code update | 2026-08-20 | `663d8bb`
 
-_(none at sign-off time; agent appends new blockers below)_
+**P3 harness:** `experiments/aerial/rl/v4_zero_eval.py` — offline V4-⓪ v2 (⓪a–⓪f), clearance sweep with `band_lo_hi=null` pre-freeze.
 
 ---
 
