@@ -2,9 +2,9 @@
 
 - **date**: 2026-08-20
 - **state**: ACTIVE — agent restarted; resume at P3
-- **HEAD**: 663d8bb
-- **current step**: P3 in flight (H100 offline eval)
-- **P3 job**: H100 pid=39936; log `~/aerial-wam-v2/logs/v4_p3_zero_20260820.log`; emit `artifacts/v4_zero_p3_20260820.json`
+- **HEAD**: 8a4e851
+- **current step**: P3 in flight (H100 offline eval, retry after broadcast fix)
+- **P3 job**: H100 pid=40433; log `~/aerial-wam-v2/logs/v4_p3_zero_20260820.log`; emit `artifacts/v4_zero_p3_20260820.json`
 - **enable_policy_update**: false (must remain)
 - **signed**: `--spare-count = 16` (§3 item 11, option 1)
 
