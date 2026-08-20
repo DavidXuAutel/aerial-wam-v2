@@ -2,7 +2,7 @@
 
 - **date**: 2026-08-20
 - **state**: **BLOCKED** — §3 item 11 spare pool size unsigned (`--spare-count` required)
-- **HEAD**: pending commit (base `a961979`)
+- **HEAD**: `e28baa9`
 - **current step**: P0c harness **DONE** (code + unit tests); formal gate run **blocked** on spare-count sign-off
 - **enable_policy_update**: false (must remain)
 
