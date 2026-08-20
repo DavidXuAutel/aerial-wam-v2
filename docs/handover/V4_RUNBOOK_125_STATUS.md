@@ -1,8 +1,8 @@
 # V4 RUNBOOK 125 STATUS
 
 - **date**: 2026-08-20
-- **state**: ACTIVE — **P4.5 collection** in flight
-- **HEAD**: `a67be85` (+ local harness)
+- **state**: ACTIVE — P4.5 corpus **DONE** (34 usable); WM retrain in flight
+- **HEAD**: `39dee46`
 - **current step**: **真·P4.5** = 近带 enrichment + `S_open:S_blocked≈1:1` 重采 → WM 重训 → re-P3 → re-P1 → re-P4 → P7* → P8
 - **P3**: **`authoritative=false` / `insufficient_support`**（⓪b `n_frames=95<100`）
 - **P4**: provisional（⓿e FAIL）— re-run after P4.5
@@ -17,7 +17,7 @@
 - [x] P1 FAIL (reward) — must re-pass after P4.5
 - [x] P3 corrected → `insufficient_support`
 - [x] P4 provisional logged
-- [ ] **P4.5 real** (near-band + 1:1 + WM)
+- [ ] **P4.5 real** — corpus **partial OK** (34 eps: 24 blocked / 11 open; target 1:1); WM retrain running
 - [ ] re-P3 / re-P1 / re-P4
 - [ ] P7-diag → freeze → P7-accept
 - [ ] P8 actor train + gate ①′/④′
@@ -26,7 +26,8 @@
 
 | job | PID | log |
 |-----|-----|-----|
-| P4.5 collect | **2738010** | `logs/v4_p45_collect_20260820.log` |
+| P4.5 WM train | **2790365** | `logs/v4_p45_wm_train_20260820.log` |
+| P4.5 collect | done | `logs/v4_p45_collect_20260820.log` → 34/35 usable |
 
 ## Notes
 
