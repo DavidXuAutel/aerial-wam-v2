@@ -90,10 +90,21 @@
 
 ## 3. 变更记录
 
+- **2026-08-20（P3 / P1 补数齐：原「三处漏数」闭合）** — 改了什么：把更正条 (3) 里仍标「待补 / 仍缺」的数字全部落盘入账；**不改任何阈值 / 不改 verdict**。产物：`artifacts/v4_zero_p3_20260820_bins.json`（同 dataset / depth / τ ckpt 重算，含 `near_absrel_gt_bins`）；P1 直接读既有 log。数：
+  - **⓪b**：`near_px_total = support_px = 790055`；**单帧贡献占比** `max_frame_frac = 0.0416 ≤ 0.2` ✅（与 `n_frames=95` 合取仍 ❌）。
+  - **⓪c GT 分箱（归因 only，非 PASS 判据）**：`(0,1.5]` n_px=**256750** median AbsRel **0.4088** / p90 **1.9775**；`(1.5,3]` n_px=**533305** median **0.0787** / p90 **0.3803**。坏尾集中在 <1.5 m；不得用 raw 近带 p90=1.38 当 authoritative FAIL（⓪b 未过）。
+  - **⓪f(3)**：`clearance_sweep` 20 bin 的 `p_dhat_false_trigger` 全表入库（见 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) §2.1 补数表）；近 3–4 m 误触高（0.58–0.73），≥5.75 m 多数 bin=0；`[lo,hi]` **仍 null**，diag `lo≈4.5` **非冻结**。
+  - **⓪f(4)**：同表 `p_tau_false_trigger` —— **凡写出 `n_tau_cond` 的 bin 均为 0.0**（不得记笼统 PASS）。
+  - **P1 `one_step_ok`**：log h=0 行 `wm_mae=0.5817 | mean-base=0.6508` ⇒ **0.5817 < 0.6508 ⇒ `one_step_ok=True`**（FAIL 仍仅由 `beat_frac=0.67` 支撑）。
+  - 代码 / yaml 未动；`enable_policy_update` 仍 false；下一步仍 = **P4.5**。
+- **2026-08-20（**§5.0 扩到 17 行：新增待裁行 `5an`（R-16 剩余缺口落地）+ 更正 ⓿e 的性质**）** — 改了什么：(1) 提案 **§5.0 由 16 行扩为 17 行**，新增 **`5an`（⬜ 待裁定，A/B 二选一，空白非法）** —— 把「⓪ / ⓿ FAIL 或不可判之后怎么走」这条**事前根本不存在**的规则落进**唯一可签表**。为什么：用户 2026-08-20 已口头裁 **(B)**，但它此前只写在本文件变更记录里、**不在 §5.0** ⇒ 按「判据唯一权威口径 = §4.6 / 唯一可签表 = §5.0」的规矩，读 §4.6 的人找不到该规则；而 §4.6.7 的 R-16 行与 5ai 裁定栏都明文写着「**⓪ / ⓿ 各自 FAIL 后的停止规则仍未预注册**」⇒ 补一条不存在的规则 = **新增判据 ⇒ 必须签字**。**本行不改任何阈值 / band / `n` / primary 划分**，且两支共同写入禁止项（不得降 ⓪b 100 帧 / ⓪c p90 0.50 / ⓿ ρ 0.50 / `n_z0` 8，不得把 support 不足或可行性 FAIL 记成 PASS，不得跳过重跑进 P8）。**16 行既有签字仍有效。**
+  - (2) **⓿e 的性质更正（随 5an 一并裁）**：**⓿e 与 ⓪b 同型 = 可行性 / 有效性前置，不是精度判据** —— §4.6.5（[提案 `:613`](V4_CRITERIA_REFREEZE_PROPOSAL_20260818.md)）驱动 C4 原文「**不支持则 ⓿ 现写法不可实现**」。⓿ 的构造要求「同一 `z0` 出发、K 条动作序列，比想象排序 vs 真实排序」⇒ 真实侧必须**从同一 `z0` 重新执行 K 次** ⇒ 必须精确状态重置。teleport `median_rel_l2 = 1.37` ⇒ 真实侧并非从想象的 `z0` 出发 ⇒ **⓿a–d 的 ρ=0.963 不可入账**，记 **`infeasible`**（非「⓿ FAIL」）。
+  - (3) **由 (2) 得出的执行更正**：**P4 的真前置不是 P1 / P3，是 ⓿e 自己**。⓿ **不消费 depth head** ⇒ **P3 与 P4 正交**，P3 不可判不阻断 P4；P1 与 P4 同源（同一 WM）⇒ 「跑得了但不发证」（P4.5 原文即「重跑 P3 / P1 / P4」，本就预设先跑一遍）。但 **teleport 是 harness / AirSim 能力问题，P4.5 换 WM 修不好** ⇒ 现记法「P4.5 后重跑 P4」**不足**（重跑会撞同一个 ⓿e FAIL）⇒ **⓿e 修复与 P4.5 正交、应并行推进**。已同步 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) P4 行。
+  - (4) **口径澄清（不需签字的部分）**：「⓪b / ⓿e FAIL ⇒ 不可判而非 FAIL」**本身不需重签** —— 那是**照事前已签的字读数**（⓪b 驱动栏 E4 自陈其为 ⓪a/⓪c 的有效性条件；⓿e 驱动栏 C4 自陈「不支持则现写法不可实现」；P1 的 `pos<3 ⇒ N/A` 写在 [`V1_GATE_STATUS.md:34`](V1_GATE_STATUS.md)）。**需重签的只有停止规则那一件（= `5an`）**。代码 / yaml 未动，`enable_policy_update` 仍 false。
 - **2026-08-20（**对上一条 P3 记法的更正 + 运营裁定：⓪b 是 support 门；R-16 = (B)；不停跑 P8 / 不停在「假 FAIL」上放行**）** — 改了什么：不改写上一条「P3 FAIL」原文（审计链），在此更正记法、补齐三处漏数、并**裁定治理二选一**。为什么 / 依据：
   - **(1) ⓪b 未过 ⇒ 近带三项全部不可入账**。§4.6.2 `:537` 驱动 E4 ⇒ **⓪b = 有效性条件**，⓪a/⓪c 同像素域。`n_frames=95 < 100` ⇒ ⓪a/⓪c **都不 authoritative**。⇒ P3 = **`insufficient_support` / `authoritative=false`**，**不是 ⓪ FAIL**（同 P1 `pos<3 ⇒ null`）。**收紧**：须补采近带帧重跑 P3；`δ` / `[lo,hi]` / `release_depth_m` 继续锁死。
   - **(2) 病在语料，补采并入 P4.5**：近带 **95/6005 = 1.6%**；⓪f 外带 median **0.074** / p90 **0.259** ⇒ 远准近无数据（同 V0-④）。P4.5 一并修 ⓪b support + P1 reward。
-  - **(3) 三处漏数现补**：① ⓪b 合取三项 —— `support_px=790055 ≥ 1e4` ✅；`n_frames=95 < 100` ❌；`max_frame_frac=0.0416 ≤ 0.2` ✅（**非单帧支配**）。② ⓪c 的 GT 分箱（`<1.5` vs `[1.5,3)`）—— **harness 未落盘，仍缺**；不得用 raw p90=1.38 当 authoritative FAIL。③ ⓪f —— `(1)(2)` 已报；`(3)` = `clearance_sweep` 上 D̂ 误触曲线（`[lo,hi]=null`）；`(4)` = 同表 `p_tau_false_trigger` 逐 bin（多处 0.0），**不得记笼统 PASS**。diag `lo≈4.5` **非冻结**。
+  - **(3) 三处漏数**（~~当时登记~~；**已由上条「补数齐」闭合**）：① ⓪b 合取三项 —— `support_px=790055 ≥ 1e4` ✅；`n_frames=95 < 100` ❌；`max_frame_frac=0.0416 ≤ 0.2` ✅。② ⓪c 的 GT 分箱 —— ~~harness 未落盘~~ → **已落盘**（见上条）。③ ⓪f —— `(1)(2)` 已报；`(3)(4)` **全表已入库**（见 RUNBOOK §2.1），**不得记笼统 PASS**。diag `lo≈4.5` **非冻结**。
   - **(4) 治理裁定（Mac chat 2026-08-20，应你要求裁）= (B)**：前置门 **FAIL 或 `insufficient_support` 都不构成「V4-MVP 前提否证」式下车站**；但 **禁止把 R-16 当放行许可**。明文运营规则：① 依赖未权威通过的前置门的步骤**不得当证书**；② **P8 之前 ⓪ / ⓿ / P1 必须全部重过且 authoritative**；③ 期间 `enable_policy_update` 恒 false；④ **不跑「直冲 P8」supervisor**。**(A) 暂不采纳**（当前 P3 甚至不是 FAIL，用 FAIL-stop 会错类型；真要补停止规则另开 re-freeze）。**(B) 须补进 §5.0 一行列签字**（本条先作运营生效，正式签字表待补行）。
   - **(5) 是否继续 P4：否（已发生则作废重跑）**。agent 已跑出 P4（⓿e FAIL）—— 该结果**绑在 P4.5 将替换的 WM 上** ⇒ **不入权威账**；**下一步 = P4.5（近带 enrichment）→ 重跑 P3 → 重跑 P1 → 重跑 P4**。Supervisor **已杀**。
   - **本条不修改任何 §4.1 / §4.6 阈值**；`[lo,hi]` 未填；`enable_policy_update` **仍 false**。
@@ -101,7 +112,7 @@
 - **2026-08-20（**P0c / P2 接线 / P6 实施入库；P1 FAIL 按 §1.2.2 重记**）** — 改了什么：把已跑完步骤写入 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) §0/§1 与本变更记录；**下一步当时 = P3**。细节：
   - **P0c DONE**：harness `e28baa9`；正式跑 `experiments/aerial/rl/artifacts/v4_gate_p0c_formal_20260820/`（`--target-n 16 --spare-count 16`，spare 已签）。**①** n=16 `authoritative=true` spare_consumed=8 / invalid=3 / none=0 / pair_broken=5；**④ on** spare=7 / inv=3 / none=0 / pair=4；**④ off** spare=9 / inv=2 / none=0 / pair=7；**④ v1** spare=11 / inv=10 / none=0 / pair=1。旧 actor 上 ①/④ `ok=False` **不否定** P0c。
   - **P1 FAIL（权威层）**：ckpt `wm_ckpt_r60_rh_20260816` step=**1000**，held-out **12/48 尾部**；log `artifacts/v4_p1_fidelity_rh_20260820.log`。raw 打印 ≠ §1.2.2：
-    - **reward = 真 FAIL**：`beat_frac=0.67 < 0.8`，`growth_ok=True`，`one_step_ok=True`（h=0 wm_mae **0.5817 <** mean-base **0.6508**）。
+    - **reward = 真 FAIL**：`beat_frac=0.67 < 0.8`，`growth_ok=True`，**`one_step_ok=True`**（h=0 行：wm_mae **0.5817 <** mean-base **0.6508**）。
     - **p_coll = `null` N/A**（pos=1 < 3），raw AUROC 0.091 **不是**权威 FAIL。
     - **done = PASS 但 vacuous**（acc == majority）；**recon/latent OK**（19.89 ≤ 25）。
     - ⇒ overall FAIL **仅由 reward**；修 = **P4.5** 后重跑 P1；R-16 缺口新实例（P1 无下车站）。

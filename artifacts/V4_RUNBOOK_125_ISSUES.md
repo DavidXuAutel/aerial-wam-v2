@@ -11,14 +11,20 @@
 **Supersedes** the earlier «P3 FAIL → continue P4» INFO.
 
 - P3 = **`authoritative=false` / near-band `insufficient_support`**, **not** «⓪ FAIL».
-- ⓪b triad: `support_px=790055 ≥ 1e4` ✅；`n_frames=95 < 100` ❌；`max_frame_frac=0.0416 ≤ 0.2` ✅.
+- ⓪b triad: `near_px_total=support_px=790055 ≥ 1e4` ✅；`n_frames=95 < 100` ❌；**单帧贡献占比** `max_frame_frac=0.0416 ≤ 0.2` ✅.
 - ⓪a/c on same near domain → **neither authoritative** (raw 0.123 / 1.38 not booked).
 - Near frames **95/6005 = 1.6%**; outer ⓪f (1)(2) strong → corpus disease, not head.
-- ⓪f: (1)(2) reported；(3)=`clearance_sweep` D̂ curve（`[lo,hi]=null`）；(4)=per-bin `p_tau_false_trigger` — **not a blanket PASS**.
-- ⓪c GT bin (`<1.5` vs `[1.5,3)`) **still missing** from harness JSON.
+- **⓪c GT bins（归因）**：`(0,1.5]` p90 AbsRel **1.978** (n=256750)；`(1.5,3]` p90 **0.380** (n=533305) — 坏尾在 <1.5 m。
+- ⓪f: (1)(2) reported；(3)/(4) = full `clearance_sweep` in `artifacts/v4_zero_p3_20260820_bins.json` + RUNBOOK §2.1 — D̂ 近 3–4 m 高误触；τ 有条件 bin **全 0.0**；`[lo,hi]=null`，**not a blanket PASS**.
 - Fix path: **P4.5 near-band enrichment** → re-P3 (also fixes P1).
 
-Artifact: `artifacts/v4_zero_p3_20260820.json`.
+Artifacts: `artifacts/v4_zero_p3_20260820.json`；bins `artifacts/v4_zero_p3_20260820_bins.json`.
+
+---
+
+## INFO 2026-08-20 | P1 one_step_ok 补数
+
+Log `artifacts/v4_p1_fidelity_rh_20260820.log` h=0: `wm_mae=0.5817 | mean-base=0.6508` ⇒ **`one_step_ok=True`**. FAIL remains **reward-only** (`beat_frac=0.67`).
 
 ---
 

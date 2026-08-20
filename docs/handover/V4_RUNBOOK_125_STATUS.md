@@ -5,7 +5,9 @@
 - **HEAD**: `39dee46`
 - **current step**: **真·P4.5** = 近带 enrichment + `S_open:S_blocked≈1:1` 重采 → WM 重训 → re-P3 → re-P1 → re-P4 → P7* → P8
 - **P3**: **`authoritative=false` / `insufficient_support`**（⓪b `n_frames=95<100`）
-- **P4**: provisional（⓿e FAIL）— re-run after P4.5
+  - 补数齐：`near_px_total=790055`；`max_frame_frac=0.0416`；⓪c bins `(0,1.5]` p90=1.978 / `(1.5,3]` p90=0.380；⓪f(3)/(4) 全表见 RUNBOOK §2.1；bins JSON `artifacts/v4_zero_p3_20260820_bins.json`
+- **P1**: FAIL reward-only；**`one_step_ok=True`**（h=0：0.5817 < 0.6508）
+- **P4**: provisional（⓿e FAIL / 记 `infeasible`）— re-run after P4.5 + ⓿e fix
 - **P4.5 prior**: `wm_ckpt_p45_20260820` on **old** corpus — **does not count**
 - **enable_policy_update**: false
 - **R-16**: **(B)** — P8 blocked until ⓪/⓿/P1 authoritative re-pass
