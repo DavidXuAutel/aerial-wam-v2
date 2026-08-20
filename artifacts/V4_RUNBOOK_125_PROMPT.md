@@ -1,62 +1,51 @@
-# V4 RUNBOOK 125 — continue through P8
+# V4 RUNBOOK 125 — RESUME through P8 (restart 2026-08-20 evening)
 
 You are on **4090 host** `cursor-125` / `10.229.20.125`, repo `~/aerial-wam-v2`.
 
+## Why restart
+
+Previous agent exited ~15:59 while STATUS still said “P0c formal running”.
+**P0c formal actually finished ~16:51** and left artifacts. No new commits after `0c37bad`. Chain stalled. You must resume and **not re-do finished work** unless verification fails.
+
 ## Mission
 
-1. `git fetch origin && git reset --hard origin/main` (Mac just pushed spare sign-off).
-2. `source experiments/aerial/scripts/env_4090.sh` when running Aerial / gate / renderer work.
-3. Execute `experiments/aerial/RUNBOOK_v4.md` §1 **in order** from current tip through **P8 inclusive**.
+1. `git fetch origin && git reset --hard origin/main` (then continue from tip).
+2. `source experiments/aerial/scripts/env_4090.sh` for Aerial / gate / renderer.
+3. Execute `experiments/aerial/RUNBOOK_v4.md` §1 **in order through P8 inclusive**.
 4. Authority = `docs/handover/V4_CRITERIA_REFREEZE_PROPOSAL_20260818.md` §4.6. Do not invent criteria.
 
-## Human decisions already signed (do not re-ask)
+## Already done (verify, then mark DONE in STATUS — do not re-run unless broken)
 
-- **§3 item 11**: `--spare-count = 16` for `target_n = 16` (option 1, 2026-08-20).
-- Use this on all authoritative / formal gate runs that need spare refill.
-- P3.5 = N/A. P5 = deferred. `enable_policy_update` stays **false** forever in this mission.
-- Do **not** push GitHub. Push **origin only** (`cursor-125` bare).
-- Franka / Desk API / `10.229.66.70`: never touch.
+| Step | Evidence |
+|---|---|
+| **P0c harness** | commits `e28baa9` + tests |
+| **P0c formal** `--target-n 16 --spare-count 16` | `experiments/aerial/rl/artifacts/v4_gate_p0c_formal_20260820/` — spare manifest; `v4_partial_{1,4}_*.json` with `n_scored=16`, `authoritative=true`, counters `n_invalid_spawn` / `n_none_returned` / `n_pair_broken`. Log: `logs/v4_p0c_formal_20260820.log` (ended ~16:51). Signal ①/④ `ok=False` is **expected** on old actor — does **not** undo P0c PASS. |
+| **P1** V1-② RH WM | **FAIL** logged (`reward beat_frac=0.67`, `p_coll AUROC=0.091`); no §6 stop → continue |
+| **P2 wiring** | `4e76865` — `wm_out` into `should_override` (head still weak) |
+| **P6** | `4e76865` — planner `action_limits = body_delta_limits(1/step_hz)` |
+| **§3 #11** | `--spare-count=16` signed |
 
-## Code-update rule (mandatory — Mac chat is waiting)
+## First actions after start
 
-Whenever you **change code or docs**:
+1. Update `docs/handover/V4_RUNBOOK_125_STATUS.md`: P0c formal **DONE**; clear stale “in flight”; set **current step = P3** (next unfinished).
+2. Commit + **push origin** that STATUS fix immediately (Mac chat is watching).
+3. Proceed: **P3 → (skip P3.5) → P4 → P4.5 → (defer P5) → P7-diag → freeze → P7-accept → P8**.
+4. Stay alive across long jobs: if you start a long H100/125 job, write STATUS with PID/log path, push, then wait/monitor; on completion update STATUS again and push. **Do not exit** while the chain is unfinished unless **BLOCKED**.
 
-1. Commit on `main` with a clear message.
-2. `git push origin main`.
-3. Update `docs/handover/V4_RUNBOOK_125_STATUS.md` (HEAD, step, checklist).
-4. If the change is material (behavior / API / gate fields), also append a short note under `artifacts/V4_RUNBOOK_125_ISSUES.md` as `INFO | code update` with commit SHA + files, then push — so the Mac conversation can pull and review.
+## Signed / fixed rules
 
-Do **not** leave code only on the 125 working tree.
-
-## Blocker rule
-
-On any unsigned §3 item, missing machine access, FAIL that hits RUNBOOK §6 stop, or ambiguity you must not invent:
-
-1. Append `artifacts/V4_RUNBOOK_125_ISSUES.md` (severity, evidence, options).
-2. Set STATUS **BLOCKED**.
-3. Commit + **push origin**.
-4. Stop that branch of work; do not guess policy.
-
-## Stop rules (RUNBOOK §6)
-
-- **P7-accept S_blocked FAIL** ⇒ do **not** enter P8; write STATUS + ISSUES; push; stop.
-- Never lower n, never flip flags to force PASS, never warm-start failed actor ckpts for P8.
+- `--spare-count = 16` for `target_n = 16`.
+- P3.5 = N/A. P5 = deferred. `enable_policy_update` = **false** always.
+- Push **origin only** (no GitHub). No Franka / Desk / `10.229.66.70`.
+- Code/docs changes → commit + push origin + STATUS; material changes also `INFO | code update` in `artifacts/V4_RUNBOOK_125_ISSUES.md`.
+- Blockers → ISSUES + STATUS **BLOCKED** + push + stop (no inventing `k` / primary list / OC rules / freeze numerics).
+- **P7-accept S_blocked FAIL** ⇒ do not enter P8; ISSUES + push + stop (§6).
 
 ## Machine split
 
-- **125**: renderer / gate / planner / closed-loop / P0c verify / P6 / P7* / P8 gate.
-- **H100** (`ssh h100-25` from 125): P1 / P2 training / P3 offline / P4 / P4.5 / P8 actor train.
-- Sync H100 via **git bundle from 125**, not ad-hoc scp hot patches.
+- **125**: gate / planner / closed-loop / P7* / P8 gate.
+- **H100** (`ssh h100-25`): P3 offline / P4 / P4.5 / P8 train. Sync via **git bundle from 125**.
 
-## Start here
+## Deliverables
 
-1. Mark §3 #11 resolved in STATUS; close the old ISSUES blocker (already done on tip — verify).
-2. Finish **P0c** formal verification with `--spare-count 16` (counters on disk, spare manifest, no n-lowering).
-3. Proceed **P1 → P2 → P3 → (skip P3.5) → P4 → P4.5 → (skip/defer P5) → P6 → P7-diag → freeze `[lo,hi]`/θ/k per RUNBOOK → P7-accept → P8**.
-4. For §3 blanks that are **data-fill only** after measurement: fill + timestamp. For **human-policy** blanks (`k`, primary list, OC seed rules, freeze-list numerics you cannot derive): **BLOCKED → ISSUES → push**.
-
-## Deliverables continuously
-
-- `docs/handover/V4_RUNBOOK_125_STATUS.md`
-- `artifacts/V4_RUNBOOK_125_ISSUES.md` (blockers + INFO code-update notes)
-- Commits pushed to **origin** after every meaningful step
+- Continuous STATUS + ISSUES updates pushed to origin after every step boundary.
