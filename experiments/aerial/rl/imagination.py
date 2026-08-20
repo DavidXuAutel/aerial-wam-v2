@@ -34,6 +34,7 @@ from experiments.aerial.rl.goal_features import (
     BODY_VEL_DIM,
     GOAL_REL_DIM,
     advance_goal_rel_body,
+    analytic_progress,
 )
 from experiments.aerial.rl.reward import RewardConfig, reward_terms
 
@@ -150,9 +151,13 @@ def imagine(
             zs[b, t + 1] = np.asarray(out.z_next, dtype=np.float64).reshape(latent_dim)
             acts[b, t] = a
             pcs[b, t] = out.p_coll
-            progs[b, t] = out.progress
+            if use_aux:
+                prog = analytic_progress(goal_rel_t[b], a[:3])
+            else:
+                prog = out.progress
+            progs[b, t] = prog
             maneuver = float(np.linalg.norm(a))
-            r = reward_terms(out.progress, out.p_coll, maneuver, cfg)["reward"]
+            r = reward_terms(prog, out.p_coll, maneuver, cfg)["reward"]
             # Mirror NavigationReward.step: arrival earns the same success bonus,
             # so imagined and real returns are on one scale (spec reward §4.5).
             if getattr(out, "arrived", False):

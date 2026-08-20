@@ -233,3 +233,30 @@ A.2 仍 `b_gt_c`。A.4 字面 **`pi_gt_fwdmax`**（59.09 > 47.78）—— π 现
 | (c) max retreat | +9.28 | −15.00 | −0.62（RH 均值 +0.62，**反号**） |
 
 形状：t0–t4 近校准；**t≈6 起 RH 6–9 m/步**，几何仍 ~1。判定 **`sign_reopen_rh_progress_head`**。曲线未近 1:1 ⇒ **不**回头查 WM/z0。改码未动。
+
+---
+
+## R1 analytic progress + 从零重训 AC（2026-08-18）
+
+§5 已签 R1；`imagination.py` aux path progress = `analytic_progress(g,a[:3])`。校准复跑（**旧 C2 ckpt**）**PASS** — 全臂 ratio **1.00**。H100 300 iter **`v4_ac_ckpt_20260818_c2_analytic_progress`**（`tanh_bounded_v1`，无 warm-start）。
+
+### 训后 §A（analytic ckpt；**不覆盖**上文 C2 训后表）
+
+| Arm | Σ progress | λ G0 | n_clip | ‖goal‖ 30→ |
+|---|---|---|---|---|
+| (a) analytic π | +5.72 | **−0.72** | **0** | 24.3 |
+| (b) max forward | +14.99 | +4.77 | **0** | 15.0 |
+| (c) max retreat | −15.00 | −16.17 | **0** | 45.0 |
+
+JSON：`artifacts/v4_imagine_return_decomp_analytic_a23_20260818.json` / `..._a4_...`。
+
+### 125 ① 再 gate + diag
+
+| run | gate n | actor mean | heur | ① | ④ |
+|---|---|---|---|---|---|
+| seed=0 | 5 | **−2.65** | 7.89 | FAIL | PASS 0.143 vs 0.429 |
+| seed=1 | 5 | **−1.38** | 9.85 | FAIL | PASS 0.167 vs 0.400 |
+
+`v4_progress_diag.py`：mean cos(first_act) **+0.982 / +0.972**；imagΣG **+4.34 / +4.17**（C2 对照 ~85）；**不签** §4 In 表。详见 [`V4_RH_REOPEN_125_STATUS.md`](V4_RH_REOPEN_125_STATUS.md)。
+
+`enable_policy_update` 仍 **false**。
