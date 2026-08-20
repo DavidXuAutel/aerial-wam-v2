@@ -2,8 +2,8 @@
 
 - **date**: 2026-08-20
 - **state**: ACTIVE — agent restarted; resume at P3
-- **HEAD**: (agent fills after first push)
-- **current step**: P3 (P0c formal verified DONE offline)
+- **HEAD**: edeca9e (P3 harness landing next)
+- **current step**: P3 in flight (H100 offline eval)
 - **enable_policy_update**: false (must remain)
 - **signed**: `--spare-count = 16` (§3 item 11, option 1)
 
