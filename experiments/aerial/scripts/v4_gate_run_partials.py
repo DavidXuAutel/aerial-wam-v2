@@ -64,13 +64,13 @@ def run_rollout4090(args: argparse.Namespace) -> int:
 
     from experiments.aerial.rl import v0_metrics as v0m
     from experiments.aerial.rl import v0_rollout_eval as rollout
+    from experiments.aerial.rl import v4_episode_pool as epool
     from experiments.aerial.rl import v4_metrics
     from experiments.aerial.rl._v0_gate import _obstacle_candidate_positions
     from experiments.aerial.rl.actor_critic import LatentActorCritic, LatentActorDeployPolicy
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.dynamics import StubLatentDynamics
     from experiments.aerial.rl.reward import RewardConfig
-    from experiments.aerial.rl.safety import DepthTauShield
     from experiments.aerial.rl.tau_predictor import make_tau_predictor
     from experiments.aerial.rl.train_rl import HeuristicPolicy, _build_env, load_torch_dynamics
 
@@ -78,6 +78,14 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     if not out_dir.is_absolute():
         out_dir = root / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.spare_count is None:
+        print(
+            "[v4-run] --spare-count is required (RUNBOOK §3 item 11; "
+            "see artifacts/V4_RUNBOOK_125_ISSUES.md)",
+            file=sys.stderr,
+        )
+        return 2
 
     cfg_path = root / args.config
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
@@ -121,10 +129,13 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         return 2
 
     heuristic = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
+    target_n = int(args.target_n)
+    spare_count = int(args.spare_count)
+    scan_n = target_n + spare_count
     cand, cand_yaw = _obstacle_candidate_positions(rollout_ds, min_altitude_m=0.0)
     starts, scan_diag = rollout.make_obstacle_facing_episodes(
         env,
-        int(args.n_episodes),
+        scan_n,
         cand,
         seed=int(args.seed),
         candidate_yaws=cand_yaw,
@@ -138,7 +149,20 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         max_scans=1000,
         log_every=20,
     )
-    if not starts:
+    primary, spare, spare_manifest = epool.split_primary_spare(
+        starts,
+        target_n=target_n,
+        spare_count=spare_count,
+        layer="gate",
+        seed=int(args.seed),
+    )
+    manifest_path = out_dir / "p0c_spare_manifest.json"
+    spare_manifest.write(manifest_path)
+    print(
+        f"[v4-run] P0c spare manifest: primary={len(primary)} spare={len(spare)} "
+        f"target_n={target_n} → {manifest_path}"
+    )
+    if not primary:
         s1 = {"ok": False, "reason": "no obstacle-facing starts", "scan": scan_diag}
         partial1 = {"partial": True, "signals_requested": ["1"], "ok": False, "signals": {"1": s1}}
         _emit(out_dir / _PARTIAL1, partial1)
@@ -211,12 +235,15 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         dynamics, actor_ac, deterministic=not bool(args.actor_stochastic),
     )
 
-    # --- V4-① progress vs Heuristic (same harness as V0-② pairing) ---
-    prog = rollout.run_progress_eval(
+    # --- V4-① progress vs Heuristic (P0c spare refill + drop counters) ---
+    prog, prog_pool = epool.run_progress_eval_p0c(
         env,
         actor_policy,
         heuristic,
-        starts,
+        primary,
+        spare,
+        spare_manifest,
+        target_n=target_n,
         max_steps=int(args.max_steps),
         reward_cfg=reward_cfg,
     )
@@ -231,7 +258,14 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     s1["heuristic_final_dists"] = prog["random_final_dists"]
     s1["scan"] = scan_diag
     s1["actor_ckpt"] = str(actor_ckpt)
-    s1["n_starts_scored"] = len(prog["policy_progress_sums"])
+    s1["n_starts_scored"] = prog_pool.n_scored
+    s1["target_n"] = target_n
+    s1["authoritative"] = bool(prog_pool.authoritative)
+    s1["p0c"] = prog_pool.drop_summary()
+    s1["p0c"]["spare_manifest"] = str(manifest_path)
+    if not prog_pool.authoritative:
+        s1["ok"] = False
+        s1.setdefault("reason", f"n_scored={prog_pool.n_scored} < target_n={target_n}")
 
     partial1 = {
         "partial": True,
@@ -258,68 +292,36 @@ def run_rollout4090(args: argparse.Namespace) -> int:
         use_gt_depth=False,
     )
 
-    def _run_arm(
+    def _run_arm_p0c(
         policy: Any,
         *,
         shield_on: bool,
         label: str,
     ) -> Dict[str, Any]:
-        collided_on: List[List[bool]] = []
-        near_on: List[List[bool]] = []
-        near_off: List[List[bool]] = []
-        collided_off: List[List[bool]] = []
-        drop_stats: Dict[str, int] = {}
-        for epi in starts:
-            if hasattr(policy, "reset"):
-                policy.reset()
-            if hasattr(tau_pred, "reset"):
-                tau_pred.reset()
-            shield = None
-            if shield_on:
-                shield = DepthTauShield(
-                    min_depth_m=shield_trigger_m,
-                    min_tau_s=float(cfg.get("safety", {}).get("min_tau_s", 1.0)),
-                )
-            ep_on = rollout._run_one_resilient(
-                env,
-                policy,
-                epi,
-                max_steps=int(args.max_steps),
-                reward_cfg=reward_cfg,
-                shield=shield,
-                depth_predictor=predictor if shield is not None else None,
-                tau_predictor=tau_pred if shield is not None else None,
-                drop_stats=drop_stats,
+        kwargs = dict(
+            env=env,
+            policy=policy,
+            depth_predictor_on=predictor,
+            primary=primary,
+            spare=spare,
+            manifest=spare_manifest,
+            target_n=target_n,
+            near_collision_depth_m=float(thr.near_collision_depth_m),
+            shield_trigger_depth_m=shield_trigger_m,
+            max_steps=int(args.max_steps),
+            reward_cfg=reward_cfg,
+        )
+        if shield_on:
+            masks, pool = epool.run_shield_eval_p0c(
+                **kwargs, tau_predictor=tau_pred, both_arms_unshielded=False,
             )
-            if ep_on is None:
-                continue
-            m_on = rollout._episode_masks(
-                ep_on, near_collision_depth_m=float(thr.near_collision_depth_m),
+        else:
+            masks, pool = epool.run_shield_eval_p0c(
+                **kwargs, tau_predictor=None, both_arms_unshielded=True,
             )
-            collided_on.append(m_on["collided"])
-            near_on.append(m_on["near"])
-
-            if hasattr(policy, "reset"):
-                policy.reset()
-            ep_off = rollout._run_one_resilient(
-                env,
-                policy,
-                epi,
-                max_steps=int(args.max_steps),
-                reward_cfg=reward_cfg,
-                shield=None,
-                drop_stats=drop_stats,
-            )
-            if ep_off is None:
-                collided_off.append([])
-                near_off.append([])
-                continue
-            m_off = rollout._episode_masks(
-                ep_off, near_collision_depth_m=float(thr.near_collision_depth_m),
-            )
-            collided_off.append(m_off["collided"])
-            near_off.append(m_off["near"])
-
+        collided_on = masks["collided_on"]
+        near_on = masks["near_coll_on"]
+        near_off = masks["near_coll_off"]
         hard_rate = _episode_collision_rate(collided_on)
         near_on_rate = _frame_near_coll_rate(near_on)
         near_off_rate = _frame_near_coll_rate(near_off)
@@ -328,20 +330,25 @@ def run_rollout4090(args: argparse.Namespace) -> int:
             if np.isfinite(near_on_rate) and np.isfinite(near_off_rate) and near_off_rate > 0
             else float("nan")
         )
+        p0c_summary = pool.drop_summary()
+        p0c_summary["spare_manifest"] = str(manifest_path)
         return {
             "label": label,
             "collision_rate": hard_rate,
             "near_coll_rate_on": near_on_rate,
             "near_coll_rate_off": near_off_rate,
             "near_coll_rate_ratio": ratio,
-            "n_episodes": len(collided_on),
-            "drop_stats": drop_stats,
+            "n_episodes": pool.n_scored,
+            "target_n": target_n,
+            "authoritative": bool(pool.authoritative),
+            "p0c": p0c_summary,
             "shield_trigger_m": shield_trigger_m if shield_on else None,
+            "depth_steps": masks.get("depth_steps", 0),
         }
 
-    v4_on = _run_arm(actor_policy, shield_on=True, label="v4_actor_shield_on")
-    v4_off = _run_arm(actor_policy, shield_on=False, label="v4_actor_shield_off")
-    v1_on = _run_arm(heuristic, shield_on=True, label="v1_heuristic_shield_on")
+    v4_on = _run_arm_p0c(actor_policy, shield_on=True, label="v4_actor_shield_on")
+    v4_off = _run_arm_p0c(actor_policy, shield_on=False, label="v4_actor_shield_off")
+    v1_on = _run_arm_p0c(heuristic, shield_on=True, label="v1_heuristic_shield_on")
 
     v4_coll = float(v4_on["collision_rate"])
     if args.v1_coll_rate is not None:
@@ -370,6 +377,19 @@ def run_rollout4090(args: argparse.Namespace) -> int:
     s4["scan"] = scan_diag
     s4["actor_ckpt"] = str(actor_ckpt)
     s4["depth_ckpt"] = str(depth_ckpt)
+    s4["target_n"] = target_n
+    s4["authoritative"] = bool(
+        v4_on.get("authoritative")
+        and v4_off.get("authoritative")
+        and v1_on.get("authoritative")
+    )
+    s4["p0c"] = v4_on.get("p0c")
+    if not s4["authoritative"]:
+        s4["ok"] = False
+        s4.setdefault(
+            "reason",
+            f"n_scored={v4_on.get('n_episodes')} < target_n={target_n}",
+        )
 
     partial4 = {
         "partial": True,
@@ -438,7 +458,24 @@ def main() -> int:
         "--tau-ckpt",
         default="experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt",
     )
-    p.add_argument("--n-episodes", type=int, default=8)
+    p.add_argument(
+        "--target-n",
+        type=int,
+        default=16,
+        help="frozen n per layer (§4.6.1; do not lower)",
+    )
+    p.add_argument(
+        "--spare-count",
+        type=int,
+        default=None,
+        help="pre-scanned spare pool size (§3 item 11; required for rollout4090)",
+    )
+    p.add_argument(
+        "--n-episodes",
+        type=int,
+        default=None,
+        help="deprecated: use --target-n + --spare-count",
+    )
     p.add_argument("--max-steps", type=int, default=200)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--shield-trigger-m", type=float, default=1.5)
