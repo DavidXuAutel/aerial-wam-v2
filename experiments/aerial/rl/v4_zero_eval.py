@@ -220,9 +220,16 @@ def clearance_sweep(
             row["p_dhat_false_trigger"] = round(
                 float(np.mean(dhat_fov[m] < thr.trigger_m)), 4
             )
-            margin = gt_fwd[m] / np.clip(v_fwd[m], 1e-6, None)
+            margin = gt_fwd / np.clip(v_fwd, 1e-6, None)
             need = _TAU_MARGIN_FACTOR * thr.min_tau_s
-            tau_m = m & np.isfinite(tau_hat) & np.isfinite(gt_fwd) & np.isfinite(v_fwd) & (v_fwd >= 0.05) & (margin >= need)
+            tau_m = (
+                m
+                & np.isfinite(tau_hat)
+                & np.isfinite(gt_fwd)
+                & np.isfinite(v_fwd)
+                & (v_fwd >= 0.05)
+                & (margin >= need)
+            )
             if np.any(tau_m):
                 row["p_tau_false_trigger"] = round(
                     float(np.mean(tau_hat[tau_m] < thr.min_tau_s)), 4
