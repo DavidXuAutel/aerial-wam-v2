@@ -53,9 +53,41 @@ Harness `9f0cc1f`. ⓿a–d PASS (ρ median 0.963); **⓿e FAIL** (`median_rel_l
 
 ---
 
+## BLOCKED | freeze | 2026-08-20 (post P4.5 + P7-diag)
+
+**Cannot freeze `[lo,hi]` / `θ` / `k` — agent must not invent.**
+
+| input | value | source |
+|-------|-------|--------|
+| `Q_0.25(C_P7)` | **4.859 m** | `artifacts/v4_p7_diag_p45_20260820.json` |
+| ⓪f δ hint `lo` | **≈5.25 m** (`suggested_lo_clearance_m`) | `artifacts/v4_zero_p3_p45_20260820.json` |
+| `hi` cap | `min(Q_0.25, 8 m)` = **4.859 m** | §4.6 |
+| **Conflict** | **`lo > hi`** (5.25 > 4.86) | no feasible band without human re-freeze |
+
+Still unsigned (§3): **`k`**, **primary/secondary list**, **OC curves + seed arbitration**.
+
+⇒ **P7-accept / P8 not started.** Human must sign blanks or re-freeze band definition.
+
+---
+
+## INFO | P4.5 complete | 2026-08-20
+
+Corpus `dataset_v0_p45_balanced_20260820`: **34/35 usable** (24 blocked / 11 open — open scan under 1:1 target).
+
+WM `wm_ckpt_p45_balanced_20260820/wm_step_500.pt`: `_wm_train_validate` **PASS** (500 steps).
+
+| re-run | result | artifact |
+|--------|--------|----------|
+| P3 | ⓪b **PASS** (150 frames); ⓪c/⓪d FAIL | `artifacts/v4_zero_p3_p45_20260820.json` |
+| P1 | **FAIL** reward `beat_frac=0.67` | `logs/v4_p1_p45_20260820.log` |
+| P4 | ⓿a–d PASS; ⓿e FAIL `rel_l2=1.39` | `artifacts/v4_rho_p4_p45_balanced_20260820.json` |
+| P7-diag | 16 scored; planner arrival **0/16** on diag set | `artifacts/v4_p7_diag_p45_20260820.json` |
+
+---
+
 ## BLOCKED | freeze prerequisites | §3 #3 / #7 / #8
 
-Still unsigned: `k`, primary list, OC seed rules. Relevant **after** authoritative ⓪ + P7-diag — not a reason to skip P4.5.
+Still unsigned: `k`, primary list, OC seed rules. **Plus** mechanical `lo>hi` conflict above.
 
 ---
 

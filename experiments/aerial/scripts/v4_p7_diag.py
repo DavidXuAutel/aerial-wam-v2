@@ -165,7 +165,7 @@ def run_p7_diag(args: argparse.Namespace) -> Dict[str, Any]:
 
     blocked_eps, blocked_scan = rollout.make_obstacle_facing_episodes(
         env,
-        int(args.target_n) * 2,
+        int(args.target_n),
         cand,
         seed=int(args.seed),
         candidate_yaws=cand_yaw,
@@ -184,49 +184,9 @@ def run_p7_diag(args: argparse.Namespace) -> Dict[str, Any]:
         (-1, "blocked", epi) for epi in blocked_eps
     ]
 
-    open_eps: List[Dict[str, Any]] = []
-    open_rej = {"spawn_collision": 0, "too_close": 0, "not_open_ahead": 0, "probe_blocked": 0}
-    rng = np.random.default_rng(int(args.seed) + 1)
-    idx = rng.permutation(len(cand))
-    for ci in idx.tolist():
-        if len(open_eps) >= int(args.target_n):
-            break
-        pos = np.asarray(cand[ci], dtype=np.float64).reshape(3)
-        yaw = float(cand_yaw[ci]) if cand_yaw is not None else 0.0
-        goal = pos + np.array(
-            [goal_dist * math.cos(yaw), goal_dist * math.sin(yaw), 0.0], dtype=np.float64
-        )
-        epi = {"pos": np.stack([pos, goal]), "yaw": np.array([yaw, yaw], dtype=np.float64)}
-        try:
-            obs = env.reset(epi)
-        except Exception:  # noqa: BLE001
-            continue
-        if getattr(obs, "collided", False):
-            open_rej["spawn_collision"] += 1
-            continue
-        depth = getattr(obs, "depth", None)
-        if depth is None:
-            continue
-        fwd = rollout._forward_min_depth(depth, center_frac=0.3)
-        if fwd < 3.0:
-            open_rej["too_close"] += 1
-            continue
-        if fwd <= 25.0:
-            open_rej["not_open_ahead"] += 1
-            continue
-        layer = _probe_layer(
-            env, heuristic, epi, max_steps=int(args.probe_steps), arrival_m=arrival_m, reward_cfg=reward_cfg
-        )
-        if layer != "open":
-            open_rej["probe_blocked"] += 1
-            continue
-        open_eps.append(epi)
-
-    labeled_open: List[Tuple[int, str, Dict[str, Any]]] = [
-        (-1, "open", epi) for epi in open_eps
-    ]
     blocked = labeled_blocked
-    open_ = labeled_open
+    open_: List[Tuple[int, str, Dict[str, Any]]] = []
+    open_rej = {"skipped": "P7-diag only scores S_blocked for C_P7"}
     rng_diag = np.random.default_rng(int(args.diag_seed))
     diag_pick = (
         [blocked[i] for i in rng_diag.choice(len(blocked), size=min(int(args.target_n), len(blocked)), replace=False)]
