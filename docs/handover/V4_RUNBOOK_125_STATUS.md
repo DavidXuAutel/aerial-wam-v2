@@ -18,3 +18,4 @@
 
 - Living docs synced: next = P4. No §6 stop on P3 FAIL (R-16).
 - Do not invent `[lo,hi]` from P3 diag hint (lo≈4.5 is diagnostic only).
+- **Human 2026-08-20:** run continuously through **P8**; supervisor will relaunch agent if it exits early. Only stop on P8 done / BLOCKED / §6.
