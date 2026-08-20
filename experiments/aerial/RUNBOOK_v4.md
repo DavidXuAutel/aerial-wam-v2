@@ -16,7 +16,7 @@
 | **merge** | `⓪ ∧ ⓿ ∧ ①′ ∧ ④′`，其中 `①′ = S_open primary 全过 ∧ S_blocked primary 全过` |
 | **n** | 每层 **16**（合计 32）；不足 ⇒ `authoritative=false`，**禁止降 n** |
 | **评测构型** | **shield-on 单一构型**，罩 = **现行第 (4) 代**（latch + 有界状态反馈后退）。**v5 不启用**，`P3.5` 本周期 **N/A** |
-| **当前状态** | 判据已签字冻结；**下一步 = P3**。已完成：P0 ✅ / **P0c ✅**（正式跑 n=16 `authoritative=true`）/ **P1 ❌ FAIL**（仅 reward；修 = P4.5 后重跑）/ **P2 接线 ✅**（头 AUROC 仍待 P4.5）/ **P6 ✅**。`enable_policy_update` = **false** |
+| **当前状态** | 判据已签字冻结；**下一步 = P4**。已完成：P0 / **P0c** / **P2 接线** / **P6**；**P1 ❌**（reward）；**P3 ❌**（⓪b/⓪c；⓪f PASS 但 `[lo,hi]` 未冻）。`enable_policy_update` = **false** |
 | **主张范围** | 只主张「**不退化 + 安全**」，**不主张「想象 AC 有增益」**；到达能力**仅覆盖机体前向扇区**；「主动终止」**不测** |
 
 **机器分工**（不再逐次确认）：**8×H100** `a25689@10.239.121.25:31126` = 训练 / 数据 / 离线诊断；**4090** `10.229.20.125:41451` = **纯渲染**（gate、探针、planner、闭环 rollout 都在这跑）。
@@ -31,9 +31,9 @@
 | **P0c** | **修评测期丢局**（`v4_gate_run_partials.py` 的 `_run_one_resilient` 里 `if ep_on is None: continue` 吞局） | 125 | ①三互斥计数器落盘 `n_invalid_spawn` / `n_none_returned` / `n_pair_broken`；②用**预留 spare 起点**补扫到每层 16（spare 清单与消耗顺序**跑前落盘**，禁临时新采）；③仍不足 ⇒ `authoritative=false` **且必须报三计数器**；④**禁止用降 n 解决** | ✅ **DONE（2026-08-20）** — harness `e28baa9`；正式跑 `v4_gate_p0c_formal_20260820/`（`--target-n 16 --spare-count 16`）。**①**：`n_scored=16` `authoritative=true` spare_consumed=**8** / invalid=**3** / none=**0** / pair_broken=**5**。**④ on**：n=16 auth spare=**7** / inv=**3** / none=**0** / pair=**4**；**④ off**：spare=**9** / inv=**2** / none=**0** / pair=**7**；**④ v1**：spare=**11** / inv=**10** / none=**0** / pair=**1**。旧 actor 上 ①/④ 信号 `ok=False` **不否定** P0c（机制 PASS） |
 | **P1** | 在 V4 实际用的 RH 线 WM 上重跑 **V1-②** + 校准子项 | H100 | V1-② 判据。注：「RH 头 forward ratio ∈ [0.8,1.2]」**已降为诊断**（R1 后 actor/aux 不再消费该读出） | ❌ **FAIL（2026-08-20）** — `wm_ckpt_r60_rh_20260816` step=1000，held-out 12/48 尾部，log `artifacts/v4_p1_fidelity_rh_20260820.log`。**按 §1.2.2（`v1_metrics.check_wm_fidelity`）重记**：reward ❌ `beat_frac=0.67 < 0.80`（`growth_ok=True`；`one_step_ok=True` — h=0 wm_mae **0.5817 <** mean-base **0.6508**）／p_coll **`null` N/A**（`coll_traj_pos=1 < 3`，raw AUROC 0.091 **不是**权威 FAIL）／done **PASS 但 vacuous**（`acc=0.994 == majority`）／recon+latent ✅（19.89 ≤ 25.0）。⇒ **FAIL 完全且仅由 reward 支撑**。修复走 **P4.5**（重训后重跑 P1），不跳过 |
 | **P2** | **`p_coll` 复活** | H100 + 125 | 头 AUROC 达标 **不足以**收工：**collector 与 V4 gate 都必须以 `should_override(obs, wm_out=…)` 调用**。未接线 ⇒ ⓪f 重跑仍只测 D̂/τ 两通道 | ✅ **接线 DONE（`4e76865`）** — collector/gate 已传 `wm_out`。头侧：P1 上 coll **N/A**（pos<3）；AUROC claimed 仍待合适 held-out / **P4.5** 重训后重证 |
-| **P3** | **V4-⓪ v2**（⓪a–⓪f，见 §2.1） | H100 离线 | **⓪f 是 `[lo,hi]` 的唯一合法依据**；P3 不出 ⓪f ⇒ 5ab 分叉无法裁 | 🔄 **IN FLIGHT（2026-08-20）** — harness `663d8bb`；H100 retry after `8a4e851`（tau mask broadcast）；log `logs/v4_p3_zero_20260820.log` → `artifacts/v4_zero_p3_20260820.json` |
+| **P3** | **V4-⓪ v2**（⓪a–⓪f，见 §2.1） | H100 离线 | **⓪f 是 `[lo,hi]` 的唯一合法依据**；P3 不出 ⓪f ⇒ 5ab 分叉无法裁 | ❌ **FAIL（2026-08-20）** — `artifacts/v4_zero_p3_20260820.json`（48 ep / 6005 frames；harness `663d8bb`/`8a4e851`）。⓪a PASS（median AbsRel **0.123**）／⓪b FAIL（`n_frames_with_near_px=95 < 100`）／⓪c FAIL（p90 AbsRel **1.38 > 0.50**）／⓪d PASS（miss=0）／⓪e PASS／⓪f PASS（outer median 0.074 / p90 0.259；`band_lo_hi=null`；diag 建议 lo≈4.5）。无 §6 下车站（R-16）⇒ **继续 P4**；`[lo,hi]` **仍未冻**（须等 P7-diag + 正式 5ab） |
 | **P3.5** | ~~shield v5 回归验证~~ | — | **本周期 N/A**（5am / W2：v5 降 fallback，「不动 shield」）。`release_step[]` / `n_release` 仍落盘、无 v5 时恒 0 | 🚫 **N/A** |
-| **P4** | **V4-⓿ v2**（想象排序一致性） | H100 + 125 | 含 ⓿d（真实侧 G 写死 = analytic）、⓿e（**teleport 能否复现同一 `z0` 须先实测**） | ⬜ |
+| **P4** | **V4-⓿ v2**（想象排序一致性） | H100 + 125 | 含 ⓿d（真实侧 G 写死 = analytic）、⓿e（**teleport 能否复现同一 `z0` 须先实测**） | ⬜ **下一步** |
 | **P4.5** | 语料重采（`S_open : S_blocked ≈ 1:1`）+ WM 重训 ⇒ **重跑 P1 / P4** | H100 + 125 | 否则 P1 给一个注定被替换的 WM 发证 | ⬜ |
 | **P5** | shield 触发深度 3.0 → 2.0 裁定 | — | **暂缓**；G1 之后其两个理由都失效 ⇒ **很可能完全不必要**；方向也可能相反（由撞点落盘裁定） | ⏸ |
 | **P6** | `planner.action_limits` 夹到 `body_delta_limits(1/step_hz)` | 代码 | 现默认 `None` | ✅ **DONE（`4e76865`）** — `_build_planner` 设 `action_limits = body_delta_limits(1/step_hz)` |
@@ -237,5 +237,6 @@ P5 若改 `min_depth_m` ⇒ **⓪d 与 ⓪f 必须按新 trigger 重测**。
 
 ## 10. 变更记录
 
-- **2026-08-20（实施进度入库）** —— 前提链表与 §0「当前状态」更新为：**P0c / P2 接线 / P6 DONE**；**P1 FAIL**（权威层仅 reward）；**下一步 = P3**。P0c 正式跑数值见 §1 行；`--spare-count=16` 已签（§3 #11）。不改判据 / 不翻 flag。
+- **2026-08-20（P3 FAIL 入库；下一步 = P4）** —— P3 正式结果写入 §0/§1：⓪b/⓪c FAIL，⓪a/d/e/f PASS；`[lo,hi]` 未冻。无 §6 停 ⇒ 续 P4。不改判据 / 不翻 flag。
+- **2026-08-20（实施进度入库）** —— 前提链表与 §0「当前状态」更新为：**P0c / P2 接线 / P6 DONE**；**P1 FAIL**（权威层仅 reward）；**下一步当时 = P3**。P0c 正式跑数值见 §1 行；`--spare-count=16` 已签（§3 #11）。不改判据 / 不翻 flag。
 - **2026-08-20** —— 新建本文件（V4 执行 runbook 干净稿）。**为什么 / 依据**：§5.0 削减签字表 16/16 行已于 2026-08-20 签字冻结，权威判据（§4.6）已无未决二选一 ⇒ 需要一份**只讲怎么执行**的入口，把散在九轮复核里的「跑前必须冻结」（§3）与「必须实测」（§4）**收成两张可勾的清单**。本文件**不新增、不修改任何判据**；一切定义以提案 §4.6 为准。

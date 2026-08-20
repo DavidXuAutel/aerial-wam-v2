@@ -90,7 +90,8 @@
 
 ## 3. 变更记录
 
-- **2026-08-20（**P0c / P2 接线 / P6 实施入库；P1 FAIL 按 §1.2.2 重记**）** — 改了什么：把已跑完步骤写入 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) §0/§1 与本变更记录；**下一步 = P3**。细节：
+- **2026-08-20（**P3 V4-⓪ FAIL 入库；下一步 = P4**）** — 改了什么：登记 H100 离线 P3 结果（`artifacts/v4_zero_p3_20260820.json`，48 ep / 6005 frames；harness `663d8bb` + broadcast fix `8a4e851`）并更新 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md)。子项：⓪a PASS（median AbsRel **0.123**）／⓪b FAIL（near 帧 **95 < 100**）／⓪c FAIL（p90 AbsRel **1.38 > 0.50**）／⓪d PASS／⓪e PASS／⓪f PASS（outer median **0.074** / p90 **0.259**；`band_lo_hi=null`；diag 建议 lo≈4.5 **非冻结**）。`verdict.ok=False`；**无 §6 下车站**（R-16：⓪ FAIL 无预注册停）⇒ **继续 P4**。`[lo,hi]` **仍未冻**（须 ⓪f ∧ P7-diag 后正式 5ab）。不改判据 / 不翻 flag。
+- **2026-08-20（**P0c / P2 接线 / P6 实施入库；P1 FAIL 按 §1.2.2 重记**）** — 改了什么：把已跑完步骤写入 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) §0/§1 与本变更记录；**下一步当时 = P3**。细节：
   - **P0c DONE**：harness `e28baa9`；正式跑 `experiments/aerial/rl/artifacts/v4_gate_p0c_formal_20260820/`（`--target-n 16 --spare-count 16`，spare 已签）。**①** n=16 `authoritative=true` spare_consumed=8 / invalid=3 / none=0 / pair_broken=5；**④ on** spare=7 / inv=3 / none=0 / pair=4；**④ off** spare=9 / inv=2 / none=0 / pair=7；**④ v1** spare=11 / inv=10 / none=0 / pair=1。旧 actor 上 ①/④ `ok=False` **不否定** P0c。
   - **P1 FAIL（权威层）**：ckpt `wm_ckpt_r60_rh_20260816` step=**1000**，held-out **12/48 尾部**；log `artifacts/v4_p1_fidelity_rh_20260820.log`。raw 打印 ≠ §1.2.2：
     - **reward = 真 FAIL**：`beat_frac=0.67 < 0.8`，`growth_ok=True`，`one_step_ok=True`（h=0 wm_mae **0.5817 <** mean-base **0.6508**）。

@@ -1,51 +1,39 @@
-# V4 RUNBOOK 125 — RESUME through P8 (restart 2026-08-20 evening)
+# V4 RUNBOOK 125 — RESUME at P4 (restart 2026-08-20 ~21:30)
 
-You are on **4090 host** `cursor-125` / `10.229.20.125`, repo `~/aerial-wam-v2`.
-
-## Why restart
-
-Previous agent exited ~15:59 while STATUS still said “P0c formal running”.
-**P0c formal actually finished ~16:51** and left artifacts. No new commits after `0c37bad`. Chain stalled. You must resume and **not re-do finished work** unless verification fails.
+You are on **4090** `cursor-125` / `10.229.20.125`, repo `~/aerial-wam-v2`.
 
 ## Mission
 
-1. `git fetch origin && git reset --hard origin/main` (then continue from tip).
-2. `source experiments/aerial/scripts/env_4090.sh` for Aerial / gate / renderer.
-3. Execute `experiments/aerial/RUNBOOK_v4.md` §1 **in order through P8 inclusive**.
-4. Authority = `docs/handover/V4_CRITERIA_REFREEZE_PROPOSAL_20260818.md` §4.6. Do not invent criteria.
+1. `git fetch origin && git reset --hard origin/main`
+2. Execute `experiments/aerial/RUNBOOK_v4.md` from **P4 through P8** (skip finished steps).
+3. Authority = proposal §4.6. Do not invent criteria or freeze `[lo,hi]` from P3 hints.
 
-## Already done (verify, then mark DONE in STATUS — do not re-run unless broken)
+## Already done (do not re-run)
 
-| Step | Evidence |
+| Step | Result |
 |---|---|
-| **P0c harness** | commits `e28baa9` + tests |
-| **P0c formal** `--target-n 16 --spare-count 16` | `experiments/aerial/rl/artifacts/v4_gate_p0c_formal_20260820/` — spare manifest; `v4_partial_{1,4}_*.json` with `n_scored=16`, `authoritative=true`, counters `n_invalid_spawn` / `n_none_returned` / `n_pair_broken`. Log: `logs/v4_p0c_formal_20260820.log` (ended ~16:51). Signal ①/④ `ok=False` is **expected** on old actor — does **not** undo P0c PASS. |
-| **P1** V1-② RH WM | **FAIL** logged (`reward beat_frac=0.67`, `p_coll AUROC=0.091`); no §6 stop → continue |
-| **P2 wiring** | `4e76865` — `wm_out` into `should_override` (head still weak) |
-| **P6** | `4e76865` — planner `action_limits = body_delta_limits(1/step_hz)` |
-| **§3 #11** | `--spare-count=16` signed |
+| P0 / P0c / P2 wiring / P6 | DONE |
+| P1 | FAIL (reward only) |
+| **P3** | **FAIL** — `artifacts/v4_zero_p3_20260820.json`: ⓪a/d/e/f PASS; ⓪b FAIL (95<100 frames); ⓪c FAIL (p90 AbsRel 1.38). `[lo,hi]` **null**. No §6 stop → continue |
 
-## First actions after start
+## Start: P4 = V4-⓿ v2
 
-1. Update `docs/handover/V4_RUNBOOK_125_STATUS.md`: P0c formal **DONE**; clear stale “in flight”; set **current step = P3** (next unfinished).
-2. Commit + **push origin** that STATUS fix immediately (Mac chat is watching).
-3. Proceed: **P3 → (skip P3.5) → P4 → P4.5 → (defer P5) → P7-diag → freeze → P7-accept → P8**.
-4. Stay alive across long jobs: if you start a long H100/125 job, write STATUS with PID/log path, push, then wait/monitor; on completion update STATUS again and push. **Do not exit** while the chain is unfinished unless **BLOCKED**.
+Requirements (RUNBOOK §2.2 / §4):
+- ⓿a/b/c: Spearman ρ median ≥ 0.50 (`n_z0 ≥ 8`), top-1 ≥ 0.50; **no Pearson**; **no mixed horizon**
+- ⓿d: real-side G **hardcoded analytic** (position geometry); imagine side = model
+- ⓿e: **measure** whether AirSim teleport can reproduce the same `z0` — do not assume
 
-## Signed / fixed rules
+Machine split: H100 for offline / train pieces; 125 for any renderer / teleport checks. Sync H100 via **git bundle from 125**.
 
-- `--spare-count = 16` for `target_n = 16`.
-- P3.5 = N/A. P5 = deferred. `enable_policy_update` = **false** always.
-- Push **origin only** (no GitHub). No Franka / Desk / `10.229.66.70`.
-- Code/docs changes → commit + push origin + STATUS; material changes also `INFO | code update` in `artifacts/V4_RUNBOOK_125_ISSUES.md`.
-- Blockers → ISSUES + STATUS **BLOCKED** + push + stop (no inventing `k` / primary list / OC rules / freeze numerics).
-- **P7-accept S_blocked FAIL** ⇒ do not enter P8; ISSUES + push + stop (§6).
+## After P4
 
-## Machine split
+Continue in order: **P4.5 → (defer P5) → P7-diag → freeze (needs human `k` if unsigned) → P7-accept → P8**.  
+P7-accept S_blocked FAIL ⇒ stop (§6), no P8.  
+`enable_policy_update` stays **false**. Push **origin only**.
 
-- **125**: gate / planner / closed-loop / P7* / P8 gate.
-- **H100** (`ssh h100-25`): P3 offline / P4 / P4.5 / P8 train. Sync via **git bundle from 125**.
+## Mandatory reporting
 
-## Deliverables
-
-- Continuous STATUS + ISSUES updates pushed to origin after every step boundary.
+- Update `docs/handover/V4_RUNBOOK_125_STATUS.md` at every step; commit + **push origin**.
+- Code changes → commit + push + `INFO | code update` in `artifacts/V4_RUNBOOK_125_ISSUES.md`.
+- Blockers (unsigned §3 policy blanks you cannot derive) → ISSUES + STATUS **BLOCKED** + push + stop.
+- Stay alive across long jobs: write PID/log in STATUS, push, monitor, then continue. **Do not exit** while P4–P8 unfinished unless BLOCKED.
