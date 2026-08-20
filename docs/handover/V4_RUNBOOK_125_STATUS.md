@@ -26,7 +26,7 @@
 
 | job | PID | log |
 |-----|-----|-----|
-| P4.5 collect | (pending launch) | `logs/v4_p45_collect_20260820.log` |
+| P4.5 collect | **2738010** | `logs/v4_p45_collect_20260820.log` |
 
 ## Notes
 
