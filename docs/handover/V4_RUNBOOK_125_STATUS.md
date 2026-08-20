@@ -1,48 +1,43 @@
 # V4 RUNBOOK 125 STATUS
 
 - **date**: 2026-08-20
-- **state**: **BLOCKED at freeze** — `lo>hi` conflict + §3 #3/#7/#8 unsigned
-- **HEAD**: `c45e781` (+ `fed447c` pending)
-- **current step**: freeze BLOCKED → **no P7-accept / P8**
-- **P3 (post-P4.5)**: ⓪b **PASS** (150 frames); ⓪c/⓪d FAIL; `[lo,hi]=null` — `artifacts/v4_zero_p3_p45_20260820.json`
-- **P1 (post-P4.5)**: **FAIL** reward `beat_frac=0.67`; `one_step_ok=True` — `logs/v4_p1_p45_20260820.log`
-- **P4 (post-P4.5)**: ⓿a–d PASS; **⓿e FAIL** (`rel_l2=1.39`) — `artifacts/v4_rho_p4_p45_balanced_20260820.json`
+- **state**: ACTIVE — **P4.5 补采 in flight** (open 1:1 top-up + near enrich)
+- **HEAD**: `559fe31`
+- **current step**: 补采 → merge → depth/WM retrain → re-P3 / re-P1（⓿e 另修）
+- **P3 (post-P4.5 v1)**: ⓪b **PASS** (150 frames); ⓪c/⓪d FAIL; `[lo,hi]=null` — `artifacts/v4_zero_p3_p45_20260820.json`
+- **P1 (post-P4.5 v1)**: **FAIL** reward `beat_frac=0.67`; `one_step_ok=True`
+- **P4 (post-P4.5 v1)**: ⓿a–d PASS; **⓿e FAIL** (`rel_l2=1.39`) — harness，**不靠补采**
 - **enable_policy_update**: false
-- **R-16**: **(B)** — none of ⓪/⓿/P1 fully authoritative PASS
+- **R-16**: **(B)**
 - **signed**: `--spare-count=16`
 
 ## Checklist
 
 - [x] P0c / P2 wiring / P6
-- [x] **P4.5** — corpus 34 eps + WM `wm_step_500.pt` PASS
-- [x] re-P3 / re-P1 / re-P4
-- [x] **P7-diag** — `C_P7.p25=4.859 m`, n_scored=16
-- [ ] freeze — **BLOCKED** (`lo≈5.25` > `Q_0.25=4.86`; `k`/primary/OC unsigned)
-- [ ] P7-accept / P8 — not started
+- [x] P4.5 v1 — corpus 34 eps (open **11** / blocked **24**) + WM `wm_step_500.pt`
+- [x] re-P3 / re-P1 / re-P4 (v1) — ⓪b 过；⓪c/P1/⓿e 未过
+- [ ] **P4.5 补采** — open top-up + near enrich（本轮）
+- [ ] merge → depth head / WM retrain → re-P3 / re-P1
+- [ ] freeze / P7-accept / P8 — still blocked until gates re-pass
 
 ## Running jobs
 
 | job | PID | log |
 |-----|-----|-----|
-| (none) | — | — |
+| P4.5 top-up (open→near) | **3018192** (phase1) / wrapper **3018181** | `logs/v4_p45_topup_20260820.log` |
 
-## Key artifacts
+## Top-up plan
 
-| step | path |
-|------|------|
-| P4.5 corpus | `experiments/aerial/rl/artifacts/dataset_v0_p45_balanced_20260820/` |
-| WM | `experiments/aerial/rl/artifacts/wm_ckpt_p45_balanced_20260820/wm_step_500.pt` |
-| P3 | `artifacts/v4_zero_p3_p45_20260820.json` |
-| P4 | `artifacts/v4_rho_p4_p45_balanced_20260820.json` |
-| P7-diag | `artifacts/v4_p7_diag_p45_20260820.json` |
+| phase | layer | n | approach | out |
+|-------|-------|--:|----------|-----|
+| 1 | open | 24 | 15 m | `dataset_v0_p45_topup_open_20260820` |
+| 2 | blocked | 24 | 12 m | `dataset_v0_p45_near_enrich_20260820` |
 
-## Freeze blocker (mechanical)
-
-- `Q_0.25(C_P7)` = **4.859 m**
-- ⓪f `suggested_lo_clearance_m` = **5.25 m** (diagnostic only in P3; not frozen)
-- ⇒ **`lo > hi`** under §4.6 rules — human re-freeze or sign required
+Baseline after v1: open:blocked = **11:24**. Phase1 aims ~1:1；phase2 抬近带（服务 ⓪c / depth 重训，不只再堆帧）。
 
 ## Notes
 
-- P7-diag planner arrival **0/16** on S_blocked diag set — if unblocked, P7-accept likely §6 stop.
-- Open corpus layer 11/24 (not 1:1); ⓪b support gate cleared (150 near frames).
+- Harness: `--only-layer` (`559fe31`).
+- ⓪c p90=0.66 / ⓪d miss=0.088 ⇒ **补采后仍须 depth head 重训**，单靠堆语料不够。
+- ⓿e teleport 与补采正交。
+- Freeze 仍 `lo>hi`（diag）；补采不直接解 freeze。

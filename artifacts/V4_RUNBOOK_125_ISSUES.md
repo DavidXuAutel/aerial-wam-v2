@@ -94,3 +94,15 @@ Still unsigned: `k`, primary list, OC seed rules. **Plus** mechanical `lo>hi` co
 ## INFO | code update | 2026-08-20 | `4e76865`
 
 P2 wiring + P6 `action_limits` (see prior note).
+
+---
+
+## INFO | P4.5 补采 launched | 2026-08-20 | `559fe31`
+
+v1 corpus left **open:blocked = 11:24**；post-P4.5 ⓪b PASS but ⓪c/⓪d/P1 still FAIL.
+
+**Running** (serial on renderer):
+1. `--only-layer open --per-layer 24 --approach-dist-m 15` → `dataset_v0_p45_topup_open_20260820`
+2. `--only-layer blocked --per-layer 24 --approach-dist-m 12` → `dataset_v0_p45_near_enrich_20260820`
+
+Log: `logs/v4_p45_topup_20260820.log`. After both: merge → **depth head + WM retrain** → re-P3/P1. ⓿e not in scope.
