@@ -90,7 +90,17 @@
 
 ## 3. 变更记录
 
-- **2026-08-20（**新建 V4 执行 runbook**）** — 改了什么：新增 [`experiments/aerial/RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) —— 前提链 P0→P8 逐步表（**下一步 = P0c**、**P3.5 记 N/A**、P7 两趟 + 下车站）、四信号执行口径、**§3「跑前必须先判断/先冻结」16 项**（其中 `[lo,hi]` / `θ` / `k` / `Q_0.25(C_P7)` / primary 划分 / OC 曲线 / spare 池大小 / 冻结清单数值 = **待填**，其余已签死）、**§4「必须实测不许假设」13 项**、落盘契约（缺字段 ⇒ `authoritative=false`）、主张范围三条、红线、已知残余。为什么 / 依据：签字后判据已无未决二选一，但「跑前要冻什么 / 要先测什么」散在九轮复核（§4.6.8–§4.6.12）里 ⇒ 收成两张可勾清单，避免实施时漏冻结而事后定阈值（撞红线）。**本文件不新增、不修改任何判据**，定义一律以提案 §4.6 为准；代码 / yaml 未动，`enable_policy_update` 仍 false。
+- **2026-08-20（**P0c / P2 接线 / P6 实施入库；P1 FAIL 按 §1.2.2 重记**）** — 改了什么：把已跑完步骤写入 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) §0/§1 与本变更记录；**下一步 = P3**。细节：
+  - **P0c DONE**：harness `e28baa9`；正式跑 `experiments/aerial/rl/artifacts/v4_gate_p0c_formal_20260820/`（`--target-n 16 --spare-count 16`，spare 已签）。**①** n=16 `authoritative=true` spare_consumed=8 / invalid=3 / none=0 / pair_broken=5；**④ on** spare=7 / inv=3 / none=0 / pair=4；**④ off** spare=9 / inv=2 / none=0 / pair=7；**④ v1** spare=11 / inv=10 / none=0 / pair=1。旧 actor 上 ①/④ `ok=False` **不否定** P0c。
+  - **P1 FAIL（权威层）**：ckpt `wm_ckpt_r60_rh_20260816` step=**1000**，held-out **12/48 尾部**；log `artifacts/v4_p1_fidelity_rh_20260820.log`。raw 打印 ≠ §1.2.2：
+    - **reward = 真 FAIL**：`beat_frac=0.67 < 0.8`，`growth_ok=True`，`one_step_ok=True`（h=0 wm_mae **0.5817 <** mean-base **0.6508**）。
+    - **p_coll = `null` N/A**（pos=1 < 3），raw AUROC 0.091 **不是**权威 FAIL。
+    - **done = PASS 但 vacuous**（acc == majority）；**recon/latent OK**（19.89 ≤ 25）。
+    - ⇒ overall FAIL **仅由 reward**；修 = **P4.5** 后重跑 P1；R-16 缺口新实例（P1 无下车站）。
+  - **P2 接线 DONE** `4e76865`（`wm_out`→`should_override`）；头 AUROC claimed 仍待。
+  - **P6 DONE** `4e76865`（planner `action_limits`）。
+  - **不改判据 / 不翻 `enable_policy_update`**。
+- **2026-08-20（**新建 V4 执行 runbook**）** — 改了什么：新增 [`experiments/aerial/RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) —— 前提链 P0→P8 逐步表（**下一步当时 = P0c**、**P3.5 记 N/A**、P7 两趟 + 下车站）、四信号执行口径、**§3「跑前必须先判断/先冻结」16 项**、**§4「必须实测不许假设」13 项**、落盘契约、主张范围三条、红线、已知残余。**本文件不新增、不修改任何判据**；代码 / yaml 未动，`enable_policy_update` 仍 false。
 - **2026-08-20（**判据签字完成**：§5.0 削减签字表 16/16 行裁定填毕 ⇒ V4 判据 re-freeze 生效）** — 改了什么：把 §5.0 十六行的裁定栏全部填上（14 行「采纳」+ 用户手选的两处强制二选一），并把三处被裁定的口径**写死进 §4.6 正文**。为什么 / 依据：第九轮已把签字表补到 16 行且两个阻塞项（5al / 5am）处置就绪，第八/九轮都写明「下一动作是人填表，不是再开一轮改判据」⇒ 用户逐行裁定。逐项：
   - **14 行采纳**：13（§4.6 = 唯一权威口径，`n` = 每层 16 随之冻结）/ 5z（修，头号阻塞：in-band = 三通道并集非介入 ∧ `engaged=false`，`[3.5,5.0]` 撤回）/ 5aa（⓪f）/ 5ab（修，跑前分叉）/ 5ac（修）/ 5y / 5ad / 5ae / 5ah（P0c 丢局修复，禁降 n）/ 5ai（P7-FAIL 下车站）/ 5aj / 5ak / **5al**（阻塞解）/ **5am**（阻塞解）。
   - **`5af` = (a)**：评测 goal **限机体前向扇区**，In-表本周期不改；**如实登记「侧/后向 goal 不测」**⇒ ①′ 结论不得外推全向。已落到 §4.6.1 新增「评测 goal 分布」行。
