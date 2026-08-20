@@ -90,7 +90,14 @@
 
 ## 3. 变更记录
 
-- **2026-08-20（**P3 V4-⓪ FAIL 入库；下一步 = P4**）** — 改了什么：登记 H100 离线 P3 结果（`artifacts/v4_zero_p3_20260820.json`，48 ep / 6005 frames；harness `663d8bb` + broadcast fix `8a4e851`）并更新 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md)。子项：⓪a PASS（median AbsRel **0.123**）／⓪b FAIL（near 帧 **95 < 100**）／⓪c FAIL（p90 AbsRel **1.38 > 0.50**）／⓪d PASS／⓪e PASS／⓪f PASS（outer median **0.074** / p90 **0.259**；`band_lo_hi=null`；diag 建议 lo≈4.5 **非冻结**）。`verdict.ok=False`；**无 §6 下车站**（R-16：⓪ FAIL 无预注册停）⇒ **继续 P4**。`[lo,hi]` **仍未冻**（须 ⓪f ∧ P7-diag 后正式 5ab）。不改判据 / 不翻 flag。
+- **2026-08-20（**对上一条 P3 记法的更正 + 运营裁定：⓪b 是 support 门；R-16 = (B)；不停跑 P8 / 不停在「假 FAIL」上放行**）** — 改了什么：不改写上一条「P3 FAIL」原文（审计链），在此更正记法、补齐三处漏数、并**裁定治理二选一**。为什么 / 依据：
+  - **(1) ⓪b 未过 ⇒ 近带三项全部不可入账**。§4.6.2 `:537` 驱动 E4 ⇒ **⓪b = 有效性条件**，⓪a/⓪c 同像素域。`n_frames=95 < 100` ⇒ ⓪a/⓪c **都不 authoritative**。⇒ P3 = **`insufficient_support` / `authoritative=false`**，**不是 ⓪ FAIL**（同 P1 `pos<3 ⇒ null`）。**收紧**：须补采近带帧重跑 P3；`δ` / `[lo,hi]` / `release_depth_m` 继续锁死。
+  - **(2) 病在语料，补采并入 P4.5**：近带 **95/6005 = 1.6%**；⓪f 外带 median **0.074** / p90 **0.259** ⇒ 远准近无数据（同 V0-④）。P4.5 一并修 ⓪b support + P1 reward。
+  - **(3) 三处漏数现补**：① ⓪b 合取三项 —— `support_px=790055 ≥ 1e4` ✅；`n_frames=95 < 100` ❌；`max_frame_frac=0.0416 ≤ 0.2` ✅（**非单帧支配**）。② ⓪c 的 GT 分箱（`<1.5` vs `[1.5,3)`）—— **harness 未落盘，仍缺**；不得用 raw p90=1.38 当 authoritative FAIL。③ ⓪f —— `(1)(2)` 已报；`(3)` = `clearance_sweep` 上 D̂ 误触曲线（`[lo,hi]=null`）；`(4)` = 同表 `p_tau_false_trigger` 逐 bin（多处 0.0），**不得记笼统 PASS**。diag `lo≈4.5` **非冻结**。
+  - **(4) 治理裁定（Mac chat 2026-08-20，应你要求裁）= (B)**：前置门 **FAIL 或 `insufficient_support` 都不构成「V4-MVP 前提否证」式下车站**；但 **禁止把 R-16 当放行许可**。明文运营规则：① 依赖未权威通过的前置门的步骤**不得当证书**；② **P8 之前 ⓪ / ⓿ / P1 必须全部重过且 authoritative**；③ 期间 `enable_policy_update` 恒 false；④ **不跑「直冲 P8」supervisor**。**(A) 暂不采纳**（当前 P3 甚至不是 FAIL，用 FAIL-stop 会错类型；真要补停止规则另开 re-freeze）。**(B) 须补进 §5.0 一行列签字**（本条先作运营生效，正式签字表待补行）。
+  - **(5) 是否继续 P4：否（已发生则作废重跑）**。agent 已跑出 P4（⓿e FAIL）—— 该结果**绑在 P4.5 将替换的 WM 上** ⇒ **不入权威账**；**下一步 = P4.5（近带 enrichment）→ 重跑 P3 → 重跑 P1 → 重跑 P4**。Supervisor **已杀**。
+  - **本条不修改任何 §4.1 / §4.6 阈值**；`[lo,hi]` 未填；`enable_policy_update` **仍 false**。
+- **2026-08-20（**P3 V4-⓪ FAIL 入库；下一步 = P4**）** — ~~本条「⓪ FAIL ⇒ 继续 P4」的记法与放行已被上条更正 supersede~~（原文保留审计）。登记产物路径仍有效：`artifacts/v4_zero_p3_20260820.json`。
 - **2026-08-20（**P0c / P2 接线 / P6 实施入库；P1 FAIL 按 §1.2.2 重记**）** — 改了什么：把已跑完步骤写入 [`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md) §0/§1 与本变更记录；**下一步当时 = P3**。细节：
   - **P0c DONE**：harness `e28baa9`；正式跑 `experiments/aerial/rl/artifacts/v4_gate_p0c_formal_20260820/`（`--target-n 16 --spare-count 16`，spare 已签）。**①** n=16 `authoritative=true` spare_consumed=8 / invalid=3 / none=0 / pair_broken=5；**④ on** spare=7 / inv=3 / none=0 / pair=4；**④ off** spare=9 / inv=2 / none=0 / pair=7；**④ v1** spare=11 / inv=10 / none=0 / pair=1。旧 actor 上 ①/④ `ok=False` **不否定** P0c。
   - **P1 FAIL（权威层）**：ckpt `wm_ckpt_r60_rh_20260816` step=**1000**，held-out **12/48 尾部**；log `artifacts/v4_p1_fidelity_rh_20260820.log`。raw 打印 ≠ §1.2.2：

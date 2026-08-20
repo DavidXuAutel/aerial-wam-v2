@@ -2,75 +2,57 @@
 
 ## RESOLVED 2026-08-20 | §3 item 11 | spare pool size
 
-**Decision (human, Mac chat):** option **1** — conservative fixed buffer.
-
-- **`--spare-count = 16`** for `target_n = 16` (equal-size spare buffer).
-- Timestamp: 2026-08-20.
-- Written into `experiments/aerial/RUNBOOK_v4.md` §3 row 11.
-
-**Next:** resume P0c formal verification → continue RUNBOOK §1 through **P8** (stop rules in §6 still apply).
+**Decision:** `--spare-count = 16` (option 1).
 
 ---
 
-## INFO | P3 result | 2026-08-20
+## CORRECTION 2026-08-20 | P3 记法 | ⓪b = support 门
 
-**V4-⓪ v2 FAIL** (harness `663d8bb` / fix `8a4e851`). Artifact: `artifacts/v4_zero_p3_20260820.json`.
+**Supersedes** the earlier «P3 FAIL → continue P4» INFO.
 
-| sub | result | note |
-|-----|--------|------|
-| ⓪a | PASS | median AbsRel 0.123 |
-| ⓪b | FAIL | 95 frames with near px (<100) |
-| ⓪c | FAIL | p90 AbsRel 1.38 |
-| ⓪d | PASS | p_miss_trigger 0 |
-| ⓪e | PASS | deployment corpus |
-| ⓪f | PASS | outer band + sweep; `[lo,hi]` null |
+- P3 = **`authoritative=false` / near-band `insufficient_support`**, **not** «⓪ FAIL».
+- ⓪b triad: `support_px=790055 ≥ 1e4` ✅；`n_frames=95 < 100` ❌；`max_frame_frac=0.0416 ≤ 0.2` ✅.
+- ⓪a/c on same near domain → **neither authoritative** (raw 0.123 / 1.38 not booked).
+- Near frames **95/6005 = 1.6%**; outer ⓪f (1)(2) strong → corpus disease, not head.
+- ⓪f: (1)(2) reported；(3)=`clearance_sweep` D̂ curve（`[lo,hi]=null`）；(4)=per-bin `p_tau_false_trigger` — **not a blanket PASS**.
+- ⓪c GT bin (`<1.5` vs `[1.5,3)`) **still missing** from harness JSON.
+- Fix path: **P4.5 near-band enrichment** → re-P3 (also fixes P1).
 
-No §6 stop for ⓪ FAIL (R-16) → chain continues at P4.
-
----
-
-**P3 harness:** `experiments/aerial/rl/v4_zero_eval.py` — offline V4-⓪ v2 (⓪a–⓪f), clearance sweep with `band_lo_hi=null` pre-freeze.
+Artifact: `artifacts/v4_zero_p3_20260820.json`.
 
 ---
 
-## INFO | code update | 2026-08-20 | `4e76865`
+## RULING 2026-08-20 | R-16 = (B) | Mac chat
 
-**P2 partial + P6:** collector/gate shield path passes `wm_out` (live `p_coll`) to `should_override`; `_build_planner` clips candidates via `body_delta_limits(1/step_hz)`.
+**(B) adopted operationally** (formal §5.0 sign-row still owed):
 
-Files: `collector.py`, `train_rl.py`, `v0_rollout_eval.py`, `v4_episode_pool.py`, `v4_gate_run_partials.py`, `test_action_space_consistency.py`.
+1. Precondition FAIL / `insufficient_support` ≠ V4-MVP premise否证 stop.
+2. **R-16 is a gap, not a license** — do not treat «no §6 stop» as permission to certify downstream.
+3. **Before P8:** ⓪, ⓿, and P1 must all be **re-run and authoritative**.
+4. `enable_policy_update` stays **false**.
+5. **No continuous-to-P8 supervisor.**
 
-**Remaining P2:** p_coll head AUROC + H100 retrain (if needed) — wiring only on 125 side.
+**(A) not adopted** for now (current P3 is insufficient_support, not FAIL).
+
+**P4 decision:** do **not** continue certifying on current WM. Existing P4 run (`v4_rho_p4_20260820.json`, ⓿e FAIL) is **provisional / non-authoritative** → **re-run after P4.5**.
+
+**Next:** P4.5 only (near-band + 1:1 corpus + WM retrain).
 
 ---
 
-## INFO | P4 result | 2026-08-20
+## INFO | P4 provisional | 2026-08-20
 
-**V4-⓿ v2 FAIL** (overall; ⓿a–d PASS). Harness `9f0cc1f` / `experiments/aerial/rl/v4_rho_eval.py`.
-
-| sub | result | note |
-|-----|--------|------|
-| ⓿a | PASS | median Spearman ρ **0.963** (n_z0=16) |
-| ⓿b | PASS | top-1 hit rate **1.0** |
-| ⓿c | PASS | Spearman only, H=15 |
-| ⓿d | PASS | real=analytic_progress_sum, imag=imagine_reward_sum |
-| ⓿e | **FAIL** | double-teleport `median_rel_l2=1.37` (threshold 0.05) |
-
-Artifacts: `artifacts/v4_rho_p4_20260820.json`, `artifacts/v4_rho_p4_z0e_20260820.json`. Log: `logs/v4_p4_full_20260820.log`.
-
-No §6 stop for ⓿ FAIL (R-16) → chain continues at **P4.5**.
+Harness `9f0cc1f`. ⓿a–d PASS (ρ median 0.963); **⓿e FAIL** (`median_rel_l2=1.37`).  
+**Status under ruling (B):** logged only; **must re-run after P4.5**.
 
 ---
 
 ## BLOCKED | freeze prerequisites | §3 #3 / #7 / #8
 
-**Unsigned human-policy blanks** (agent must not invent):
-
-| item | status |
-|------|--------|
-| `k` (progress window = C1 window?) | ⬜ unsigned |
-| primary/secondary criterion list | ⬜ unsigned |
-| OC curves + seed arbitration | ⬜ unsigned |
-
-P7-diag can proceed; **band/θ/k freeze** may BLOCK until human fills these.
+Still unsigned: `k`, primary list, OC seed rules. Relevant **after** authoritative ⓪ + P7-diag — not a reason to skip P4.5.
 
 ---
+
+## INFO | code update | 2026-08-20 | `4e76865`
+
+P2 wiring + P6 `action_limits` (see prior note).

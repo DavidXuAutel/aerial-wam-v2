@@ -1,40 +1,28 @@
 # V4 RUNBOOK 125 STATUS
 
 - **date**: 2026-08-20
-- **state**: **BLOCKED** at freeze — unsigned §3 #3/#7/#8; P7-diag in flight
-- **HEAD**: `7b7b367`
-- **current step**: freeze BLOCKED → no P7-accept / P8 until human signs `k`, primary list, OC
-- **enable_policy_update**: false (must remain)
-- **signed**: `--spare-count = 16`
+- **state**: **HOLD** — P3 记法更正后改道；supervisor / P7-diag **已停**
+- **HEAD**: (after Mac push)
+- **current step**: **真·P4.5** = 近带 enrichment + `S_open:S_blocked≈1:1` 重采 → WM 重训 → **re-P3 → re-P1 → re-P4**
+- **P3**: **`authoritative=false` / `insufficient_support`**（不是 ⓪ FAIL）。⓪b：px=790055✅ / frames=95❌ / max_frac=0.0416✅；近带 95/6005=1.6%
+- **P4**: provisional（⓿e FAIL）— **非权威**，须重跑
+- **P4.5 so-far**: ⚠️ **不合格** — 4090 上用**旧** `dataset_v0_local_depth_r60_20260814` 训了 `wm_ckpt_p45_20260820`（**未**做近带/1:1 重采；H100 sync 失败）。**不得当 P4.5 DONE**
+- **P7-diag**: was started — **killed**（⓪ 未权威通过前不进 freeze 链）
+- **enable_policy_update**: false
+- **R-16**: **(B)** — P8 前 ⓪/⓿/P1 必须全部权威重过；禁止把「无 §6 stop」当放行；禁止直冲 P8 supervisor
+- **signed**: `--spare-count=16`
 
 ## Checklist
 
-- [x] P0c / P1 FAIL / P2 wiring / P3 FAIL / P6
-- [x] **P4** — ⓿a–d PASS / **⓿e FAIL** (teleport z0 repro); harness `9f0cc1f`
-- [x] **P4.5 partial** — WM retrain PASS on 4090 (`wm_ckpt_p45_20260820/wm_step_300.pt`); **no new 1:1 corpus** (H100 sync failed)
-- [ ] P7-diag (running)
-- [ ] freeze / P7-accept / P8 — **BLOCKED**
-
-## Running jobs
-
-| job | PID | log |
-|-----|-----|-----|
-| P7-diag | see `pgrep -f v4_p7_diag` | `logs/v4_p7_diag_20260820.log` |
-
-## Results summary
-
-| step | verdict | artifact |
-|------|---------|----------|
-| P4 | FAIL (⓿e) | `artifacts/v4_rho_p4_20260820.json` |
-| P4.5 WM | PASS (learning+non-div) | `artifacts/wm_ckpt_p45_20260820/` |
-| P7-diag | in progress | `artifacts/v4_p7_diag_20260820.json` (pending) |
-
-## BLOCKED reason
-
-§3 items **#3 `k`**, **#7 primary/secondary list**, **#8 OC curves** are unsigned — agent must not invent. See `artifacts/V4_RUNBOOK_125_ISSUES.md`.
+- [x] P0c / P2 wiring / P6
+- [x] P1 FAIL (reward) — must re-pass
+- [x] P3 corrected → `insufficient_support`
+- [x] P4 provisional logged
+- [ ] **P4.5 real** (near-band corpus + 1:1 + WM) — prior 4090 WM retrain **does not count**
+- [ ] re-P3 / re-P1 / re-P4
+- [ ] P7* / P8 only after authoritative ⓪/⓿/P1
 
 ## Notes
 
-- H100 `git fetch cursor125` failed (SSH keys); P4.5 WM retrain ran on **4090** instead.
-- P4.5 corpus re-collect (S_open:S_blocked ≈ 1:1) **not done** — WM retrain used existing `dataset_v0_local_depth_r60_20260814`.
-- After P7-diag completes: mechanical `[lo,hi]` from P3 ⓪f + `Q_0.25(C_P7)` can be drafted, but **θ/k freeze still BLOCKED**.
+- Formal §5.0 sign-row for R-16=(B) still owed.
+- §3 #3/#7/#8 still unsigned — relevant after authoritative ⓪ + P7-diag, not before.

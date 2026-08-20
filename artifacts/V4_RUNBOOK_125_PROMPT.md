@@ -1,36 +1,24 @@
-# V4 RUNBOOK 125 — P4→P8 NO EARLY EXIT
+# V4 RUNBOOK 125 — P4.5 only (NO continuous P8)
 
 You are on **4090** `cursor-125`, repo `~/aerial-wam-v2`.
 
-## HARD RULE (human 2026-08-20): do not stop until P8
+## HARD STOP on previous “run to P8” order
 
-**Forbidden:** exiting after finishing only P4 / P4.5 / P7 / docs / one FAIL log.
-**Allowed exit conditions (only these):**
-1. **P8 complete** (actor train + gate ①′/④′ attempted; STATUS checklist P8 checked; commit+push), OR
-2. **BLOCKED** with ISSUES pushed (unsigned human-policy blank you must not invent), OR
-3. **RUNBOOK §6 stop** (P7-accept S_blocked FAIL → no P8).
+Mac chat **revoked** continuous-to-P8 / supervisor relaunch.
 
-If a long job is running: write PID/log to STATUS, push, **wait/poll until done**, then continue the next step in the **same session**. Prefer `nohup` + polling over exiting.
+**Only allowed work now:** **P4.5** (near-band corpus enrichment + `S_open:S_blocked ≈ 1:1` + WM retrain), then stop and update STATUS/ISSUES + push.
 
-After any step FAIL that has **no §6 stop** (P1/P3 style, R-16): **log and continue** — do not exit.
+**Do not:** run P7-accept / P8; relaunch supervisor; treat current P3 as ⓪ FAIL; treat current P4 as authoritative; freeze `[lo,hi]` from diag.
 
-## Mission
+## Corrected facts (must obey)
 
-1. `git fetch origin && git reset --hard origin/main` (unless you have unpushed WIP — then commit+push first).
-2. Read `docs/handover/V4_RUNBOOK_125_STATUS.md` for `current step`; resume there.
-3. Run `experiments/aerial/RUNBOOK_v4.md` through **P8 inclusive**.
-4. Authority = proposal §4.6. Never invent criteria. Never freeze `[lo,hi]` from P3 diag hints alone. Never flip `enable_policy_update`. Origin-only push.
+- P3 = **`insufficient_support` / `authoritative=false`** because ⓪b support gate failed (`n_frames=95<100`). ⓪a/c not bookable.
+- R-16 ruling **(B):** no premise-否证 stop, but **P8 blocked until ⓪/⓿/P1 all re-pass authoritative**; `enable_policy_update=false`.
+- Existing P4 JSON is provisional → re-run after P4.5.
 
-## Done already
+## Deliverables
 
-- P0 / P0c / P2 wiring / P6 DONE
-- P1 FAIL (reward only)
-- P3 FAIL (⓪b/⓪c; ⓪f PASS; `[lo,hi]` null) — continue
-
-## Chain
-
-**P4** (⓿a–e; ⓿e teleport z0 measured) → **P4.5** → defer P5 → **P7-diag** → freeze (BLOCKED if `k`/primary/OC need human) → **P7-accept** → **P8**.
-
-## Reporting
-
-STATUS + ISSUES + commit + push origin at every step boundary and before any wait.
+1. Pull `origin/main`.
+2. Plan + start P4.5 with **explicit near-band frame share target** (must clear ⓪b: ≥100 near frames / support gates).
+3. STATUS + ISSUES + commit + push.
+4. **Exit** when P4.5 job is launched or BLOCKED on a real human blank — do not continue the chain past P4.5 in this session.
