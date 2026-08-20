@@ -41,3 +41,36 @@ Files: `collector.py`, `train_rl.py`, `v0_rollout_eval.py`, `v4_episode_pool.py`
 
 **Remaining P2:** p_coll head AUROC + H100 retrain (if needed) — wiring only on 125 side.
 
+---
+
+## INFO | P4 result | 2026-08-20
+
+**V4-⓿ v2 FAIL** (overall; ⓿a–d PASS). Harness `9f0cc1f` / `experiments/aerial/rl/v4_rho_eval.py`.
+
+| sub | result | note |
+|-----|--------|------|
+| ⓿a | PASS | median Spearman ρ **0.963** (n_z0=16) |
+| ⓿b | PASS | top-1 hit rate **1.0** |
+| ⓿c | PASS | Spearman only, H=15 |
+| ⓿d | PASS | real=analytic_progress_sum, imag=imagine_reward_sum |
+| ⓿e | **FAIL** | double-teleport `median_rel_l2=1.37` (threshold 0.05) |
+
+Artifacts: `artifacts/v4_rho_p4_20260820.json`, `artifacts/v4_rho_p4_z0e_20260820.json`. Log: `logs/v4_p4_full_20260820.log`.
+
+No §6 stop for ⓿ FAIL (R-16) → chain continues at **P4.5**.
+
+---
+
+## BLOCKED | freeze prerequisites | §3 #3 / #7 / #8
+
+**Unsigned human-policy blanks** (agent must not invent):
+
+| item | status |
+|------|--------|
+| `k` (progress window = C1 window?) | ⬜ unsigned |
+| primary/secondary criterion list | ⬜ unsigned |
+| OC curves + seed arbitration | ⬜ unsigned |
+
+P7-diag can proceed; **band/θ/k freeze** may BLOCK until human fills these.
+
+---
