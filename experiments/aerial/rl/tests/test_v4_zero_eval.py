@@ -78,3 +78,42 @@ def test_suggest_delta_finds_first_bin():
     ]
     hint = suggest_delta(rows, thr=thr)
     assert hint["suggested_lo_clearance_m"] == 3.5
+
+
+def test_0f_outer_absrel_not_gated_by_0c_threshold():
+    """⓪f(1)(2) are report-only — outer p90>0.50 must not fail primary merge."""
+    from experiments.aerial.rl.v4_zero_eval import aggregate_verdict
+
+    sub = {
+        "0a": {"ok": True},
+        "0b": {"ok": True},
+        "0c": {"ok": True},
+        "0d": {"ok": True},
+        "0e": {"ok": True},
+        "0f": {
+            "ok": True,  # support-only pre-freeze
+            "median_absrel": 0.10,
+            "p90_absrel": 0.80,  # would fail if wrongly using ⓪c's 0.50
+        },
+    }
+    v = aggregate_verdict(sub)
+    assert v["ok"] is True
+    assert v["ok_primary"] is True
+    assert v["ok_0f"] is True
+
+
+def test_aggregate_primary_ignores_0f_fail():
+    from experiments.aerial.rl.v4_zero_eval import aggregate_verdict
+
+    sub = {
+        "0a": {"ok": True},
+        "0b": {"ok": True},
+        "0c": {"ok": False},
+        "0d": {"ok": True},
+        "0e": {"ok": True},
+        "0f": {"ok": False},
+    }
+    v = aggregate_verdict(sub)
+    assert v["ok"] is False
+    assert v["ok_primary"] is False
+    assert v["ok_0f"] is False

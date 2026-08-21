@@ -1,48 +1,40 @@
 # V4 RUNBOOK 125 STATUS
 
 - **date**: 2026-08-21
-- **state**: ACTIVE — merge+retrain+re-eval **DONE**; ⓪/P1 still not fully PASS
-- **HEAD**: `8062b40`
+- **state**: ACTIVE — next = **控制臂**（老头 × 新语料）；新 depth FT **不进部署**
+- **HEAD**: (pending ⓪f fix commit)
 - **enable_policy_update**: false
 - **R-16**: **(B)**
 
+## 三句结论（2026-08-21）
+
+1. **⓪f 曾判错**：给 report-only 的外带 AbsRel 套了 ⓪c 的 `p90≤0.50`（代码 `v4_zero_eval`）；已改回——(1)(2) 只报，pre-freeze `ok`=外带 support；(3)(4) 等 `[lo,hi]`。
+2. **整套 ⓪ 在训练帧上评** ⇒ **PASS 不可采、FAIL 更硬**；且一次改了语料+头 ⇒ ⓪c/d 变化不可归因。
+3. **下一发 = 控制臂**（老头 `depth_ckpt_da3_r60_20260814` × `dataset_v0_p45_merged_20260821`）——同时解 in-sample 与「一次改两件事」；**不再治深度头**。
+
+## `$INIT_DEPTH` 出处（已答）
+
+**是** V0 ④ 实际过 gate 的头。
+
+- 活文档 [`V0_GATE_STATUS.md`](V0_GATE_STATUS.md)：r60 部署线 depth = `depth_ckpt_da3_r60_20260814`；②④ rollout 命令明示 `depth=depth_ckpt_da3_r60_20260814`；merge PASS `v0_partial_24_r60_20260814` / `v0_gate_r60_20260814`。
+- 文件：`depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt`（holdout AbsRel 0.0641）。
+- ⇒ **本轮 depth FT 不因「失效 ckpt warm-start」作废**；但新头因 ⓪d/`max_consec_miss` **仍不得进部署**（见 GATE_STATUS (G)）。
+
 ## Checklist
 
-- [x] P4.5 v1 + 补采
-- [x] merge usable → `dataset_v0_p45_merged_20260821` (**77**；open 35 / blocked 42)
-- [x] depth FT → `depth_ckpt_p45_merged_20260821/depth_step_2000_da3_ft_head.pt`（holdout AbsRel **0.113**)
-- [x] WM → `wm_ckpt_p45_merged_20260821/wm_step_500.pt`（①a–c PASS）
-- [x] re-P3 / re-P1（见下）
-- [ ] ⓪c/⓪d/⓪f + P1 coll 仍 FAIL → 下一治
+- [x] merge + depth FT + WM + re-P3/P1（in-sample / 双改 方法论阻塞）
+- [x] ⓪f 代码判错改回
+- [ ] **控制臂** → `artifacts/v4_zero_p3_oldhead_merged_20260821.json`
 - [ ] ⓿e fix（orthogonal）
-- [ ] freeze / P7-accept / P8
-
-## re-P3 (`artifacts/v4_zero_p3_p45_merged_20260821.json`)
-
-| 子项 | 结果 | 数 |
-|------|------|-----|
-| ⓪a | PASS | median AbsRel **0.144** |
-| ⓪b | PASS | near frames **315**；`max_frame_frac=0.024`；px 1.54e6 |
-| ⓪c | **FAIL** | p90 AbsRel **0.792** > 0.50 |
-| ⓪d | **FAIL** | miss **0.142** > 0.05；max_consec_miss=4 |
-| ⓪e | PASS | deployment corpus |
-| ⓪f | **FAIL** | outer p90 **0.504** >（外带精度/误触合取未过） |
-
-## re-P1 (`logs/v4_p1_p45_merged_20260821.log`)
-
-- **reward PASS**：`beat_frac=0.93`（was 0.67）；`growth_ok=True`；h=0 `0.330 < 0.907` → **`one_step_ok=True`**
-- **p_coll FAIL（claimed）**：pos=**3** (≥3) AUROC **0.549**
-- done vacuous OK；recon OK（latent_norm_max 21.85）
-- ⇒ overall **FAIL** 现由 **coll** 支撑（reward 已修好）
+- [ ] freeze / P7 / P8
 
 ## Running jobs
 
 | job | PID | log |
 |-----|-----|-----|
-| (none) | — | — |
+| (launching) 控制臂 | — | `logs/v4_p3_oldhead_merged_20260821.log` |
 
 ## Notes
 
-- Launch SSH 曾 exit 1；流水线实际跑完 depth/WM/P3；P3 `set -e` 曾跳过 P1 → 已补跑 P1（`8062b40` 修脚本）。
-- 相对 P4.5 v1：reward 过了；近带 support 更强；**精度尾（⓪c）与漏触发（⓪d）变差/仍挂**；⓪f 新 FAIL。
-- 下一步候选：针对 <1.5 m / 漏触发再治 depth（或语料），**不动阈值**；coll 头需更多正例或重训。
+- Primary merge = ⓪a–e only；`ok_0f` 不再拖垮 overall `ok`。
+- 控制臂产物同时是诚实 held-out（老头未见新语料）与可归因对照（同语料新旧头）。

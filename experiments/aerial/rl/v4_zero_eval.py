@@ -287,14 +287,18 @@ def suggest_delta(rows: Sequence[Dict[str, Any]], *, thr: ZeroThresholds) -> Dic
 
 
 def aggregate_verdict(sub: Dict[str, Any]) -> Dict[str, Any]:
+    """Primary merge = ⓪a–⓪e. ⓪f is report/diag until ``[lo,hi]`` is frozen.
+
+    Outer AbsRel (⓪f(1)(2)) is **report-only** — §4.6.2 does not give it the
+    ⓪a/⓪c thresholds ``0.30`` / ``0.50``. False-trigger bins (3)(4) are scored
+    only after a band is frozen; pre-freeze they do not gate ``ok``.
+    """
     keys_primary = ("0a", "0b", "0c", "0d", "0e")
-    keys_report = ("0f",)
     ok_primary = all(sub[k].get("ok") for k in keys_primary if k in sub)
-    # ⓪f is diagnostic for band freeze; accuracy sub-metrics still scored.
     f = sub.get("0f", {})
     ok_f = bool(f.get("ok", False))
     return {
-        "ok": bool(ok_primary and ok_f),
+        "ok": bool(ok_primary),
         "ok_primary": ok_primary,
         "ok_0f": ok_f,
         "sub": {k: sub[k].get("ok") for k in sorted(sub)},
@@ -479,14 +483,12 @@ def run_eval(
     )
     delta_hint = suggest_delta(sweep, thr=thr)
     outer_sup = check_support_b(per_frame_outer_px, thr=thr)
+    # ⓪f(1)(2) AbsRel on (3,8] are report-only (§4.6.2 / 5aa) — do NOT apply
+    # ⓪a median≤0.30 or ⓪c p90≤0.50 (those thresholds are near-band only).
+    # Pre-freeze ok = outer support only; (3)(4) false-trigger rates live in
+    # clearance_sweep and become gating only after [lo,hi] is frozen.
     sub_0f = {
-        "ok": bool(
-            outer_sup["ok"]
-            and np.isfinite(outer_stats["median_absrel"])
-            and outer_stats["median_absrel"] <= thr.absrel_median_max
-            and np.isfinite(outer_stats["p90_absrel"])
-            and outer_stats["p90_absrel"] <= thr.absrel_p90_max
-        ),
+        "ok": bool(outer_sup["ok"]),
         "domain": f"({_OUTER_LO:g}, {_OUTER_HI:g}]",
         "median_absrel": outer_stats["median_absrel"],
         "p90_absrel": outer_stats["p90_absrel"],
@@ -495,7 +497,11 @@ def run_eval(
         "clearance_sweep": sweep,
         "delta_hint": delta_hint,
         "band_lo_hi": None,
-        "note": "⓪f false-trigger rates per bin; [lo,hi] intentionally null pre-freeze",
+        "note": (
+            "⓪f(1)(2) report-only AbsRel; (3)(4) false-trigger rates in "
+            "clearance_sweep; [lo,hi] intentionally null pre-freeze — do not "
+            "apply ⓪a/⓪c AbsRel thresholds to the outer domain"
+        ),
     }
 
     sub = {"0a": sub_0a, "0b": sub_0b, "0c": sub_0c, "0d": sub_0d, "0e": sub_0e, "0f": sub_0f}
