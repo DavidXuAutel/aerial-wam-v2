@@ -1,41 +1,38 @@
 # V4 RUNBOOK 125 STATUS
 
-- **date**: 2026-08-20
-- **state**: ACTIVE — **P4.5 补采 DONE**; next = merge → depth/WM retrain → re-P3/P1
-- **HEAD**: `98fc7a7`
-- **P3 (post-P4.5 v1)**: ⓪b PASS; ⓪c/⓪d FAIL
-- **P1 (post-P4.5 v1)**: FAIL reward `beat_frac=0.67`
-- **P4**: ⓿e FAIL — harness，不靠补采
+- **date**: 2026-08-21
+- **state**: ACTIVE — **merge DONE**; depth FT → WM → re-P3/P1 **in flight**
+- **HEAD**: `50762a9`
 - **enable_policy_update**: false
 - **R-16**: **(B)**
 
 ## Checklist
 
-- [x] P4.5 v1 — 34 usable (open 11 / blocked ~23–24)
-- [x] **P4.5 补采** — phase1+2 DONE `23:22`
-- [ ] merge corpora → depth head + WM retrain
+- [x] P4.5 v1 + 补采 (open 24 + near 19)
+- [x] **merge usable** → `dataset_v0_p45_merged_20260821` (**77** eps；open **35** / blocked **42**)
+- [ ] depth FT → `depth_ckpt_p45_merged_20260821`
+- [ ] WM train → `wm_ckpt_p45_merged_20260821`
 - [ ] re-P3 / re-P1
 - [ ] ⓿e fix (orthogonal)
 - [ ] freeze / P7-accept / P8
-
-## Top-up results
-
-| phase | out | usable | layers |
-|-------|-----|-------:|--------|
-| 1 open | `dataset_v0_p45_topup_open_20260820` | **24/24** | open 24 |
-| 2 near | `dataset_v0_p45_near_enrich_20260820` | **19/19** | blocked 19（目标 24，scan 未满） |
-
-若三库 concat：open **35** / blocked **~42**（仍偏 blocked；open 已从 11 抬到可合并 35）。
-
-Log: `logs/v4_p45_topup_20260820.log` — `[topup] DONE 2026-08-20T23:22:26+08:00`
 
 ## Running jobs
 
 | job | PID | log |
 |-----|-----|-----|
-| (none) | — | — |
+| merge→depth→WM→P3→P1 | **2088190** (`train_depth_head`) | `logs/v4_p45_merge_retrain_eval_20260821.log` |
+
+## Pipeline
+
+`experiments/aerial/scripts/v4_p45_merge_retrain_eval.sh` (`50762a9`)
+
+1. Merge usable-only (skip 1 quarantined)
+2. Depth FT 2000 steps from r60 da3 (`--lr 3e-5`)
+3. WM 500 steps `--heldout-frac 0.25`
+4. P3 → `artifacts/v4_zero_p3_p45_merged_20260821.json`
+5. P1 → `logs/v4_p1_p45_merged_20260821.log`
 
 ## Notes
 
-- Launch SSH wrapper exited 1；**采集本身 exit=0 双阶段完成**。
-- 下一步不是再采，是 **merge + depth/WM 重训**（⓪c 单靠堆帧不够）。
+- Depth train expected ~1–3 h on 4090; do not interrupt.
+- ⓿e not in this pipeline.

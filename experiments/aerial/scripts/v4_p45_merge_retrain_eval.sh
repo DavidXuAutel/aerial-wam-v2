@@ -37,12 +37,12 @@ echo "[pipeline] DEPTH FT (2000 steps, init r60 da3)"
   --save-ckpt \
   --eval-every 200
 
-DEPTH_CKPT=$(ls -1 "$DEPTH_OUT"/depth_step_*_da3_ft_head.pt 2>/dev/null | sort | tail -1)
+DEPTH_CKPT=$(ls -1 "$DEPTH_OUT"/depth_step_*_da3_ft*.pt 2>/dev/null | sort | tail -1)
 if [[ -z "${DEPTH_CKPT}" ]]; then
   DEPTH_CKPT=$(ls -1 "$DEPTH_OUT"/depth_step_*.pt 2>/dev/null | sort | tail -1)
 fi
 echo "[pipeline] DEPTH_CKPT=$DEPTH_CKPT"
-test -f "$DEPTH_CKPT"
+test -n "${DEPTH_CKPT}" && test -f "$DEPTH_CKPT"
 
 echo "[pipeline] WM train (500 steps, heldout 0.25)"
 "$PYTHON_BIN" -m experiments.aerial.rl._wm_train_validate \
