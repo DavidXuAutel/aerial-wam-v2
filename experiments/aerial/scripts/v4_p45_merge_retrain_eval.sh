@@ -57,14 +57,19 @@ WM_CKPT="$WM_OUT/wm_step_500.pt"
 test -f "$WM_CKPT"
 
 echo "[pipeline] P3 v4-zero"
+set +e
 "$PYTHON_BIN" -m experiments.aerial.rl.v4_zero_eval \
   --dataset "$DATA" \
   --depth-ckpt "$DEPTH_CKPT" \
   --tau-ckpt "$TAU" \
   --device cuda \
   --emit artifacts/v4_zero_p3_p45_merged_20260821.json
+P3_EC=$?
+set -e
+echo "[pipeline] P3 exit=$P3_EC (continue to P1 even if FAIL)"
 
 echo "[pipeline] P1 fidelity"
+set +e
 "$PYTHON_BIN" -m experiments.aerial.rl._wm_fidelity_eval \
   --dataset "$DATA" \
   --ckpt "$WM_CKPT" \
@@ -72,10 +77,14 @@ echo "[pipeline] P1 fidelity"
   --heldout-frac 0.25 \
   --device cuda \
   | tee logs/v4_p1_p45_merged_20260821.log
+P1_EC=$?
+set -e
+echo "[pipeline] P1 exit=$P1_EC"
 
 echo "[pipeline] DONE $(date -Iseconds)"
 echo "DATA=$DATA"
 echo "DEPTH=$DEPTH_CKPT"
 echo "WM=$WM_CKPT"
-echo "P3=artifacts/v4_zero_p3_p45_merged_20260821.json"
-echo "P1=logs/v4_p1_p45_merged_20260821.log"
+echo "P3=artifacts/v4_zero_p3_p45_merged_20260821.json (exit=$P3_EC)"
+echo "P1=logs/v4_p1_p45_merged_20260821.log (exit=$P1_EC)"
+exit 0
