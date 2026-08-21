@@ -40,6 +40,29 @@ def forward_min_depth(depth: np.ndarray, *, center_frac: float) -> float:
     return _min_finite_positive(crop)
 
 
+def forward_min_depth_torch(depth, *, center_frac: float):
+    """Batched differentiable forward-crop min — same geometry as :func:`forward_min_depth`.
+
+    ``depth``: ``[B,H,W]`` or ``[H,W]``. Gradients flow to the argmin pixel(s)
+    (hard min; no softmin temperature — declare v2 D-2).
+    Non-finite / non-positive entries are treated as +inf so they never win.
+    """
+    import torch
+
+    d = depth if depth.ndim == 3 else depth.unsqueeze(0)
+    b, h, w = d.shape
+    cf = float(max(0.05, min(1.0, center_frac)))
+    dh, dw = max(1, int(h * cf)), max(1, int(w * cf))
+    r0, c0 = (h - dh) // 2, (w - dw) // 2
+    crop = d[:, r0 : r0 + dh, c0 : c0 + dw]
+    invalid = ~(torch.isfinite(crop) & (crop > 0))
+    filled = crop.masked_fill(invalid, float("inf"))
+    flat = filled.reshape(b, -1)
+    mins = flat.min(dim=-1).values
+    # If a row is all-invalid, min is +inf — caller should mask.
+    return mins if depth.ndim == 3 else mins[0]
+
+
 def full_min_depth(depth: np.ndarray) -> float:
     d = np.asarray(depth, dtype=np.float64)
     return _min_finite_positive(d)

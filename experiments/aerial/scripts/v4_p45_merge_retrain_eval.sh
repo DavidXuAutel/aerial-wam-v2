@@ -64,10 +64,11 @@ set +e
   --tau-ckpt "$TAU" \
   --device cuda \
   --heldout-frac 0.2 \
+  --split-seed 0 \
   --emit artifacts/v4_zero_p3_p45_merged_20260821.json
 P3_EC=$?
 set -e
-echo "[pipeline] P3 exit=$P3_EC (continue to P1 even if FAIL; heldout-frac=0.2 matches depth FT)"
+echo "[pipeline] P3 exit=$P3_EC (continue to P1 even if FAIL; heldout seeded seed=0 matches depth FT)"
 
 echo "[pipeline] P1 fidelity"
 set +e

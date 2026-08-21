@@ -634,6 +634,11 @@ def depth_head_loss(
     near_overread_hinge_weight: float = 0.0,
     near_absrel_pinball_weight: float = 0.0,
     near_absrel_pinball_tau: float = 0.9,
+    fwd_overread_hinge_weight: float = 0.0,
+    near_absrel_p90_weight: float = 0.0,
+    near_absrel_p90_tau: float = 0.9,
+    center_frac: float = 0.5,
+    trigger_m: float = 3.0,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
     """Supervised depth loss: AbsRel L1 + mild heteroscedastic NLL on valid GT.
 
@@ -652,27 +657,32 @@ def depth_head_loss(
     This is an ADDED training term only; it does NOT change the ①d gate metric
     (``v0_metrics.depth_absrel`` over the full mask) or any §4.1 threshold.
 
-    V4-⓪ alignment (declare ``docs/handover/V4_DEPTH_LOSS_DECLARE_20260821.md``):
-    - ``near_overread_hinge_weight``: one-sided hinge on near pixels — only
-      ``(pred-gt)/gt`` when pred>gt (⓪d over-read / miss-trigger).
-    - ``near_absrel_pinball_weight`` + ``near_absrel_pinball_tau``: pinball on
-      signed relative error in the near band (τ>0.5 emphasises over-read tail;
-      surrogate for ⓪c p90). Defaults 0 keep pre-2026-08-21 behaviour.
+    V4-⓪ declare v1 (superseded): ``near_overread_hinge_weight`` /
+    signed ``near_absrel_pinball_*`` — pixel-mean near hinge; default 0.
+
+    V4-⓪ declare v2: ``fwd_overread_hinge_weight`` (forward-crop min, same
+    geometry as eval ⓪d) + ``near_absrel_p90_weight`` (AbsRel tail weight).
     """
+    from experiments.aerial.rl.depth_geometry import forward_min_depth_torch
+
     mask = (
         torch.isfinite(gt) & (gt > 1e-6) & (gt <= float(max_depth_m))
         & torch.isfinite(pred)
     )
+    empty_stats = {
+        "loss": 0.0,
+        "absrel": float("nan"),
+        "nll": 0.0,
+        "n_valid": 0,
+        "near_overread_hinge": float("nan"),
+        "near_pinball": float("nan"),
+        "fwd_overread_hinge": float("nan"),
+        "near_absrel_p90": float("nan"),
+        "n_fwd_trigger": 0,
+    }
     if not bool(mask.any()):
         zero = pred.sum() * 0.0
-        return zero, {
-            "loss": 0.0,
-            "absrel": float("nan"),
-            "nll": 0.0,
-            "n_valid": 0,
-            "near_overread_hinge": float("nan"),
-            "near_pinball": float("nan"),
-        }
+        return zero, empty_stats
     p, g, ls = pred[mask], gt[mask], log_sigma[mask]
     absrel = (torch.abs(p - g) / g).mean()
     # Scale-invariant log (Eigen et al.) — stabilises large outdoor depth range.
@@ -690,28 +700,65 @@ def depth_head_loss(
     near_absrel_v = float("nan")
     near_hinge_v = float("nan")
     near_pinball_v = float("nan")
+    near_p90_v = float("nan")
+    fwd_hinge_v = float("nan")
     n_near = 0
+    n_fwd_trigger = 0
     near = g <= float(near_focus_m)
     n_near = int(near.sum().item())
     if n_near > 0:
         p_n, g_n = p[near], g[near]
         rel = (p_n - g_n) / g_n
+        e_abs = torch.abs(rel)
         if float(near_weight) > 0.0:
-            near_absrel = torch.abs(rel).mean()
+            near_absrel = e_abs.mean()
             loss = loss + float(near_weight) * near_absrel
             near_absrel_v = float(near_absrel.detach().item())
         if float(near_overread_hinge_weight) > 0.0:
-            # ⓪d: only punish over-read (pred too far → miss trigger).
+            # v1 (archived): pixel-mean over-read only.
             hinge = torch.relu(rel).mean()
             loss = loss + float(near_overread_hinge_weight) * hinge
             near_hinge_v = float(hinge.detach().item())
         if float(near_absrel_pinball_weight) > 0.0:
-            # ⓪c surrogate: pinball on signed relative error (τ=0.9 ⇒ over-read×9).
+            # v1 signed pinball — keep for ablations; v2 recipe sets weight=0.
             tau = float(near_absrel_pinball_tau)
             tau = min(max(tau, 1e-3), 1.0 - 1e-3)
             pinball = torch.where(rel >= 0, tau * rel, (1.0 - tau) * (-rel)).mean()
             loss = loss + float(near_absrel_pinball_weight) * pinball
             near_pinball_v = float(pinball.detach().item())
+        if float(near_absrel_p90_weight) > 0.0:
+            # v2 B′: AbsRel tail weight (stopgrad e/median); τ scales excess.
+            tau = float(near_absrel_p90_tau)
+            tau = min(max(tau, 1e-3), 1.0 - 1e-3)
+            med = e_abs.detach().median().clamp_min(1e-6)
+            # Above-median AbsRel get weight >=1, scaled so τ=0.9 emphasises tail.
+            scale = (e_abs.detach() / med).clamp(1.0, 20.0)
+            # Blend: base AbsRel + extra (τ/(1-τ)-ish) on scaled tail.
+            tail = (e_abs * scale).mean()
+            # Emphasise upper mass: weight = 1 + (2τ-1)*(scale-1) ∈ [1, ...]
+            w = 1.0 + (2.0 * tau - 1.0) * (scale - 1.0)
+            p90_term = (e_abs * w).mean()
+            loss = loss + float(near_absrel_p90_weight) * p90_term
+            near_p90_v = float(p90_term.detach().item())
+            _ = tail  # kept for clarity / future logging
+
+    # v2 A′: forward-crop min hinge (eval ⓪d geometry).
+    if float(fwd_overread_hinge_weight) > 0.0:
+        # Ensure batch dim for geometry helper.
+        pred_b = pred if pred.ndim == 3 else pred.unsqueeze(0)
+        gt_b = gt if gt.ndim == 3 else gt.unsqueeze(0)
+        d_fwd = forward_min_depth_torch(pred_b, center_frac=float(center_frac))
+        g_fwd = forward_min_depth_torch(gt_b, center_frac=float(center_frac))
+        trig = float(trigger_m)
+        cond = torch.isfinite(g_fwd) & torch.isfinite(d_fwd) & (g_fwd <= trig) & (g_fwd > 1e-6)
+        n_fwd_trigger = int(cond.sum().item())
+        if n_fwd_trigger > 0:
+            # Relative over-read on forward min (aligns with miss = D̂>trigger when GT≤trigger).
+            rel_fwd = (d_fwd[cond] - g_fwd[cond]) / g_fwd[cond].clamp_min(1e-6)
+            fwd_hinge = torch.relu(rel_fwd).mean()
+            loss = loss + float(fwd_overread_hinge_weight) * fwd_hinge
+            fwd_hinge_v = float(fwd_hinge.detach().item())
+
     return loss, {
         "loss": float(loss.detach().item()),
         "absrel": float(absrel.detach().item()),
@@ -720,7 +767,10 @@ def depth_head_loss(
         "near_absrel": near_absrel_v,
         "near_overread_hinge": near_hinge_v,
         "near_pinball": near_pinball_v,
+        "near_absrel_p90": near_p90_v,
+        "fwd_overread_hinge": fwd_hinge_v,
         "n_near": n_near,
+        "n_fwd_trigger": n_fwd_trigger,
         "n_valid": int(mask.sum().item()),
     }
 

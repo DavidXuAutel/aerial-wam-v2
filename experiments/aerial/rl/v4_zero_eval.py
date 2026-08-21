@@ -308,34 +308,48 @@ def aggregate_verdict(sub: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _heldout_episodes(episodes: List[Any], frac: float) -> Tuple[List[Any], Dict[str, Any]]:
-    """Deterministic tail split — last ceil(frac*N) episodes are the scored set.
+def _heldout_episodes(
+    episodes: List[Any],
+    frac: float,
+    *,
+    seed: int = 0,
+    expect_split: Optional[Dict[str, Any]] = None,
+    dataset_dir: Optional[Path] = None,
+) -> Tuple[List[Any], Dict[str, Any]]:
+    """Seeded holdout — MUST match ``train_depth_head`` (holdout_split / §3 #19).
 
-    Matches ``_wm_fidelity_eval._heldout_split`` / ``_wm_train_validate`` discipline:
-    when ``frac>0``, score only the held-out tail (honest gate for a head trained
-    on the complementary prefix). ``frac=0`` scores all episodes (in-sample /
-    fully OOD control-arm regimes — caller must declare which).
+    ``frac<=0`` scores all episodes (honest max slice for a head that never
+    trained on this corpus — e.g. control-arm old head).
     """
-    import math
+    from experiments.aerial.rl.holdout_split import (
+        apply_indices,
+        assert_same_holdout,
+        split_holdout_indices,
+        summarize_merge_sources,
+    )
 
-    n = len(episodes)
-    if frac <= 0.0 or n == 0:
-        return list(episodes), {
-            "heldout_frac": 0.0,
-            "n_total": n,
-            "n_scored": n,
-            "n_train_prefix": n,
-            "regime": "all_episodes",
-        }
-    k = max(1, math.ceil(float(frac) * n))
-    scored = list(episodes[n - k :])
-    return scored, {
-        "heldout_frac": float(frac),
-        "n_total": n,
+    _train_idx, hold_idx, meta = split_holdout_indices(
+        len(episodes), frac=float(frac), seed=int(seed)
+    )
+    if expect_split is not None:
+        assert_same_holdout(
+            meta, expect_split, label_a="eval", label_b="expect_holdout_split"
+        )
+        print("[v4-zero] holdout indices MATCH expect-holdout-split ✓")
+    if dataset_dir is not None and meta.get("holdout_indices"):
+        meta["merge_sources"] = summarize_merge_sources(
+            dataset_dir, meta["holdout_indices"]
+        )
+    if meta["regime"] == "all_episodes":
+        scored = list(episodes)
+    else:
+        scored = apply_indices(episodes, hold_idx)
+    meta = {
+        **meta,
         "n_scored": len(scored),
-        "n_train_prefix": n - len(scored),
-        "regime": "heldout_tail",
+        "n_train_prefix": meta.get("n_train"),  # compat key name
     }
+    return scored, meta
 
 
 def run_eval(
@@ -348,6 +362,8 @@ def run_eval(
     max_episodes: int = 0,
     emit: Optional[Path] = None,
     heldout_frac: float = 0.0,
+    split_seed: int = 0,
+    expect_holdout_split: Optional[Path] = None,
 ) -> Dict[str, Any]:
     import torch
 
@@ -378,18 +394,34 @@ def run_eval(
     episodes = ds.load_dataset(dataset, skip_quarantined=True)
     if max_episodes > 0:
         episodes = episodes[: int(max_episodes)]
-    episodes, split_meta = _heldout_episodes(episodes, float(heldout_frac))
-    if split_meta["regime"] == "heldout_tail":
+    expect_meta = None
+    if expect_holdout_split is not None:
+        expect_meta = json.loads(Path(expect_holdout_split).expanduser().read_text())
+    episodes, split_meta = _heldout_episodes(
+        episodes,
+        float(heldout_frac),
+        seed=int(split_seed),
+        expect_split=expect_meta,
+        dataset_dir=Path(dataset),
+    )
+    if split_meta["regime"] == "seeded_holdout":
         print(
             f"[v4-zero] held-out split: score {split_meta['n_scored']}/"
-            f"{split_meta['n_total']} (tail); train prefix "
-            f"{split_meta['n_train_prefix']} excluded"
+            f"{split_meta['n_total']} (seeded seed={split_meta.get('split_seed')}); "
+            f"train {split_meta.get('n_train')} excluded; "
+            f"indices={split_meta.get('holdout_indices')}"
         )
+        ms = split_meta.get("merge_sources") or {}
+        if ms.get("available"):
+            print(
+                f"[v4-zero] holdout by_src={ms.get('holdout_by_src')} "
+                f"by_layer={ms.get('holdout_by_layer')}"
+            )
     elif float(heldout_frac) <= 0.0:
         print(
-            "[v4-zero] WARNING: --heldout-frac=0 → scoring ALL episodes "
-            "(in-sample if the depth head trained on this corpus; OK for a "
-            "control-arm head that never saw these eps)"
+            "[v4-zero] --heldout-frac=0 → scoring ALL episodes "
+            "(honest max slice if depth head never trained on this corpus; "
+            "in-sample if it did — declare which)"
         )
     near_pred: List[float] = []
     near_gt: List[float] = []
@@ -613,11 +645,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         type=float,
         default=0.0,
         help=(
-            "score only the deterministic tail fraction of episodes "
-            "(same discipline as _wm_fidelity_eval). Required for authoritative "
-            "⓪ after training a head on this corpus; 0 = all eps "
-            "(declare control-arm / in-sample regime in the emit note)"
+            "score only the seeded holdout fraction (MUST match train_depth_head "
+            "--holdout-frac + --split-seed; RUNBOOK §3 #19). 0 = all episodes."
         ),
+    )
+    ap.add_argument(
+        "--split-seed",
+        type=int,
+        default=0,
+        help="seed for holdout permutation (default 0; must match depth train)",
+    )
+    ap.add_argument(
+        "--expect-holdout-split",
+        default=None,
+        help="path to holdout_split.json from train_depth_head; assert index equality",
     )
     ap.add_argument("--emit", default=None)
     ap.add_argument("--trigger-m", type=float, default=None, help="override safety.min_depth_m (default 3.0 for V4 gate)")
@@ -641,6 +682,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         config=cfg,
         max_episodes=int(args.max_episodes),
         heldout_frac=float(args.heldout_frac),
+        split_seed=int(args.split_seed),
+        expect_holdout_split=(
+            Path(args.expect_holdout_split).expanduser()
+            if args.expect_holdout_split
+            else None
+        ),
         emit=Path(args.emit).expanduser() if args.emit else None,
     )
     return 0 if payload["verdict"]["ok"] else 1

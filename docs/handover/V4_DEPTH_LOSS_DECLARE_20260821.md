@@ -1,8 +1,7 @@
 # V4 深度 loss 改法 — 跑前声明（2026-08-21）
 
-> **状态**：已声明，待 held-out 验收。  
-> **依据**：控制臂权威 FAIL（`artifacts/v4_zero_p3_oldhead_merged_20260821.json`）。  
-> **红线**：不改 §4.6 / §4.1 任一阈值；改的是被测系统（训练目标）；`enable_policy_update` 仍 false。
+> **状态**：v1 **已跑、未过线**（归档）。→ 继任声明见 [`V4_DEPTH_LOSS_DECLARE_v2_20260821.md`](V4_DEPTH_LOSS_DECLARE_v2_20260821.md)。  
+> **本文件不改写**；仅作审计链与失败依据。
 
 ---
 
@@ -29,6 +28,7 @@
 
 ## 3. 怎么训 / 怎么验
 
+- **机**：深度 FT **只在 H100**（不要 4090 / cursor-125）。4090 留给渲染 / rollout / 采集。
 - **init**：`depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt`（部署老头；新 p45 头不用）
 - **语料**：`dataset_v0_p45_merged_20260821`
 - **holdout 训**：`--holdout-frac 0.2`（①d）
@@ -37,6 +37,8 @@
 - **失败**：归档 ckpt，**禁止**无新声明再训；不降阈值
 
 控制臂重 emit（`n_near_forward_frames`）可与训并行；不阻塞本声明。
+
+> **注（2026-08-21）**：本轮 hinge+pinball 首发误开在 4090（PID 3410491）；**下次及以后深度训一律 H100**。
 
 ---
 

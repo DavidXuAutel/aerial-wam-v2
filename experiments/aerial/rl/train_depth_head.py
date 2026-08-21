@@ -52,10 +52,19 @@ def _load_depth_cfg(config_path: Path) -> Dict[str, Any]:
     # never fires). Added training term; ①d gate metric/threshold unchanged.
     dh.setdefault("near_weight", 3.0)
     dh.setdefault("near_focus_m", 5.0)
-    # V4-⓪ alignment (off by default — see V4_DEPTH_LOSS_DECLARE_20260821.md).
+    # V4-⓪ v1 (archived) — off by default.
     dh.setdefault("near_overread_hinge_weight", 0.0)
     dh.setdefault("near_absrel_pinball_weight", 0.0)
     dh.setdefault("near_absrel_pinball_tau", 0.9)
+    # V4-⓪ declare v2.
+    dh.setdefault("fwd_overread_hinge_weight", 0.0)
+    dh.setdefault("near_absrel_p90_weight", 0.0)
+    dh.setdefault("near_absrel_p90_tau", 0.9)
+    dh.setdefault("center_frac", 0.5)  # frozen = eval / tau default (declare D-2)
+    dh.setdefault("trigger_m", 3.0)
+    dh.setdefault("fwd_hinge_saturate_eps", 0.005)
+    dh.setdefault("fwd_hinge_saturate_patience", 50)
+    dh.setdefault("absrel_lr_drop_on_saturate", 10.0)
     # Keep delta << AbsRel/SILog: delta_weight=1.0 from-scratch collapsed AbsRel
     # (0.98 / 0.70 archived 2026-08-05). Prefer finetune from canonical PASS ckpt.
     dh.setdefault("delta_weight", 0.1)
@@ -158,23 +167,14 @@ def _usable_episodes(root: Path, window: int) -> List[Any]:
 
 def _split_train_holdout(
     episodes: List[Any], *, holdout_frac: float, seed: int
-) -> tuple[List[Any], List[Any]]:
-    """Episode-level split so ①d AbsRel is scored on trajectories never trained on.
+) -> tuple[List[Any], List[Any], Dict[str, Any]]:
+    """Episode-level split — MUST match ``v4_zero_eval`` (holdout_split / §3 #19)."""
+    from experiments.aerial.rl.holdout_split import apply_indices, split_holdout_indices
 
-    Deterministic (seeded permutation) and always leaves ≥1 episode for training.
-    With <2 usable episodes a real holdout is impossible — returns an empty
-    holdout and the caller warns that ①d would be in-sample.
-    """
-    n = len(episodes)
-    if n < 2:
-        return episodes, []
-    rng = np.random.default_rng(int(seed))
-    idx = rng.permutation(n)
-    n_hold = max(1, int(round(n * float(holdout_frac))))
-    n_hold = min(n_hold, n - 1)
-    hold = [episodes[int(i)] for i in idx[:n_hold]]
-    train = [episodes[int(i)] for i in idx[n_hold:]]
-    return train, hold
+    train_idx, hold_idx, meta = split_holdout_indices(
+        len(episodes), frac=float(holdout_frac), seed=int(seed)
+    )
+    return apply_indices(episodes, train_idx), apply_indices(episodes, hold_idx), meta
 
 
 def _buffer_from(episodes: List[Any], *, tag: str, window: int) -> ReplayBuffer:
@@ -388,6 +388,40 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Pinball τ (default 0.9). >0.5 emphasises over-read.",
     )
     p.add_argument(
+        "--fwd-overread-hinge-weight",
+        type=float,
+        default=None,
+        help="Declare v2 A′: forward-crop min over-read hinge (eval ⓪d geometry).",
+    )
+    p.add_argument(
+        "--near-absrel-p90-weight",
+        type=float,
+        default=None,
+        help="Declare v2 B′: near-band AbsRel tail weight (not signed pinball).",
+    )
+    p.add_argument(
+        "--near-absrel-p90-tau",
+        type=float,
+        default=None,
+        help="AbsRel p90 tail τ (default 0.9).",
+    )
+    p.add_argument(
+        "--declare-id",
+        type=str,
+        default="",
+        help="Print/record declare id at train start (e.g. v2-20260821).",
+    )
+    p.add_argument(
+        "--early-stop-on-fwd-saturate",
+        action="store_true",
+        help="Declare v2 C′: stop when fwd_overread_hinge stays below eps for patience steps.",
+    )
+    p.add_argument(
+        "--drop-absrel-lr-on-fwd-saturate",
+        action="store_true",
+        help="Declare v2 C′: instead of stop, drop AbsRel-group lr by absrel_lr_drop_on_saturate.",
+    )
+    p.add_argument(
         "--init-ckpt",
         type=Path,
         default=None,
@@ -526,6 +560,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         dh_cfg["near_absrel_pinball_weight"] = float(args.near_absrel_pinball_weight)
     if args.near_absrel_pinball_tau is not None:
         dh_cfg["near_absrel_pinball_tau"] = float(args.near_absrel_pinball_tau)
+    if args.fwd_overread_hinge_weight is not None:
+        dh_cfg["fwd_overread_hinge_weight"] = float(args.fwd_overread_hinge_weight)
+    if args.near_absrel_p90_weight is not None:
+        dh_cfg["near_absrel_p90_weight"] = float(args.near_absrel_p90_weight)
+    if args.near_absrel_p90_tau is not None:
+        dh_cfg["near_absrel_p90_tau"] = float(args.near_absrel_p90_tau)
     if args.base is not None:
         if int(args.base) < 8:
             p.error("--base must be >= 8")
@@ -572,8 +612,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"[depth-train] falling back to {device} (requested {args.device})")
 
     all_eps = _usable_episodes(root, args.window)
-    train_eps, holdout_eps = _split_train_holdout(
+    train_eps, holdout_eps, split_meta = _split_train_holdout(
         all_eps, holdout_frac=float(args.holdout_frac), seed=int(args.split_seed)
+    )
+    if args.declare_id:
+        print(f"[depth-train] declare_id={args.declare_id}")
+    print(
+        f"[depth-train] split regime={split_meta.get('regime')} "
+        f"n_train={split_meta.get('n_train')} n_holdout={split_meta.get('n_holdout')} "
+        f"seed={split_meta.get('split_seed')} "
+        f"holdout_indices={split_meta.get('holdout_indices')}"
     )
     if not holdout_eps:
         print(
@@ -680,6 +728,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     ckpt_dir = Path(str(args.checkpoint_dir or dh_cfg["checkpoint_dir"]))
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    split_path = ckpt_dir / "holdout_split.json"
+    split_path.write_text(json.dumps(split_meta, indent=2) + "\n")
+    print(f"[depth-train] wrote {split_path} (v4_zero_eval --expect-holdout-split)")
     log_path = ckpt_dir / "depth_train.jsonl"
     # Finetune runs default their save dir to the canonical checkpoint_dir. A
     # naive save + blind log-unlink would silently replace the AbsRel-PASS
@@ -734,13 +785,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"overread_hinge={dh_cfg.get('near_overread_hinge_weight', 0)} "
         f"pinball={dh_cfg.get('near_absrel_pinball_weight', 0)}"
         f"@τ={dh_cfg.get('near_absrel_pinball_tau', 0.9)} "
+        f"fwd_hinge={dh_cfg.get('fwd_overread_hinge_weight', 0)} "
+        f"absrel_p90={dh_cfg.get('near_absrel_p90_weight', 0)} "
         f"ckpt_dir={ckpt_dir}"
     )
 
     absrels: List[float] = []
     losses: List[float] = []
     last_holdout: Optional[float] = None
+    fwd_sat_streak = 0
+    absrel_lr_dropped = False
+    sat_eps = float(dh_cfg.get("fwd_hinge_saturate_eps", 0.005))
+    sat_patience = int(dh_cfg.get("fwd_hinge_saturate_patience", 50))
+    lr_drop = float(dh_cfg.get("absrel_lr_drop_on_saturate", 10.0))
     model.train()
+    stopped_early = False
+    stop_reason = None
     for step in range(1, int(args.steps) + 1):
         windows = _sample_approach_biased_windows(
             buf,
@@ -776,6 +836,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             near_absrel_pinball_tau=float(
                 dh_cfg.get("near_absrel_pinball_tau", 0.9)
             ),
+            fwd_overread_hinge_weight=float(
+                dh_cfg.get("fwd_overread_hinge_weight", 0.0)
+            ),
+            near_absrel_p90_weight=float(dh_cfg.get("near_absrel_p90_weight", 0.0)),
+            near_absrel_p90_tau=float(dh_cfg.get("near_absrel_p90_tau", 0.9)),
+            center_frac=float(dh_cfg.get("center_frac", 0.5)),
+            trigger_m=float(dh_cfg.get("trigger_m", 3.0)),
         )
         # Temporal / Δ-depth: predict the first frame of the window with full
         # n_frames context and match |Δ band-mean| to GT on approach-alive rows
@@ -842,11 +909,60 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"loss={stats['loss']:.4f} "
                 f"train_batch_absrel={train_batch_absrel:.4f} "
                 f"near_absrel={stats.get('near_absrel', float('nan'))} "
+                f"fwd_hinge={stats.get('fwd_overread_hinge', float('nan'))} "
+                f"absrel_p90={stats.get('near_absrel_p90', float('nan'))} "
+                f"n_fwd={stats.get('n_fwd_trigger', 0)} "
                 f"n_near={stats.get('n_near', 0)} "
-                f"delta_rel={stats.get('delta_rel', float('nan'))} "
-                f"n_delta={stats.get('n_delta', 0)} "
                 f"n_valid={stats['n_valid']}"
             )
+        # Declare v2 C′: saturation of forward hinge.
+        fh = stats.get("fwd_overread_hinge")
+        if (
+            float(dh_cfg.get("fwd_overread_hinge_weight", 0.0)) > 0.0
+            and fh is not None
+            and fh == fh  # not NaN
+        ):
+            if float(fh) < sat_eps:
+                fwd_sat_streak += 1
+            else:
+                fwd_sat_streak = 0
+            if fwd_sat_streak >= sat_patience:
+                if args.early_stop_on_fwd_saturate:
+                    stopped_early = True
+                    stop_reason = (
+                        f"fwd_overread_hinge<{sat_eps} for {sat_patience} steps "
+                        f"(last={fh})"
+                    )
+                    print(f"[depth-train] EARLY STOP: {stop_reason}")
+                    row_stop = {
+                        "step": step,
+                        "early_stop": True,
+                        "reason": stop_reason,
+                    }
+                    with log_path.open("a") as f:
+                        f.write(json.dumps(row_stop) + "\n")
+                    break
+                if args.drop_absrel_lr_on_fwd_saturate and not absrel_lr_dropped:
+                    for g in opt.param_groups:
+                        g["lr"] = float(g["lr"]) / lr_drop
+                    absrel_lr_dropped = True
+                    fwd_sat_streak = 0
+                    print(
+                        f"[depth-train] fwd hinge saturated — AbsRel lr ÷{lr_drop} "
+                        f"(now {opt.param_groups[0]['lr']})"
+                    )
+                    with log_path.open("a") as f:
+                        f.write(
+                            json.dumps(
+                                {
+                                    "step": step,
+                                    "absrel_lr_dropped": True,
+                                    "new_lr": opt.param_groups[0]["lr"],
+                                    "fwd_hinge": fh,
+                                }
+                            )
+                            + "\n"
+                        )
 
     final_step_was_evaluated = (
         int(args.eval_every) > 0

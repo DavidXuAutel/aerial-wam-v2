@@ -190,6 +190,8 @@ P5 若改 `min_depth_m` ⇒ **⓪d 与 ⓪f 必须按新 trigger 重测**。
 | 16 | **到达定义** | `min_t dist(p_t, g) ≤ 3.0 m`，**不改 rollout 控制流** | 无 | ✅ **已签死** |
 | **17** | **⓪f(3) / ⓪d 的 `≤ 0.05` 按点估计还是 95% 置信上界判** | **人定，须签字**（挂 `5an` 附带欠规范①）。实测差别（⓪f）：最低可采 `lo` = **5.00**（点估计 0.040）vs **5.75**（0/91，rule-of-three 上界 0.033）。**⓪d 同欠规范**：控制臂 `p_miss=0.076` 的分母 `n_near_forward_frames` 须落盘；若分母仅数十，CI 下界可掉到 0.05 以下 ⇒ **速率腿单独不够硬**（稳固支点仍是 `consec≥2`）。**冻结规则原文只写阈值、未写点估计 vs CI** ⇒ 看到数后再选 = p-hacking | 无（已有数；`n_near_forward_frames` 键已加） | ⬜ **待签**，且 **#1 的 `lo` 不定完本项不许填** |
 | **18** | **⓪f(4)（τ 项）逐带 support 门** | **人定，须签字**（挂 `5an` 附带欠规范②）。实测逐候选带 `n_τ` 仅 **42–50** ⇒ 上界 3/43 = **0.070 > 0.05** ⇒ **τ 项在候选带上不可判**；仅 `(3,8]` 全域（`n_τ=131`, FT=0, 上界 0.023）够，**但判据条件是 `D_gt ∈ [lo,hi]` 不是全域**。禁止：加宽带宽凑 support（1.5 m 已冻）、换成全域、因难达而回退 | 无（已有数） | ⬜ **待签**；在此之前 ⓪f(4) 只能记「**未见误触，但逐带 support 不足**」 |
+| **19** | **depth 训 holdout 与 ⓪ eval holdout 是两个不同集合** | **事实错误、须改代码**（不需签字：改 harness 不改判据）。[`train_depth_head.py:159-178`](rl/train_depth_head.py) `_split_train_holdout` = **seeded permutation**（`--split-seed` 默认 0）；[`v4_zero_eval.py:311-337`](rl/v4_zero_eval.py) `_heldout_episodes` = **确定性尾切**。⇒ 期望重叠仅 16×16/77 ≈ **3.3/16 ep**，`V4_DEPTH_LOSS_DECLARE_v2` §2「主表 = 与训同一尾部」**不成立**，该主表对 FT 头 **约 80% in-sample**。读法不对称：**v1 的 FAIL 因此更硬**；**v2 若在同协议下 PASS ⇒ 不可采**。另：**主表须与 ckpt 绑定** = 「对该 ckpt 诚实的最大切片」（老头 ⇒ 全 77 ep `0.076/consec2` FAIL；FT 头 ⇒ 与训练互斥那片）——把小分母有利尾切定为权威会洗掉 ⓪ 首个权威 FAIL 与 V0 ④ 低功效判定，**该放松不给签** | 统一两侧切法（复用同一函数/同 seed）+ 开训前打印两侧 index 集合并 `assert` 相等，写入落盘契约 | ⬜ **开训硬前置** |
+| **20** | **主表（尾 16）的 ⓪b 可判性 + 尾切在本语料上是错的仪器** | ⓪b 要求 `n_frames_with_near_px ≥ 100`；尾 16 仅占语料 ~21% ⇒ 全库不足 ~480 近带帧则**主表天生不可判**（而过线第一条正是「⓪b 过」）。且 [`v4_p45_merge_usable.py:25-45`](scripts/v4_p45_merge_usable.py) **按源顺序**写 `episode_{idx:05d}`，`near_enrich` 为**第三源** ⇒ **尾部集中是近带富集集** ⇒ 要么 (a) 帧数够但分布**明显富近带**（与 ⓪e「测试分布=部署分布」冲突，且尾 16 的 `0.044` vs 全库 `0.076` **是分布差、不是抽样噪声**），要么 (b) 帧数不够（不可判）。**两种情况都判定确定性尾切不适用于本语料** | ① 开训前先在**老头**上跑 `--heldout-frac 0.2` 只看 ⓪b `n_frames_with_near_px`；② 改 seeded 随机切（与 #19 同 seed 同集合）；③ 落盘 `merge_manifest.json` 的按源分布 | ⬜ **开训硬前置** |
 
 ---
 
@@ -292,7 +294,8 @@ P5 若改 `min_depth_m` ⇒ **⓪d 与 ⓪f 必须按新 trigger 重测**。
 
 ## 10. 变更记录
 
-- **2026-08-21（跑前声明：hinge+pinball）** —— [`V4_DEPTH_LOSS_DECLARE_20260821.md`](../../docs/handover/V4_DEPTH_LOSS_DECLARE_20260821.md)；loss 默认关、CLI 开。不改判据阈值。
+- **2026-08-21（声明 v2）** —— [`V4_DEPTH_LOSS_DECLARE_v2_20260821.md`](../../docs/handover/V4_DEPTH_LOSS_DECLARE_v2_20260821.md)：前向几何 hinge + AbsRel-p90；v1 未过线已结案。实现前不开训；机=H100。
+- **2026-08-21（跑前声明：hinge+pinball）** —— [`V4_DEPTH_LOSS_DECLARE_20260821.md`](../../docs/handover/V4_DEPTH_LOSS_DECLARE_20260821.md)；loss 默认关、CLI 开。不改判据阈值。**→ 已跑未过线，见 v2。**
 - **2026-08-21（⓪ 权威 FAIL + 改训练目标开闸 + holdout 硬前置落地）** —— 控制臂 = 首个权威 FAIL；V0 ④ supersede 低功效；§3 #17 扩到 ⓪d；`v4_zero_eval --heldout-frac` + `n_near_forward_frames`。详见 [`V4_GATE_STATUS.md`](../../docs/handover/V4_GATE_STATUS.md) §3 (J)–(R)。**不改判据阈值。**
 - **2026-08-20（P3/P1 补数入库）** —— P3：`near_px_total`、`max_frame_frac`、⓪c GT p90 分箱、⓪f(3)/(4) 全表；P1：`one_step_ok` 绑 h=0 行。产物 `artifacts/v4_zero_p3_20260820_bins.json`。不改判据。
 - **2026-08-20（P3 记法更正入库；运营裁定 R-16=(B)；停 supervisor / 下一步改 P4.5）** —— 见 GATE_STATUS 同日顶条。不改判据阈值。

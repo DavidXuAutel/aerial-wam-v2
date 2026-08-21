@@ -59,18 +59,29 @@ def test_0d_miss_rate_and_consecutive():
     assert r["n_near_forward_frames"] == r["n_cond"] == 4
 
 
-def test_heldout_episodes_tail_split():
+def test_heldout_episodes_seeded_split():
+    from experiments.aerial.rl.holdout_split import split_holdout_indices
     from experiments.aerial.rl.v4_zero_eval import _heldout_episodes
 
     eps = list(range(10))
-    scored, meta = _heldout_episodes(eps, 0.25)
-    assert scored == [7, 8, 9]  # ceil(0.25*10)=3
-    assert meta["n_scored"] == 3
-    assert meta["n_train_prefix"] == 7
-    assert meta["regime"] == "heldout_tail"
-    all_eps, meta0 = _heldout_episodes(eps, 0.0)
+    scored, meta = _heldout_episodes(eps, 0.25, seed=0)
+    _, hold_idx, meta2 = split_holdout_indices(10, frac=0.25, seed=0)
+    assert meta["regime"] == "seeded_holdout"
+    assert meta["holdout_indices"] == sorted(hold_idx)
+    assert len(scored) == meta["n_holdout"] == 2  # round(0.25*10)=2 (banker)
+    all_eps, meta0 = _heldout_episodes(eps, 0.0, seed=0)
     assert all_eps == eps
     assert meta0["regime"] == "all_episodes"
+
+
+def test_train_eval_holdout_indices_match():
+    from experiments.aerial.rl.holdout_split import split_holdout_indices
+
+    t1, h1, m1 = split_holdout_indices(77, frac=0.2, seed=0)
+    t2, h2, m2 = split_holdout_indices(77, frac=0.2, seed=0)
+    assert sorted(h1) == sorted(h2) == m1["holdout_indices"]
+    assert set(t1) | set(h1) == set(range(77))
+    assert set(t1).isdisjoint(h1)
 
 
 def test_clearance_sweep_aligned():

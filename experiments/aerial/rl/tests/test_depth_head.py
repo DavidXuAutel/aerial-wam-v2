@@ -217,6 +217,58 @@ def test_near_pinball_tau_emphasizes_overread():
     assert abs(s_over["near_pinball"] / s_under["near_pinball"] - 9.0) < 1e-3
 
 
+def test_fwd_overread_hinge_matches_forward_geometry():
+    """v2 A′: only forward-crop over-read when GT_fwd ≤ trigger."""
+    H = W = 16
+    gt = torch.ones(1, H, W) * 10.0  # far everywhere
+    # Put a near obstacle in the center crop (center_frac=0.5 → 8×8 center).
+    gt[:, 4:12, 4:12] = 2.0
+    log_sigma = torch.zeros_like(gt)
+    # Over-read only in forward crop.
+    over = gt.clone()
+    over[:, 4:12, 4:12] = 4.0  # 2→4 over-read
+    # Under-read in forward crop.
+    under = gt.clone()
+    under[:, 4:12, 4:12] = 1.0
+    _, s_over = depth_head_loss(
+        over,
+        log_sigma,
+        gt,
+        near_weight=0.0,
+        fwd_overread_hinge_weight=1.0,
+        center_frac=0.5,
+        trigger_m=3.0,
+    )
+    _, s_under = depth_head_loss(
+        under,
+        log_sigma,
+        gt,
+        near_weight=0.0,
+        fwd_overread_hinge_weight=1.0,
+        center_frac=0.5,
+        trigger_m=3.0,
+    )
+    assert s_over["n_fwd_trigger"] >= 1
+    assert s_over["fwd_overread_hinge"] > 0.0
+    assert s_under["fwd_overread_hinge"] == 0.0
+
+
+def test_near_absrel_p90_penalizes_tail():
+    gt = torch.ones(1, 8, 8) * 2.0
+    log_sigma = torch.zeros_like(gt)
+    # Mostly good, one bad corner → high AbsRel tail.
+    mild = gt * 1.1
+    wild = gt.clone()
+    wild[:, :2, :2] = gt[:, :2, :2] * 3.0
+    _, s_mild = depth_head_loss(
+        mild, log_sigma, gt, near_weight=0.0, near_absrel_p90_weight=1.0
+    )
+    _, s_wild = depth_head_loss(
+        wild, log_sigma, gt, near_weight=0.0, near_absrel_p90_weight=1.0
+    )
+    assert s_wild["near_absrel_p90"] > s_mild["near_absrel_p90"]
+
+
 def test_delta_scale_loss_approach_gate_skips_flat_windows():
     """Flat GT Δ must not contribute (prevents AbsRel-killing noise)."""
     B, H, W = 2, 8, 8
