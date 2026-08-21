@@ -2,7 +2,7 @@
 
 - **date**: 2026-08-21
 - **state**: ACTIVE — next = **控制臂**（老头 × 新语料）；新 depth FT **不进部署**
-- **HEAD**: (pending ⓪f fix commit)
+- **HEAD**: `809cde6`
 - **enable_policy_update**: false
 - **R-16**: **(B)**
 
@@ -32,7 +32,7 @@
 
 | job | PID | log |
 |-----|-----|-----|
-| (launching) 控制臂 | — | `logs/v4_p3_oldhead_merged_20260821.log` |
+| 控制臂 oldhead×merged | **3136001** | `logs/v4_p3_oldhead_merged_20260821.log` → `artifacts/v4_zero_p3_oldhead_merged_20260821.json` |
 
 ## Notes
 
