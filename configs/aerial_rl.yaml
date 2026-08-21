@@ -103,6 +103,12 @@ world_model:
     max_depth_m: 200.0       # outdoor AirSim: exclude sky/far-plane from AbsRel
     scale_depth_min_m: 1.0   # ③ navigational band (must match V0GateThresholds)
     scale_depth_max_m: 40.0
+    # Near-band terms (train_depth_head also setdefaults). Symmetric near_weight
+    # defaults to 3.0 in code. V4-⓪ declare FT (2026-08-21): set near_weight=0 and
+    # enable hinge/pinball via CLI — see docs/handover/V4_DEPTH_LOSS_DECLARE_20260821.md
+    near_overread_hinge_weight: 0.0
+    near_absrel_pinball_weight: 0.0
+    near_absrel_pinball_tau: 0.9
     # Decoder-only Δ-finetune (CLI --freeze-encoder). Keep false in yaml until a
     # head-only run is intentional; enable via CLI for AbsRel-preserving FT.
     freeze_encoder: false

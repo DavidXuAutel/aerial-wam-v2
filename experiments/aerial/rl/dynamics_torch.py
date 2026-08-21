@@ -631,6 +631,9 @@ def depth_head_loss(
     max_depth_m: float = 200.0,
     near_weight: float = 0.0,
     near_focus_m: float = 5.0,
+    near_overread_hinge_weight: float = 0.0,
+    near_absrel_pinball_weight: float = 0.0,
+    near_absrel_pinball_tau: float = 0.9,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
     """Supervised depth loss: AbsRel L1 + mild heteroscedastic NLL on valid GT.
 
@@ -648,6 +651,13 @@ def depth_head_loss(
     forward GT<1.5 m → D̂ p50 6.4 m, never triggers the shield → 4/7 ④ contacts.
     This is an ADDED training term only; it does NOT change the ①d gate metric
     (``v0_metrics.depth_absrel`` over the full mask) or any §4.1 threshold.
+
+    V4-⓪ alignment (declare ``docs/handover/V4_DEPTH_LOSS_DECLARE_20260821.md``):
+    - ``near_overread_hinge_weight``: one-sided hinge on near pixels — only
+      ``(pred-gt)/gt`` when pred>gt (⓪d over-read / miss-trigger).
+    - ``near_absrel_pinball_weight`` + ``near_absrel_pinball_tau``: pinball on
+      signed relative error in the near band (τ>0.5 emphasises over-read tail;
+      surrogate for ⓪c p90). Defaults 0 keep pre-2026-08-21 behaviour.
     """
     mask = (
         torch.isfinite(gt) & (gt > 1e-6) & (gt <= float(max_depth_m))
@@ -655,7 +665,14 @@ def depth_head_loss(
     )
     if not bool(mask.any()):
         zero = pred.sum() * 0.0
-        return zero, {"loss": 0.0, "absrel": float("nan"), "nll": 0.0, "n_valid": 0}
+        return zero, {
+            "loss": 0.0,
+            "absrel": float("nan"),
+            "nll": 0.0,
+            "n_valid": 0,
+            "near_overread_hinge": float("nan"),
+            "near_pinball": float("nan"),
+        }
     p, g, ls = pred[mask], gt[mask], log_sigma[mask]
     absrel = (torch.abs(p - g) / g).mean()
     # Scale-invariant log (Eigen et al.) — stabilises large outdoor depth range.
@@ -671,20 +688,38 @@ def depth_head_loss(
     loss = float(absrel_weight) * absrel + 0.5 * silog + float(nll_weight) * nll
     # Near-band emphasis (safety-critical close field) — added term, metric-neutral.
     near_absrel_v = float("nan")
+    near_hinge_v = float("nan")
+    near_pinball_v = float("nan")
     n_near = 0
-    if float(near_weight) > 0.0:
-        near = g <= float(near_focus_m)
-        n_near = int(near.sum().item())
-        if n_near > 0:
-            near_absrel = (torch.abs(p[near] - g[near]) / g[near]).mean()
+    near = g <= float(near_focus_m)
+    n_near = int(near.sum().item())
+    if n_near > 0:
+        p_n, g_n = p[near], g[near]
+        rel = (p_n - g_n) / g_n
+        if float(near_weight) > 0.0:
+            near_absrel = torch.abs(rel).mean()
             loss = loss + float(near_weight) * near_absrel
             near_absrel_v = float(near_absrel.detach().item())
+        if float(near_overread_hinge_weight) > 0.0:
+            # ⓪d: only punish over-read (pred too far → miss trigger).
+            hinge = torch.relu(rel).mean()
+            loss = loss + float(near_overread_hinge_weight) * hinge
+            near_hinge_v = float(hinge.detach().item())
+        if float(near_absrel_pinball_weight) > 0.0:
+            # ⓪c surrogate: pinball on signed relative error (τ=0.9 ⇒ over-read×9).
+            tau = float(near_absrel_pinball_tau)
+            tau = min(max(tau, 1e-3), 1.0 - 1e-3)
+            pinball = torch.where(rel >= 0, tau * rel, (1.0 - tau) * (-rel)).mean()
+            loss = loss + float(near_absrel_pinball_weight) * pinball
+            near_pinball_v = float(pinball.detach().item())
     return loss, {
         "loss": float(loss.detach().item()),
         "absrel": float(absrel.detach().item()),
         "silog": float(silog.detach().item()),
         "nll": float(nll.detach().item()),
         "near_absrel": near_absrel_v,
+        "near_overread_hinge": near_hinge_v,
+        "near_pinball": near_pinball_v,
         "n_near": n_near,
         "n_valid": int(mask.sum().item()),
     }

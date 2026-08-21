@@ -176,6 +176,47 @@ def test_depth_head_loss_finite_and_improves_on_identity():
     assert stats_good["absrel"] < stats_bad["absrel"]
 
 
+def test_near_overread_hinge_penalizes_only_overread():
+    gt = torch.ones(1, 8, 8) * 2.0  # all near (≤5 m)
+    log_sigma = torch.zeros_like(gt)
+    over = gt * 1.5
+    under = gt * 0.5
+    _, s_over = depth_head_loss(
+        over, log_sigma, gt, near_weight=0.0, near_overread_hinge_weight=1.0
+    )
+    _, s_under = depth_head_loss(
+        under, log_sigma, gt, near_weight=0.0, near_overread_hinge_weight=1.0
+    )
+    assert s_over["near_overread_hinge"] > 0.0
+    assert s_under["near_overread_hinge"] == 0.0
+
+
+def test_near_pinball_tau_emphasizes_overread():
+    gt = torch.ones(1, 8, 8) * 2.0
+    log_sigma = torch.zeros_like(gt)
+    over = gt * 1.5   # rel = +0.5
+    under = gt * 0.5  # rel = -0.5
+    _, s_over = depth_head_loss(
+        over,
+        log_sigma,
+        gt,
+        near_weight=0.0,
+        near_absrel_pinball_weight=1.0,
+        near_absrel_pinball_tau=0.9,
+    )
+    _, s_under = depth_head_loss(
+        under,
+        log_sigma,
+        gt,
+        near_weight=0.0,
+        near_absrel_pinball_weight=1.0,
+        near_absrel_pinball_tau=0.9,
+    )
+    # τ=0.9 → over contributes 0.9*|rel|, under 0.1*|rel|
+    assert s_over["near_pinball"] > s_under["near_pinball"]
+    assert abs(s_over["near_pinball"] / s_under["near_pinball"] - 9.0) < 1e-3
+
+
 def test_delta_scale_loss_approach_gate_skips_flat_windows():
     """Flat GT Δ must not contribute (prevents AbsRel-killing noise)."""
     B, H, W = 2, 8, 8

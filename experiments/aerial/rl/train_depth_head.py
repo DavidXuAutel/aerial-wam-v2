@@ -52,6 +52,10 @@ def _load_depth_cfg(config_path: Path) -> Dict[str, Any]:
     # never fires). Added training term; ①d gate metric/threshold unchanged.
     dh.setdefault("near_weight", 3.0)
     dh.setdefault("near_focus_m", 5.0)
+    # V4-⓪ alignment (off by default — see V4_DEPTH_LOSS_DECLARE_20260821.md).
+    dh.setdefault("near_overread_hinge_weight", 0.0)
+    dh.setdefault("near_absrel_pinball_weight", 0.0)
+    dh.setdefault("near_absrel_pinball_tau", 0.9)
     # Keep delta << AbsRel/SILog: delta_weight=1.0 from-scratch collapsed AbsRel
     # (0.98 / 0.70 archived 2026-08-05). Prefer finetune from canonical PASS ckpt.
     dh.setdefault("delta_weight", 0.1)
@@ -359,6 +363,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--holdout-frac", type=float, default=0.2, help="episode fraction reserved for ①d AbsRel")
     p.add_argument("--split-seed", type=int, default=0)
     p.add_argument(
+        "--near-weight",
+        type=float,
+        default=None,
+        help="Override yaml near_weight (symmetric near AbsRel). V4-⓪ FT: set 0 "
+             "when using overread hinge / pinball (see declare 20260821).",
+    )
+    p.add_argument(
+        "--near-overread-hinge-weight",
+        type=float,
+        default=None,
+        help="Near-band one-sided hinge on (pred-gt)/gt_+ (⓪d). Declare FT: 3.0.",
+    )
+    p.add_argument(
+        "--near-absrel-pinball-weight",
+        type=float,
+        default=None,
+        help="Near-band pinball on signed relative error (⓪c surrogate). Declare FT: 2.0.",
+    )
+    p.add_argument(
+        "--near-absrel-pinball-tau",
+        type=float,
+        default=None,
+        help="Pinball τ (default 0.9). >0.5 emphasises over-read.",
+    )
+    p.add_argument(
         "--init-ckpt",
         type=Path,
         default=None,
@@ -489,6 +518,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"[depth-train] NOTE: --lr {args.lr} overrides yaml lr={dh_cfg.get('lr')}",
               file=sys.stderr)
         dh_cfg["lr"] = float(args.lr)
+    if args.near_weight is not None:
+        dh_cfg["near_weight"] = float(args.near_weight)
+    if args.near_overread_hinge_weight is not None:
+        dh_cfg["near_overread_hinge_weight"] = float(args.near_overread_hinge_weight)
+    if args.near_absrel_pinball_weight is not None:
+        dh_cfg["near_absrel_pinball_weight"] = float(args.near_absrel_pinball_weight)
+    if args.near_absrel_pinball_tau is not None:
+        dh_cfg["near_absrel_pinball_tau"] = float(args.near_absrel_pinball_tau)
     if args.base is not None:
         if int(args.base) < 8:
             p.error("--base must be >= 8")
@@ -693,6 +730,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"motion_channels={dh_cfg.get('motion_channels', False)} "
         f"scale_factorized={dh_cfg.get('scale_factorized', False)} "
         f"new_param_lr={dh_cfg.get('new_param_lr')} "
+        f"near_weight={dh_cfg.get('near_weight', 0)} "
+        f"overread_hinge={dh_cfg.get('near_overread_hinge_weight', 0)} "
+        f"pinball={dh_cfg.get('near_absrel_pinball_weight', 0)}"
+        f"@τ={dh_cfg.get('near_absrel_pinball_tau', 0.9)} "
         f"ckpt_dir={ckpt_dir}"
     )
 
@@ -726,6 +767,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             max_depth_m=float(dh_cfg["max_depth_m"]),
             near_weight=float(dh_cfg.get("near_weight", 0.0)),
             near_focus_m=float(dh_cfg.get("near_focus_m", 5.0)),
+            near_overread_hinge_weight=float(
+                dh_cfg.get("near_overread_hinge_weight", 0.0)
+            ),
+            near_absrel_pinball_weight=float(
+                dh_cfg.get("near_absrel_pinball_weight", 0.0)
+            ),
+            near_absrel_pinball_tau=float(
+                dh_cfg.get("near_absrel_pinball_tau", 0.9)
+            ),
         )
         # Temporal / Δ-depth: predict the first frame of the window with full
         # n_frames context and match |Δ band-mean| to GT on approach-alive rows

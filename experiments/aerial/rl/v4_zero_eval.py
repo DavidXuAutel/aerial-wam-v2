@@ -183,6 +183,9 @@ def check_0d(
         "threshold": thr.false_trigger_max,
         "max_consecutive_miss": int(max_run),
         "n_cond": n,
+        # Alias — denominator of p_miss_trigger (GT_forward ≤ trigger).
+        # Required for rate-leg CI; consec FAIL does not depend on this.
+        "n_near_forward_frames": n,
         "trigger_m": thr.trigger_m,
     }
 
@@ -305,6 +308,36 @@ def aggregate_verdict(sub: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _heldout_episodes(episodes: List[Any], frac: float) -> Tuple[List[Any], Dict[str, Any]]:
+    """Deterministic tail split — last ceil(frac*N) episodes are the scored set.
+
+    Matches ``_wm_fidelity_eval._heldout_split`` / ``_wm_train_validate`` discipline:
+    when ``frac>0``, score only the held-out tail (honest gate for a head trained
+    on the complementary prefix). ``frac=0`` scores all episodes (in-sample /
+    fully OOD control-arm regimes — caller must declare which).
+    """
+    import math
+
+    n = len(episodes)
+    if frac <= 0.0 or n == 0:
+        return list(episodes), {
+            "heldout_frac": 0.0,
+            "n_total": n,
+            "n_scored": n,
+            "n_train_prefix": n,
+            "regime": "all_episodes",
+        }
+    k = max(1, math.ceil(float(frac) * n))
+    scored = list(episodes[n - k :])
+    return scored, {
+        "heldout_frac": float(frac),
+        "n_total": n,
+        "n_scored": len(scored),
+        "n_train_prefix": n - len(scored),
+        "regime": "heldout_tail",
+    }
+
+
 def run_eval(
     *,
     dataset: Path,
@@ -314,6 +347,7 @@ def run_eval(
     config: Dict[str, Any],
     max_episodes: int = 0,
     emit: Optional[Path] = None,
+    heldout_frac: float = 0.0,
 ) -> Dict[str, Any]:
     import torch
 
@@ -344,7 +378,19 @@ def run_eval(
     episodes = ds.load_dataset(dataset, skip_quarantined=True)
     if max_episodes > 0:
         episodes = episodes[: int(max_episodes)]
-
+    episodes, split_meta = _heldout_episodes(episodes, float(heldout_frac))
+    if split_meta["regime"] == "heldout_tail":
+        print(
+            f"[v4-zero] held-out split: score {split_meta['n_scored']}/"
+            f"{split_meta['n_total']} (tail); train prefix "
+            f"{split_meta['n_train_prefix']} excluded"
+        )
+    elif float(heldout_frac) <= 0.0:
+        print(
+            "[v4-zero] WARNING: --heldout-frac=0 → scoring ALL episodes "
+            "(in-sample if the depth head trained on this corpus; OK for a "
+            "control-arm head that never saw these eps)"
+        )
     near_pred: List[float] = []
     near_gt: List[float] = []
     outer_pred: List[float] = []
@@ -519,6 +565,7 @@ def run_eval(
             "min_tau_s": thr.min_tau_s,
             "center_frac": thr.center_frac,
         },
+        "split": split_meta,
         "episodes": len(episodes),
         "frames_scored": n_frames_total,
         "n_no_depth_frames": n_no_depth,
@@ -561,6 +608,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--config", default="configs/aerial_rl.yaml")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--max-episodes", type=int, default=0)
+    ap.add_argument(
+        "--heldout-frac",
+        type=float,
+        default=0.0,
+        help=(
+            "score only the deterministic tail fraction of episodes "
+            "(same discipline as _wm_fidelity_eval). Required for authoritative "
+            "⓪ after training a head on this corpus; 0 = all eps "
+            "(declare control-arm / in-sample regime in the emit note)"
+        ),
+    )
     ap.add_argument("--emit", default=None)
     ap.add_argument("--trigger-m", type=float, default=None, help="override safety.min_depth_m (default 3.0 for V4 gate)")
     args = ap.parse_args(argv)
@@ -582,6 +640,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         device=str(args.device),
         config=cfg,
         max_episodes=int(args.max_episodes),
+        heldout_frac=float(args.heldout_frac),
         emit=Path(args.emit).expanduser() if args.emit else None,
     )
     return 0 if payload["verdict"]["ok"] else 1

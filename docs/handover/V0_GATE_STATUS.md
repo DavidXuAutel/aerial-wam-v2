@@ -12,6 +12,8 @@
 
 **✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ **n=8**（现已与 frozen §4.1 对齐，re-freeze 2026-08-17）。④ **实证=④c** ratio=0.113；④b `n_contact=0` 为终态空过（`before_ok=null` / `before_vacuous=true`；JSON 仍 emit `before=1.0` 仅兼容，**不是**测得的干预先于接触）。
 
+> **⚠️ supersede（2026-08-21，审计链：原文不改写）** —— 上段「④ PASS」在**有功效近带语料**下不再可作为 shield 安全性证据：同一 r60 部署头在 V4-⓪ **控制臂**（诚实 held-out）上 **⓪d 权威 FAIL**（`consec=2` 稳固；速率腿待 `n_near_forward_frames`）。性质同「V1 WM gate INVALIDATED」。**④ 标低功效、重新入列重跑**；④c `0.113` 本身不推翻。详见 §4.1 注记 + [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) §3 (J)–(R)。
+
 ---
 
 ## 2. 四信号:还差什么
@@ -22,7 +24,7 @@
 | **①d** | AbsRel ≤0.30 | ✅ head A 0.132(代表)/0.167(approach OOD);✅ **head B local 0.0483**(晚⁷);✅ **r60 ft-head holdout 0.0641**(同上 partial 1) | **无 —— r60 ckpt 已在 partial 1 通过** |
 | **②** | N=**8**;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ **r60 merge PASS**(H100 2026-08-14): progress **13.49** vs random **−4.30**; final_dist **16.54** vs **34.12**; **n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze） |
 | **③** | reproj median 相对误差 ≤0.25;有效窗 ≥8 | ✅ head A 0.05–0.12(余量对 0.25 不宽);✅ **r60 ft-head median 0.212 / n=90**(H100 2026-08-14) | **无 —— partial 3 已落盘** |
-| **④** | ④c ratio ≤0.80；④b ≥0.50 仅当有接触 | ✅ **r60 merge PASS**: ④c ratio **0.113**；④b **N/A**（`n_contact=0`，`before_vacuous`）；JSON `before=1.0` 仅兼容；**n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze；洞 2 空过终态已收口） |
+| **④** | ④c ratio ≤0.80；④b ≥0.50 仅当有接触 | ✅ **r60 merge PASS**: ④c ratio **0.113**；④b **N/A**（`n_contact=0`，`before_vacuous`）；JSON `before=1.0` 仅兼容；**n=8** | **⚠️ 2026-08-21 更正：标低功效、重新入列重跑** —— 同一 r60 部署头在 V4-⓪ 控制臂上 `⓪d miss=0.076 / consec=2`（违反「不得 ≥2 连续」）⇒ 罩在 7.6% 近障机会上未触发；`n=8` + `0 接触` ⇒ 接触率 95% 上界 ≈ **3/8 = 0.375**，「零接触」与「37% 接触」不可区分。**④c `0.113` 不推翻**（测行为改变量、非漏触发）。详见 §4.1 supersede 注记 |
 
 ### 2.1 核心 gap:head 一致性
 
@@ -50,6 +52,7 @@
 - [ ] **C1. P0b: shield 消费侧切到锥** — 在 ④ 重跑前做;会改 ④ 行为 → 需重跑 emit partial
 - [x] **D. n 的 re-freeze** — ✅ 2026-08-17 用户拍板 **n=8**；见 §4
 - [x] **E. ②④ 重跑** — ✅ `v0_partial_24_r60_20260814.json` PASS(n=8; ② progress 13.49/−4.30; ④c ratio 0.113; ④b N/A 空过)
+- [ ] **E′. ④ 低功效重跑（2026-08-21 入列）** — V4-⓪ 控制臂权威 FAIL 后 supersede；须在功效近带语料 / 新感知头上重 emit ④（不降阈值）。前置：感知侧改法 held-out 验过 ⓪c/d，或至少声明仍用现头重跑的功效设计
 - [x] **F. `--merge` 全四 partial JSON** — ✅ **`v0_gate_r60_20260814.json` MERGED PASS exit 0**; flags 已翻
 
 ### 3.1 H100 查证进展(2026-08-12 第一轮已回)
@@ -146,6 +149,12 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 **已收口（文书 + 指标诚实字段）。** r60 ④ `n_contact=0` → ④b 无测量。frozen §4.1 现写明：此为 **3.0 m 反应余量下的接受终态**；④ 实证在 **④c**；`before_ok=null` / `before_vacuous=true`。不另造接触对照（除非将来要主张 ④b 数字）。
 
+> **⚠️ supersede 注记（2026-08-21，V4-⓪ 控制臂出数后加；上文原文不改写）** —— **本节的收口理由被 V4-⓪d 削弱，④ 须重新入列重跑。**
+> - 收口理由是「**3.0 m 反应余量下的接受终态**」，其**前提** = 罩在 3.0 m 处会触发。但 V4-P3 控制臂（`artifacts/v4_zero_p3_oldhead_merged_20260821.json`）在**同一个头** `depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt`（= ②④ rollout / r60 部署线）上、**诚实 held-out** + **support 充足**（315 近带帧）测得 **`P(D̂_forward > 3.0 | GT_forward ≤ 3.0) = 0.076 > 0.05`，且 `max_consec_miss = 2` 直接违反「不得 ≥2 连续漏触发帧」** ⇒ **该头在 7.6% 的近障机会上罩根本没触发** ⇒ `n_contact=0` 更可能来自 **n=8 太小**，而非余量足够。
+> - **功效算术**：④ 的 `n=8` + `0 接触` ⇒ 接触率 95% 上界 ≈ **3/8 = 0.375** ⇒ **「零接触」与「接触率高达 37%」在该样本量下不可区分**。
+> - **不受影响的部分**：**④c `ratio=0.113` 的 PASS 不推翻** —— 它测的是罩对行为的改变量，不是漏触发。受影响的是 ①「④ 整体可作为 shield 安全性证据」这一读法、②「④b 空过 = 余量足够」这一解释。
+> - **动作**：④ **标低功效、重新入列重跑**（无论最终采用哪个 depth head）；换头则本就必须重跑（红线「训练 / 部署的 shield-τ-depth 路径一致」）。**不降 §4.1 任何阈值。**
+
 ---
 
 ## 5. 治理红线（V0 已过关；V1/V4 仍适用）
@@ -158,6 +167,7 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 ## 6. 变更记录
 
+- **2026-08-21** — **④ 判为低功效、重新入列重跑（依据 = V4-⓪ 控制臂；原文不改写，注记加在 §1 banner + §4.1）**。改了什么：给 §1 一句话结论加 supersede banner；§4.1（洞 2）与 §2 的 ④ 行加 supersede 注记；**未改任何 §4.1 阈值、未改 flags**。为什么：V4-P3 控制臂在**同一个 r60 部署头**上、诚实 held-out + 315 近带帧 support 下测得 **⓪d 权威 FAIL**（稳固支点 = `max_consec_miss=2`；速率腿待 `n_near_forward_frames`）。功效：`n=8` + `0 接触` ⇒ 接触率 95% 上界 ≈ 3/8 = **0.375**。**④c `ratio=0.113` 不推翻**。产物：`artifacts/v4_zero_p3_oldhead_merged_20260821.json`；详见 [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) §3 (J)–(R)。
 - **2026-08-17** — §4 **诚实边界**显式化：洞 1 = 事后合法化（08-14 merge@n=8 → 08-17 冻结对齐），非事前干净通过；与 V1-① 功效正交。
 - **2026-08-17** — **洞 2 收口**：④b `n_contact=0` 接受为终态（`before_ok=null` / `before_vacuous`）；④ 实证=④c；JSON `frac=1.0` 仅兼容。§3 待办 D 标为已完成（洞 1）。
 - **2026-08-17** — **n re-freeze 收口**：frozen §4.1 `n_eval_episodes` 16→**8**（用户拍板）；V4 `n<8` 非权威。洞 1 关闭。防误读注 / 悬空引用 / §3.5 4090 冲突见同日更早条目；阅读顺序见 [`LIVING_DOCS.md`](LIVING_DOCS.md)。

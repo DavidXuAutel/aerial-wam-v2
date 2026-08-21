@@ -56,6 +56,21 @@ def test_0d_miss_rate_and_consecutive():
     r = check_0d(gt, dhat, thr=thr)
     assert r["ok"] is False
     assert r["max_consecutive_miss"] == 3
+    assert r["n_near_forward_frames"] == r["n_cond"] == 4
+
+
+def test_heldout_episodes_tail_split():
+    from experiments.aerial.rl.v4_zero_eval import _heldout_episodes
+
+    eps = list(range(10))
+    scored, meta = _heldout_episodes(eps, 0.25)
+    assert scored == [7, 8, 9]  # ceil(0.25*10)=3
+    assert meta["n_scored"] == 3
+    assert meta["n_train_prefix"] == 7
+    assert meta["regime"] == "heldout_tail"
+    all_eps, meta0 = _heldout_episodes(eps, 0.0)
+    assert all_eps == eps
+    assert meta0["regime"] == "all_episodes"
 
 
 def test_clearance_sweep_aligned():
