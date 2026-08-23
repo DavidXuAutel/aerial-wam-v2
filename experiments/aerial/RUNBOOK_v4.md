@@ -4,6 +4,7 @@
 > **本文件不是什么**：不是判据的权威定义源。**判据的唯一权威口径 = [`V4_CRITERIA_REFREEZE_PROPOSAL_20260818.md`](../../docs/handover/V4_CRITERIA_REFREEZE_PROPOSAL_20260818.md) §4.6（含 §4.6.8–§4.6.12）**；签字记录 = 同文件 **§5.0**（16/16 行，2026-08-20）。本文件与 §4.6 有任何不一致 ⇒ **以 §4.6 为准**，并回来改本文件。
 > **不得照 §1 / §2 实施**（那是事前预注册记录，已被 §4.5 D1–D4 证明与冻结实现冲突，按审计链保留不改写）。
 > **判据已 re-freeze（2026-08-20）**：实施过程中改任何阈值 / band `[lo,hi]` / `n` / primary-secondary 划分 ⇒ 必须回 §5.0 **重开表重签**，不得就地改。
+> **⓪ primary 局部 re-freeze（2026-08-24，6ap 12/12）**：[`V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md`](../../docs/handover/V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md) —— **⓪h@12.2m 升 primary**、**⓪d@3m 降 report-only**；P3/P4.5 权威合取改为 `⓪a∧⓪b∧⓪c∧⓪h∧⓪e`。与 §4.6.2 ⓪d primary 行冲突时 **以 6ap 为准**。
 
 ---
 
@@ -15,8 +16,8 @@
 | **信号** | **V4-⓪**（近带深度）、**V4-⓿**（想象排序一致性）、**V4-①′**（分层到达）、**V4-④′**（安全不回归 + 反空过） |
 | **merge** | `⓪ ∧ ⓿ ∧ ①′ ∧ ④′`，其中 `①′ = S_open primary 全过 ∧ S_blocked primary 全过` |
 | **n** | 每层 **16**（合计 32）；不足 ⇒ `authoritative=false`，**禁止降 n** |
-| **评测构型** | **shield-on 单一构型**，罩 = **现行第 (4) 代**（latch + 有界状态反馈后退）。**v5 不启用**，`P3.5` 本周期 **N/A** |
-| **当前状态** | 判据已签字冻结；**下一步 = P4.5**（近带补采 + WM 重训）。**P3 = `authoritative=false` / near-band `insufficient_support`**（不是「⓪ FAIL」）。P1 FAIL；P4 已跑但 **须在 P4.5 后重跑**（绑定注定被替换的 WM）。`enable_policy_update` = **false**。R-16 运营裁定 **(B)**（见 GATE_STATUS）。Supervisor **已停** |
+| **评测构型** | **deploy = `safety.kind: three_zone`**（8/5/1.5 @ 2/1，engage_outer **12.2 m**）。离线 P3 权威 = 同参数 **⓪h** + 老头 RGB-only 深度头（**无 IMU 融合**） |
+| **当前状态** | **6ap 已签（2026-08-24）**；**主线 = P4.5 控制臂 hold035 权威 emit**（⓪h primary，⓪d_legacy 只报）。TZ-3Z 并行结案。**P1** coll FAIL；**P4** ⓿e `infeasible`。**`enable_policy_update` = false**。R-16 **(B)**。Supervisor **已停** |
 | **主张范围** | 只主张「**不退化 + 安全**」，**不主张「想象 AC 有增益」**；到达能力**仅覆盖机体前向扇区**；「主动终止」**不测** |
 
 **机器分工**（不再逐次确认）：**8×H100** `a25689@10.239.121.25:31126` = 训练 / 数据 / 离线诊断；**4090** `10.229.20.125:41451` = **纯渲染**（gate、探针、planner、闭环 rollout 都在这跑）。
@@ -49,16 +50,29 @@
 
 ### 2.1 V4-⓪ 近带深度（P3）
 
+> **6ap（2026-08-24）**：merge primary 功能项 = **⓪h**（三线 engage_outer）；**⓪d@3m = `0d_legacy` report-only**。传感器栈 = **RGB 四帧单目**（IMU **不进**深度头）。完整签字 = [`V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md`](../../docs/handover/V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md)。
+
+**P3 primary 合取**：
+
+```text
+⓪_ok ⟺ ⓪a ∧ ⓪b ∧ ⓪c ∧ ⓪h ∧ ⓪e
+```
+
 | 子项 | PASS | 备注 |
 |---|---|---|
 | ⓪a | `median AbsRel ≤ 0.30` on `D_gt ∈ (0, 3.0]` | 不动 |
 | ⓪b | support ≥ 1e4 px **且** `n_frames_with_near_px ≥ 100`、单帧贡献占比 ≤ 0.2 | **support 门**（非精度判据）：未过 ⇒ 近带 ⓪a/⓪c **不可入账**，记 `insufficient_support`，**不是 ⓪ FAIL** |
 | ⓪c | `p90 AbsRel ≤ 0.50`（同像素域） | median 允许一半像素任意坏 |
-| ⓪d（功能项） | `P(D̂_fwd > trigger \| D_gt_fwd ≤ trigger) ≤ 0.05`，**且不得出现 ≥2 连续漏触发帧** | `trigger` = 部署 `min_depth_m` |
+| **⓪h（primary 功能项）** | `P(D̂_fwd > engage_outer \| D_gt_fwd ≤ engage_outer) ≤ 0.10`，**且** `max_consecutive_miss < 4` | `engage_outer` = **12.2 m**（`three_zone` 8/5/1.5 @ 2/1）；几何 = **前向锥** `D̂_fwd` |
+| **⓪d_legacy（report-only）** | 同旧 ⓪d：`P(D̂_fwd > 3.0 \| D_gt_fwd ≤ 3.0) ≤ 0.05`，`max_consecutive_miss < 2` | **不入 merge**；禁止仅为过此项 depth FT |
 | ⓪e | 测试分布 = **部署分布**（评测起点集实际帧），不得只用训练 holdout | |
-| **⓪f** | 在 **`D_gt ∈ (3.0, 8.0]`** 上报：`median AbsRel`、`p90 AbsRel`、**D̂ 误触发率** `P(D̂ < min_depth_m \| D_gt ∈ [lo,hi]) ≤ 0.05`、**τ 误触发率** `P(τ̂ < min_tau_s \| d_fwd/v_fwd ≥ 2·min_tau_s) ≤ 0.05`；逐帧 support 同 ⓪b | **⓪f 出数前 `[lo,hi]` 一律不填数** |
+| **⓪f** | 在 **`D_gt ∈ (3.0, 8.0]`** 上报：`median AbsRel`、`p90 AbsRel`；**(3)(4) 误触发**在 `[lo,hi]` 冻结前 **report-only** | **⓪f 出数前 `[lo,hi]` 一律不填数**；⓪f(3)@3m latch **不作 deploy primary** |
 
-P5 若改 `min_depth_m` ⇒ **⓪d 与 ⓪f 必须按新 trigger 重测**。
+**禁止**：仅为过 **⓪d_legacy** 开 depth loss FT 或换部署头。⓪h FAIL ⇒ R-16 **(B)** 下车站；传感器栈变更须 **另案 re-freeze**。
+
+**权威控制臂（P4.5 / P3 下一发）**：老头 `depth_ckpt_da3_r60_20260814` × `dataset_v0_p45_merged_20260821` × **hold035**（`--heldout-frac 0.35 --split-seed 0`）→ `artifacts/v4_zero_p3_oldhead_p45_hold035_20260824.json`。
+
+P5 若改 `min_depth_m` ⇒ **⓪d_legacy 与 ⓪f(3)** 须按新 trigger 重测（与 deploy `three_zone` 无耦合，仅 legacy 对照）。
 
 **P3 补数表 · ⓪f(3)/(4) `clearance_sweep`（0.25 m bin；源 `v4_zero_p3_20260820_bins.json`）** — 仅诊断；**不得**据此冻 `[lo,hi]`：
 
@@ -300,6 +314,7 @@ P5 若改 `min_depth_m` ⇒ **⓪d 与 ⓪f 必须按新 trigger 重测**。
 
 ## 10. 变更记录
 
+- **2026-08-24（6ap ⓪ primary 迁移签字 + harness）** —— [`V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md`](../../docs/handover/V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md) **12/12 采纳**：⓪h@12.2m **primary**、⓪d@3m **`0d_legacy` report-only**；`v4_zero_eval.aggregate_verdict` 合取改为 `⓪a∧⓪b∧⓪c∧⓪h∧⓪e`；禁止仅为过 ⓪d depth FT。P4.5 深度结案改看 ⓪h。下一发 = 老头 × `p45_merged` hold035 权威 emit。**不改** ⓪a/b/c 阈值、①′/④′/⓿、`enable_policy_update`。
 - **2026-08-21（B-2 Phase C 滞回扫描 DONE：不可解）** —— 声明 [`V4_HYSTERESIS_SCAN_DECLARE_20260821.md`](../../docs/handover/V4_HYSTERESIS_SCAN_DECLARE_20260821.md)；`--scan-trigger-hysteresis-delta`。老头两片 **consec 全 δ=2**；rate 可降、误触变差 ⇒ **不升格 B**。下一路径 `#26`/`5ao`。不改判据阈值。
 - **2026-08-21（D̂ K-min 扫描 DONE：B-1 否定）** —— 声明 [`V4_DHAT_TEMPORAL_MIN_SCAN_DECLARE_20260821.md`](../../docs/handover/V4_DHAT_TEMPORAL_MIN_SCAN_DECLARE_20260821.md)；`--dhat-temporal-min` / `--scan-…`。老头两片 **consec 全 K=2**；rate 可压、误触随 K 变差 ⇒ **须 B-2 滞回**（不升格 K）。不改判据阈值。
 - **2026-08-21（#23 结案读法 DONE + V0 ④ deferred）** —— 编年 §6.7：H100 复核字段齐；①d=0.684 ≠ ⓪f 远场死；双头 = ①d 锚选项、非 ⓪f(3) 强制。V0 ④ 重跑只登记、等 head 定稿（不 launch）。不改判据阈值。

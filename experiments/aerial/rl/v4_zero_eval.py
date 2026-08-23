@@ -1,7 +1,8 @@
 """V4-⓪ v2 offline eval (P3) — near-band depth + ⓪f reaction-band diagnostics.
 
 Runs on H100 (torch). Scores deployment ``DepthMinPredictor`` + ``TauPredictor``
-against a GT-depth rollout corpus. Authority = RUNBOOK §2.1 / criteria §4.6.2.
+against a GT-depth rollout corpus. Authority = RUNBOOK §2.1 / 6ap re-freeze
+(⓪h primary @ engage_outer 12.2 m; ⓪d_legacy report-only).
 
     python -m experiments.aerial.rl.v4_zero_eval \\
         --dataset .../dataset_v0_local_depth_r60_20260814 \\
@@ -44,8 +45,10 @@ _MAX_FRAME_FRAC = 0.20
 _ABSREL_MEDIAN_MAX = 0.30
 _ABSREL_P90_MAX = 0.50
 _FALSE_TRIGGER_MAX = 0.05
-_ENGAGE_MISS_MAX = 0.10  # ⓪h provisional — looser than ⓪d@3m (declare 2026-08-23)
+_ENGAGE_MISS_MAX = 0.10  # ⓪h — looser than ⓪d@3m (declare 2026-08-23)
 _ENGAGE_MISS_CONSEC_MAX = 4  # fail if >=4 consecutive (⓪d uses <2 ⇒ max 1)
+_ENGAGE_OUTER_M = 12.2  # three_zone 8/5/1.5 @ 2/1 (6ap re-freeze 2026-08-24)
+_PRIMARY_REFREEZE = "V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824"
 _TAU_MARGIN_FACTOR = 2.0
 
 
@@ -714,20 +717,23 @@ def suggest_delta(rows: Sequence[Dict[str, Any]], *, thr: ZeroThresholds) -> Dic
 
 
 def aggregate_verdict(sub: Dict[str, Any]) -> Dict[str, Any]:
-    """Primary merge = ⓪a–⓪e. ⓪f is report/diag until ``[lo,hi]`` is frozen.
+    """Primary merge = ⓪a–⓪e with **⓪h** (6ap 2026-08-24). ⓪d_legacy is report-only.
 
-    Outer AbsRel (⓪f(1)(2)) is **report-only** — §4.6.2 does not give it the
-    ⓪a/⓪c thresholds ``0.30`` / ``0.50``. False-trigger bins (3)(4) are scored
-    only after a band is frozen; pre-freeze they do not gate ``ok``.
+    ⓪f is report/diag until ``[lo,hi]`` is frozen. Outer AbsRel (⓪f(1)(2)) is
+    **report-only** — §4.6.2 does not give it the ⓪a/⓪c thresholds ``0.30`` /
+    ``0.50``. False-trigger bins (3)(4) gate only after a band is frozen.
     """
-    keys_primary = ("0a", "0b", "0c", "0d", "0e")
+    keys_primary = ("0a", "0b", "0c", "0h", "0e")
     ok_primary = all(sub[k].get("ok") for k in keys_primary if k in sub)
     f = sub.get("0f", {})
     ok_f = bool(f.get("ok", False))
+    leg = sub.get("0d_legacy", {})
     return {
         "ok": bool(ok_primary),
         "ok_primary": ok_primary,
         "ok_0f": ok_f,
+        "ok_0d_legacy": bool(leg.get("ok", False)) if leg else None,
+        "primary_refreeze": _PRIMARY_REFREEZE,
         "sub": {k: sub[k].get("ok") for k in sorted(sub)},
     }
 
@@ -1235,12 +1241,31 @@ def run_eval(
         scan_payload = None
         curves = None
 
-    sub = {"0a": sub_0a, "0b": sub_0b, "0c": sub_0c, "0d": sub_0d, "0e": sub_0e, "0f": sub_0f}
+    d_fwd_scored = temporal_min_per_episode(dhat_fwd_raw, ep_ids_arr, k=k_single)
+    sub_0h = check_0h(
+        gt_fwd_arr,
+        d_fwd_scored,
+        engage_outer_m=_ENGAGE_OUTER_M,
+        thr=thr,
+        episode_ids=ep_ids_arr,
+    )
+    sub_0d_legacy = {**sub_0d, "label": "0d_legacy", "note": "report-only; not merge primary (6ap)"}
+
+    sub = {
+        "0a": sub_0a,
+        "0b": sub_0b,
+        "0c": sub_0c,
+        "0h": sub_0h,
+        "0d_legacy": sub_0d_legacy,
+        "0e": sub_0e,
+        "0f": sub_0f,
+    }
     verdict = aggregate_verdict(sub)
 
     payload: Dict[str, Any] = {
         "step": "P3",
         "signal": "V4-⓪-v2",
+        "primary_refreeze": _PRIMARY_REFREEZE,
         "dataset": str(dataset),
         "depth_ckpt": str(depth_ckpt),
         "tau_ckpt": str(tau_ckpt),
@@ -1248,8 +1273,11 @@ def run_eval(
         "dhat_temporal_min": (1 if scan_ks else k_single),
         "thresholds": {
             "trigger_m": thr.trigger_m,
+            "engage_outer_m": _ENGAGE_OUTER_M,
             "min_tau_s": thr.min_tau_s,
             "center_frac": thr.center_frac,
+            "engage_miss_max": thr.engage_miss_max,
+            "engage_miss_consec_max": thr.engage_miss_consec_max,
         },
         "split": split_meta,
         "episodes": len(episodes),
@@ -1321,11 +1349,15 @@ def run_eval(
 def _print_summary(payload: Dict[str, Any]) -> None:
     v = payload["verdict"]
     print(f"[v4-zero] episodes={payload['episodes']} frames={payload['frames_scored']}")
-    for k in ("0a", "0b", "0c", "0d", "0e", "0f"):
+    for k in ("0a", "0b", "0c", "0h", "0d_legacy", "0e", "0f"):
         s = payload["sub"][k]
         mark = "PASS" if s.get("ok") else "FAIL"
-        print(f"  {k}: {mark}  {json.dumps({x: s[x] for x in s if x != 'ok'}, default=str)[:120]}")
-    print(f"[v4-zero] merge ok={v['ok']}")
+        gate = " [primary]" if k in ("0a", "0b", "0c", "0h", "0e") else ""
+        print(
+            f"  {k}: {mark}{gate}  "
+            f"{json.dumps({x: s[x] for x in s if x != 'ok'}, default=str)[:120]}"
+        )
+    print(f"[v4-zero] merge ok={v['ok']} (primary=⓪a∧⓪b∧⓪c∧⓪h∧⓪e)")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

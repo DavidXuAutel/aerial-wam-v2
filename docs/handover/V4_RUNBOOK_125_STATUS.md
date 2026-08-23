@@ -1,11 +1,43 @@
 # V4 RUNBOOK 125 STATUS
 
-- **date**: 2026-08-23
-- **state**: ACTIVE — **部署路线 = 三线 + D**（#27/#28 DONE；TZ-3Z **P1 DONE**）；`5ao`/(b) **挂起**
+- **date**: 2026-08-24
+- **state**: **V4 主线** — **6ap 已签（2026-08-24）**；P4.5 / P3 权威 **⓪h primary**（`v4_zero_eval` 已接）；下一发 = 125 hold035 emit
 - **enable_policy_update**: false
 - **R-16**: **(B)**
-- **深度头**：部署/基线 = `depth_ckpt_da3_r60_20260814`；v1–v3 **不部署、不开训**
-- **声明**：[`V4_TAU_TRIGGER_MIGRATION_DECLARE_20260821.md`](V4_TAU_TRIGGER_MIGRATION_DECLARE_20260821.md)；K-min / 滞回已结案否定
+- **深度头（部署）**：`depth_ckpt_da3_r60_20260814`；v1–v3 **不部署、不开训**
+- **罩子（deploy yaml）**：`safety.kind: three_zone`（P3 **⓪h@12.2m** 对齐；⓪d@3m **legacy 对照**）
+- **判据 / 执行**：[`RUNBOOK_v4.md`](../../experiments/aerial/RUNBOOK_v4.md)；[`V4_GATE_STATUS.md`](V4_GATE_STATUS.md)
+
+## V4 主线 — 当前阻塞与下一发（125 / H100）
+
+| 步 | 状态 | 下一发 |
+|----|------|--------|
+| **P4.5** | 🟡 语料 77ep ✅；re-P1 已跑 | **控制臂 hold035 权威 emit**（⓪h primary；产物见下） |
+| **P3 ⓪** | ⏳ **待 6ap 后重 emit** | ⓪d_legacy 预期仍 FAIL（只报）；**merge 看 ⓪h** |
+| **P1** | ❌ `p_coll` AUROC 0.549 | P4.5 WM 上已重跑；coll 仍 FAIL |
+| **P4 ⓿** | ⚠️ ⓿e `infeasible`（teleport） | 与 P4.5 **正交**；harness 侧并行 |
+| **P7 / P8** | ⬜ | **P8 前** ⓪/⓿/P1 须 authoritative |
+
+**125 推荐命令（H100 或 125 CUDA，不重训）**：
+
+```bash
+cd ~/aerial-wam-v2 && source experiments/aerial/scripts/env_4090.sh
+DATA=experiments/aerial/rl/artifacts/dataset_v0_p45_merged_20260821
+OLD=experiments/aerial/rl/artifacts/depth_ckpt_da3_r60_20260814/depth_step_2000_da3_ft_head.pt
+TAU=experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt
+$AERIAL_PY -m experiments.aerial.rl.v4_zero_eval \
+  --dataset "$DATA" --depth-ckpt "$OLD" --tau-ckpt "$TAU" --device cuda \
+  --heldout-frac 0.35 --split-seed 0 \
+  --emit artifacts/v4_zero_p3_oldhead_p45_hold035_20260824.json \
+  2>&1 | tee logs/v4_zero_p3_oldhead_hold035_20260824.log
+```
+
+- **禁止**：⓪h 权威 FAIL 前开 depth FT；仅为过 ⓪d_legacy depth FT；TZ-3Z 语料训 WM；剥 D̂ OR 腿（`5ao` 挂起）
+- **Mac**：只改文档 / handoff；长跑在 **cursor-125**
+
+## TZ-3Z 并行支线（**结案** · 不阻塞 V4 merge）
+
+> 部署路线 = **三线 + D**；离线诊断 `authoritative=false`。详见下方 #27/#28/TZ-3Z 节。
 
 ## #26 τ-miss（老头 · 4090 · `authoritative=false` · **挂起**）
 
@@ -122,9 +154,10 @@ STAMP=20260823_full NEAR_STAMP=20260823g PRIOR_NEAR_STAMP=20260823f \
 - [x] ⓪h engage-miss re-freeze + harness（`v4_three_zone_eval` §0h）
 - [x] ⓪h 入账 H100 eval（`20260823_full` hold035+full77 **双 PASS**）
 - [x] shield-on 5 Hz 速度曲线（#28 后续 · P3）
-- [ ] `5ao` / τ-miss full77 — **挂起**（非三线阻塞）
-- [ ] V0 ④ deferred
-- [ ] Mac 合入 commit + sync 125（本批 wiring）
+- [x] Mac 合入 + sync 125（`44d7c78`）
+- [ ] **V4 主线**：控制臂 hold035 重评（`v4_zero_eval` on `p45_merged`）
+- [ ] **V4 主线**：⓪ 权威 FAIL 归因 → 是否开 depth loss 声明（**须 FAIL 后**）
+- [ ] **V4 主线**：P1 `p_coll` 复测 / P4 ⓿e harness
 
 ## Running jobs
 

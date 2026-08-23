@@ -204,8 +204,9 @@ def test_0f_outer_absrel_not_gated_by_0c_threshold():
         "0a": {"ok": True},
         "0b": {"ok": True},
         "0c": {"ok": True},
-        "0d": {"ok": True},
+        "0h": {"ok": True},
         "0e": {"ok": True},
+        "0d_legacy": {"ok": False},
         "0f": {
             "ok": True,  # support-only pre-freeze
             "median_absrel": 0.10,
@@ -216,6 +217,7 @@ def test_0f_outer_absrel_not_gated_by_0c_threshold():
     assert v["ok"] is True
     assert v["ok_primary"] is True
     assert v["ok_0f"] is True
+    assert v["ok_0d_legacy"] is False
 
 
 def test_aggregate_primary_ignores_0f_fail():
@@ -225,14 +227,33 @@ def test_aggregate_primary_ignores_0f_fail():
         "0a": {"ok": True},
         "0b": {"ok": True},
         "0c": {"ok": False},
-        "0d": {"ok": True},
+        "0h": {"ok": True},
         "0e": {"ok": True},
+        "0d_legacy": {"ok": True},
         "0f": {"ok": False},
     }
     v = aggregate_verdict(sub)
     assert v["ok"] is False
     assert v["ok_primary"] is False
     assert v["ok_0f"] is False
+
+
+def test_aggregate_0d_legacy_fail_does_not_block_primary():
+    from experiments.aerial.rl.v4_zero_eval import aggregate_verdict
+
+    sub = {
+        "0a": {"ok": True},
+        "0b": {"ok": True},
+        "0c": {"ok": True},
+        "0h": {"ok": True},
+        "0e": {"ok": True},
+        "0d_legacy": {"ok": False, "max_consecutive_miss": 2},
+        "0f": {"ok": True},
+    }
+    v = aggregate_verdict(sub)
+    assert v["ok"] is True
+    assert v["ok_primary"] is True
+    assert v["ok_0d_legacy"] is False
 
 
 def test_check_tau_miss_rate_and_consecutive():
