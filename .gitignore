@@ -17,3 +17,4 @@ experiments/aerial/rl/artifacts/**/*
 .vscode/
 *.log
 *.jsonl
+experiments/aerial/scripts/env_h100_from_125.sh

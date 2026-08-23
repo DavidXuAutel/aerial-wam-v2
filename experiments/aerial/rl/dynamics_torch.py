@@ -627,6 +627,7 @@ def depth_head_loss(
     gt: torch.Tensor,
     *,
     absrel_weight: float = 1.0,
+    silog_weight: float = 0.5,
     nll_weight: float = 0.1,
     max_depth_m: float = 200.0,
     near_weight: float = 0.0,
@@ -637,6 +638,9 @@ def depth_head_loss(
     fwd_overread_hinge_weight: float = 0.0,
     near_absrel_p90_weight: float = 0.0,
     near_absrel_p90_tau: float = 0.9,
+    near_fwd_absrel_pinball_weight: float = 0.0,
+    near_fwd_absrel_pinball_tau: float = 0.9,
+    softmin_temperature_m: float = 0.0,
     center_frac: float = 0.5,
     trigger_m: float = 3.0,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
@@ -650,18 +654,17 @@ def depth_head_loss(
     end). Holdout ①d must use the same mask.
 
     ``near_weight`` (>0) adds a near-band emphasis term (AbsRel over GT ≤
-    ``near_focus_m``). The plain AbsRel mean is dominated by the many mid/far
-    pixels, so a close forward obstacle (a few % of pixels) is averaged away and
-    the head regresses it toward the scene's far median — diag 2026-08-11:
-    forward GT<1.5 m → D̂ p50 6.4 m, never triggers the shield → 4/7 ④ contacts.
-    This is an ADDED training term only; it does NOT change the ①d gate metric
-    (``v0_metrics.depth_absrel`` over the full mask) or any §4.1 threshold.
+    ``near_focus_m``). This is an ADDED training term only; it does NOT change
+    the ①d gate metric or any §4.1 threshold.
 
     V4-⓪ declare v1 (superseded): ``near_overread_hinge_weight`` /
-    signed ``near_absrel_pinball_*`` — pixel-mean near hinge; default 0.
+    signed ``near_absrel_pinball_*``.
 
-    V4-⓪ declare v2: ``fwd_overread_hinge_weight`` (forward-crop min, same
-    geometry as eval ⓪d) + ``near_absrel_p90_weight`` (AbsRel tail weight).
+    V4-⓪ declare v2: ``fwd_overread_hinge_weight`` + ``near_absrel_p90_weight``.
+
+    V4-⓪ declare v3: ``silog_weight`` (P1=0), miss-aligned fwd hinge
+    ``relu(D̂_fwd−trigger)`` with optional softmin on pred, hard cond on GT,
+    ``near_fwd_absrel_pinball_*`` on forward crop ∩ near band.
     """
     from experiments.aerial.rl.depth_geometry import forward_min_depth_torch
 
@@ -673,91 +676,140 @@ def depth_head_loss(
         "loss": 0.0,
         "absrel": float("nan"),
         "nll": 0.0,
+        "silog": float("nan"),
         "n_valid": 0,
         "near_overread_hinge": float("nan"),
         "near_pinball": float("nan"),
         "fwd_overread_hinge": float("nan"),
+        "fwd_hinge_hard": float("nan"),
         "near_absrel_p90": float("nan"),
+        "near_fwd_absrel_pinball": float("nan"),
+        "report_near_absrel_p90": float("nan"),
         "n_fwd_trigger": 0,
+        "n_near_fwd": 0,
     }
     if not bool(mask.any()):
         zero = pred.sum() * 0.0
         return zero, empty_stats
     p, g, ls = pred[mask], gt[mask], log_sigma[mask]
     absrel = (torch.abs(p - g) / g).mean()
-    # Scale-invariant log (Eigen et al.) — stabilises large outdoor depth range.
     diff = torch.log(p.clamp_min(1e-3)) - torch.log(g.clamp_min(1e-3))
-    # Variance = E[diff²] − E[diff]²; clamp the VARIANCE (not E[diff]², which is
-    # already ≥0) to ≥0 before sqrt — float error can push it slightly negative
-    # and produce a NaN loss. The old clamp on E[diff]² was a no-op.
     silog_var = ((diff ** 2).mean() - diff.mean() ** 2).clamp_min(0.0)
     silog = torch.sqrt(silog_var + 1e-8)
     ls_c = ls.clamp(-8.0, 8.0)
     inv_var = torch.exp(-2.0 * ls_c)
     nll = (0.5 * ((p - g) ** 2 * inv_var + 2.0 * ls_c)).mean()
-    loss = float(absrel_weight) * absrel + 0.5 * silog + float(nll_weight) * nll
-    # Near-band emphasis (safety-critical close field) — added term, metric-neutral.
+    loss = (
+        float(absrel_weight) * absrel
+        + float(silog_weight) * silog
+        + float(nll_weight) * nll
+    )
     near_absrel_v = float("nan")
     near_hinge_v = float("nan")
     near_pinball_v = float("nan")
     near_p90_v = float("nan")
+    report_near_p90_v = float("nan")
+    near_fwd_pinball_v = float("nan")
     fwd_hinge_v = float("nan")
+    fwd_hinge_hard_v = float("nan")
     n_near = 0
     n_fwd_trigger = 0
+    n_near_fwd = 0
     near = g <= float(near_focus_m)
     n_near = int(near.sum().item())
     if n_near > 0:
         p_n, g_n = p[near], g[near]
         rel = (p_n - g_n) / g_n
         e_abs = torch.abs(rel)
+        report_near_p90_v = float(torch.quantile(e_abs.detach(), 0.9).item())
         if float(near_weight) > 0.0:
             near_absrel = e_abs.mean()
             loss = loss + float(near_weight) * near_absrel
             near_absrel_v = float(near_absrel.detach().item())
         if float(near_overread_hinge_weight) > 0.0:
-            # v1 (archived): pixel-mean over-read only.
             hinge = torch.relu(rel).mean()
             loss = loss + float(near_overread_hinge_weight) * hinge
             near_hinge_v = float(hinge.detach().item())
         if float(near_absrel_pinball_weight) > 0.0:
-            # v1 signed pinball — keep for ablations; v2 recipe sets weight=0.
             tau = float(near_absrel_pinball_tau)
             tau = min(max(tau, 1e-3), 1.0 - 1e-3)
             pinball = torch.where(rel >= 0, tau * rel, (1.0 - tau) * (-rel)).mean()
             loss = loss + float(near_absrel_pinball_weight) * pinball
             near_pinball_v = float(pinball.detach().item())
         if float(near_absrel_p90_weight) > 0.0:
-            # v2 B′: AbsRel tail weight (stopgrad e/median); τ scales excess.
             tau = float(near_absrel_p90_tau)
             tau = min(max(tau, 1e-3), 1.0 - 1e-3)
             med = e_abs.detach().median().clamp_min(1e-6)
-            # Above-median AbsRel get weight >=1, scaled so τ=0.9 emphasises tail.
             scale = (e_abs.detach() / med).clamp(1.0, 20.0)
-            # Blend: base AbsRel + extra (τ/(1-τ)-ish) on scaled tail.
-            tail = (e_abs * scale).mean()
-            # Emphasise upper mass: weight = 1 + (2τ-1)*(scale-1) ∈ [1, ...]
             w = 1.0 + (2.0 * tau - 1.0) * (scale - 1.0)
             p90_term = (e_abs * w).mean()
             loss = loss + float(near_absrel_p90_weight) * p90_term
             near_p90_v = float(p90_term.detach().item())
-            _ = tail  # kept for clarity / future logging
 
-    # v2 A′: forward-crop min hinge (eval ⓪d geometry).
+    pred_b = pred if pred.ndim == 3 else pred.unsqueeze(0)
+    gt_b = gt if gt.ndim == 3 else gt.unsqueeze(0)
+    g_fwd_hard = forward_min_depth_torch(
+        gt_b, center_frac=float(center_frac), softmin_temperature_m=0.0
+    )
+    trig = float(trigger_m)
+    T_soft = float(softmin_temperature_m)
+
+    if float(near_fwd_absrel_pinball_weight) > 0.0:
+        cf = float(max(0.05, min(1.0, float(center_frac))))
+        h, w = pred_b.shape[-2], pred_b.shape[-1]
+        dh, dw = max(1, int(h * cf)), max(1, int(w * cf))
+        r0, c0 = (h - dh) // 2, (w - dw) // 2
+        pc = pred_b[:, r0 : r0 + dh, c0 : c0 + dw]
+        gc = gt_b[:, r0 : r0 + dh, c0 : c0 + dw]
+        band = (
+            torch.isfinite(pc)
+            & torch.isfinite(gc)
+            & (gc > 1e-6)
+            & (gc <= float(near_focus_m))
+        )
+        n_near_fwd = int(band.sum().item())
+        if n_near_fwd == 0:
+            band = (
+                torch.isfinite(pc)
+                & torch.isfinite(gc)
+                & (gc > 1e-6)
+                & (gc <= trig)
+            )
+            n_near_fwd = int(band.sum().item())
+        if n_near_fwd > 0:
+            e = torch.abs(pc[band] - gc[band]) / gc[band].clamp_min(1e-6)
+            tau = float(near_fwd_absrel_pinball_tau)
+            tau = min(max(tau, 1e-3), 1.0 - 1e-3)
+            med = e.detach().median().clamp_min(1e-6)
+            w = 1.0 + (2.0 * tau - 1.0) * ((e.detach() / med).clamp(1.0, 20.0) - 1.0)
+            pin = (e * w).mean()
+            loss = loss + float(near_fwd_absrel_pinball_weight) * pin
+            near_fwd_pinball_v = float(pin.detach().item())
+
     if float(fwd_overread_hinge_weight) > 0.0:
-        # Ensure batch dim for geometry helper.
-        pred_b = pred if pred.ndim == 3 else pred.unsqueeze(0)
-        gt_b = gt if gt.ndim == 3 else gt.unsqueeze(0)
-        d_fwd = forward_min_depth_torch(pred_b, center_frac=float(center_frac))
-        g_fwd = forward_min_depth_torch(gt_b, center_frac=float(center_frac))
-        trig = float(trigger_m)
-        cond = torch.isfinite(g_fwd) & torch.isfinite(d_fwd) & (g_fwd <= trig) & (g_fwd > 1e-6)
+        d_fwd_soft = forward_min_depth_torch(
+            pred_b,
+            center_frac=float(center_frac),
+            softmin_temperature_m=T_soft,
+        )
+        d_fwd_hard = forward_min_depth_torch(
+            pred_b, center_frac=float(center_frac), softmin_temperature_m=0.0
+        )
+        cond = (
+            torch.isfinite(g_fwd_hard)
+            & (g_fwd_hard <= trig)
+            & (g_fwd_hard > 1e-6)
+            & torch.isfinite(d_fwd_soft)
+        )
         n_fwd_trigger = int(cond.sum().item())
         if n_fwd_trigger > 0:
-            # Relative over-read on forward min (aligns with miss = D̂>trigger when GT≤trigger).
-            rel_fwd = (d_fwd[cond] - g_fwd[cond]) / g_fwd[cond].clamp_min(1e-6)
-            fwd_hinge = torch.relu(rel_fwd).mean()
+            fwd_hinge = torch.relu(d_fwd_soft[cond] - trig).mean()
             loss = loss + float(fwd_overread_hinge_weight) * fwd_hinge
             fwd_hinge_v = float(fwd_hinge.detach().item())
+            with torch.no_grad():
+                fwd_hinge_hard_v = float(
+                    torch.relu(d_fwd_hard[cond] - trig).mean().item()
+                )
 
     return loss, {
         "loss": float(loss.detach().item()),
@@ -768,11 +820,16 @@ def depth_head_loss(
         "near_overread_hinge": near_hinge_v,
         "near_pinball": near_pinball_v,
         "near_absrel_p90": near_p90_v,
+        "near_fwd_absrel_pinball": near_fwd_pinball_v,
+        "report_near_absrel_p90": report_near_p90_v,
         "fwd_overread_hinge": fwd_hinge_v,
+        "fwd_hinge_hard": fwd_hinge_hard_v,
         "n_near": n_near,
+        "n_near_fwd": n_near_fwd,
         "n_fwd_trigger": n_fwd_trigger,
         "n_valid": int(mask.sum().item()),
     }
+
 
 
 def _band_spatial_mean(

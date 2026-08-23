@@ -204,20 +204,41 @@ def test_threshold_shield_safe_when_no_predictions():
 
 
 def test_threshold_shield_bounded_state_feedback_retreat_after_latch():
-    # 晚¹²: bounded state-feedback retreat. While inside the standoff (D̂ < 3.0)
-    # the latched override RETREATS body −x (a pure hold coasts into the band on
-    # momentum — 晚¹¹). Once D̂ ≥ standoff it HOLDS (zeros) — it must NOT keep
-    # retreating, or the blind body −x backs into the rear wall (晚¹⁰). The latch
-    # keeps the shield engaged after D̂ recovers (no re-approach).
+    # v5: graduated retreat while speed must bleed; hold once clear + slow.
     shield = ThresholdSafetyShield(min_depth_m=3.0, retreat_step_m=3.0)
     assert shield.should_override(_obs(info={"depth_min_pred": 1.0}))  # trip + latch
-    # Still breached (D̂ 1.0 < 3.0) → retreat body −x (negative x, no lateral/yaw).
     act = shield.override_action(_obs(info={"depth_min_pred": 1.0}))
     assert act[0] < 0.0 and np.allclose(act[1:], 0.0), f"expected −x retreat, got {act}"
-    # Latched: stays engaged when D̂ recovers, but now HOLDS (stops retreating).
     assert shield.should_override(_obs(info={"depth_min_pred": 99.0}))
-    assert np.allclose(shield.override_action(_obs(info={"depth_min_pred": 99.0})), np.zeros(4)), \
-        "clear of standoff → hold, must not keep retreating into the rear wall"
-    # reset() clears the latch for the next episode.
+    assert np.allclose(
+        shield.override_action(_obs(info={"depth_min_pred": 99.0})), np.zeros(4)
+    ), "clear of envelope and ~0 v_fwd → hold"
     shield.reset()
     assert not shield.should_override(_obs(info={"depth_min_pred": 99.0}))
+
+
+def test_threshold_shield_kinematic_engage_before_standoff():
+    """5 m/s @ 5 m: must engage before crossing 3 m standoff (5 < 3+5*1)."""
+    state = np.array([0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obs = Observation(
+        rgb=np.zeros((8, 8, 3), dtype=np.uint8),
+        state=state,
+        depth=np.full((8, 8), 5.0, dtype=np.float32),
+        info={"depth_min_pred": 5.0},
+    )
+    shield = ThresholdSafetyShield(min_depth_m=3.0, min_tau_s=1.0)
+    assert shield.should_override(obs)
+    act = shield.override_action(obs)
+    assert act[0] < 0.0, "must brake outside standoff when closing fast"
+
+
+def test_threshold_shield_no_kinematic_engage_when_slow_and_far():
+    state = np.array([0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+    obs = Observation(
+        rgb=np.zeros((8, 8, 3), dtype=np.uint8),
+        state=state,
+        depth=np.full((8, 8), 5.0, dtype=np.float32),
+        info={"depth_min_pred": 5.0},
+    )
+    shield = ThresholdSafetyShield(min_depth_m=3.0, min_tau_s=1.0)
+    assert not shield.should_override(obs)

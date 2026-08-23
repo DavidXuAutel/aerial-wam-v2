@@ -24,7 +24,8 @@ import torch
 import yaml
 
 from experiments.aerial.rl import dataset as ds
-from experiments.aerial.rl.buffer import ReplayBuffer
+from experiments.aerial.rl.buffer import Episode, ReplayBuffer
+from experiments.aerial.rl.depth_geometry import forward_min_depth
 from experiments.aerial.rl.dynamics_torch import (
     DA3DepthHead,
     _DepthHead,
@@ -46,6 +47,7 @@ def _load_depth_cfg(config_path: Path) -> Dict[str, Any]:
     dh.setdefault("lr", 1.0e-4)
     dh.setdefault("grad_clip", 5.0)
     dh.setdefault("absrel_weight", 1.0)
+    dh.setdefault("silog_weight", 0.5)  # historical; v3 P1 → 0
     dh.setdefault("nll_weight", 0.1)
     # Near-band emphasis so close forward obstacles are not averaged away by the
     # many mid/far pixels (diag 2026-08-11: forward GT<1.5 m → D̂ p50 6.4 m, shield
@@ -60,9 +62,15 @@ def _load_depth_cfg(config_path: Path) -> Dict[str, Any]:
     dh.setdefault("fwd_overread_hinge_weight", 0.0)
     dh.setdefault("near_absrel_p90_weight", 0.0)
     dh.setdefault("near_absrel_p90_tau", 0.9)
+    # V4-⓪ declare v3.
+    dh.setdefault("near_fwd_absrel_pinball_weight", 0.0)
+    dh.setdefault("near_fwd_absrel_pinball_tau", 0.9)
+    dh.setdefault("softmin_temperature_m", 0.0)
+    dh.setdefault("min_n_fwd_trigger", 0)
+    dh.setdefault("min_steps_before_saturate", 0)
     dh.setdefault("center_frac", 0.5)  # frozen = eval / tau default (declare D-2)
     dh.setdefault("trigger_m", 3.0)
-    dh.setdefault("fwd_hinge_saturate_eps", 0.005)
+    dh.setdefault("fwd_hinge_saturate_eps", 1.0e-4)
     dh.setdefault("fwd_hinge_saturate_patience", 50)
     dh.setdefault("absrel_lr_drop_on_saturate", 10.0)
     # Keep delta << AbsRel/SILog: delta_weight=1.0 from-scratch collapsed AbsRel
@@ -264,6 +272,51 @@ def _sample_approach_biased_windows(
     return picked
 
 
+def build_fwd_hard_window_cache(
+    episodes: List[Any],
+    *,
+    window: int,
+    center_frac: float,
+    trigger_m: float,
+) -> List[Episode]:
+    """Windows whose last-frame hard ``forward_min(GT) ≤ trigger`` (declare v3 S′)."""
+    out: List[Episode] = []
+    w = int(window)
+    trig = float(trigger_m)
+    cf = float(center_frac)
+    for ep in episodes:
+        if len(ep) < w:
+            continue
+        for start in range(0, len(ep) - w + 1):
+            win = ep[start : start + w]
+            depth = getattr(win[-1].obs, "depth", None)
+            if depth is None:
+                continue
+            gf = forward_min_depth(np.asarray(depth), center_frac=cf)
+            if np.isfinite(gf) and float(gf) <= trig and float(gf) > 1e-6:
+                out.append(win)
+    return out
+
+
+def sample_fwd_hard_windows(
+    cache: List[Episode],
+    *,
+    batch: int,
+    min_n_fwd: int,
+    rng: np.random.Generator,
+) -> List[Episode]:
+    """With-replacement sample from hard cache. Cache size < ``min_n_fwd`` → error."""
+    if len(cache) < int(min_n_fwd):
+        raise ValueError(
+            f"fwd hard cache size={len(cache)} < min_n_fwd={min_n_fwd} "
+            "(declare v3 S′: refuse silent uniform fallback)"
+        )
+    if not cache:
+        raise ValueError("fwd hard cache is empty")
+    idx = rng.integers(0, len(cache), size=int(batch))
+    return [cache[int(i)] for i in idx]
+
+
 def _holdout_absrel(
     model: _DepthHead,
     holdout_eps: List[Any],
@@ -410,6 +463,64 @@ def main(argv: Optional[List[str]] = None) -> int:
         type=str,
         default="",
         help="Print/record declare id at train start (e.g. v2-20260821).",
+    )
+    p.add_argument(
+        "--absrel-weight",
+        type=float,
+        default=None,
+        help="Override yaml absrel_weight (declare v3 P1: 0).",
+    )
+    p.add_argument(
+        "--silog-weight",
+        type=float,
+        default=None,
+        help="Override silog coefficient (default 0.5; declare v3 P1: 0).",
+    )
+    p.add_argument(
+        "--nll-weight",
+        type=float,
+        default=None,
+        help="Override nll_weight (declare v3 P1: 0.05).",
+    )
+    p.add_argument(
+        "--fwd-softmin-temp",
+        type=float,
+        default=None,
+        help="Declare v3 softmin T in metres (recipe 0.05); 0=hard min.",
+    )
+    p.add_argument(
+        "--near-fwd-absrel-pinball-weight",
+        type=float,
+        default=None,
+        help="Declare v3 B″: AbsRel pinball on forward crop ∩ near.",
+    )
+    p.add_argument(
+        "--near-fwd-absrel-pinball-tau",
+        type=float,
+        default=None,
+        help="Declare v3 B″ pinball τ (default 0.9).",
+    )
+    p.add_argument(
+        "--min-n-fwd-trigger",
+        type=int,
+        default=None,
+        help="Declare v3 S′: require fwd hard cache size ≥ K (recipe 4).",
+    )
+    p.add_argument(
+        "--fwd-hard-cache",
+        action="store_true",
+        help="Declare v3 S′: sample train batches from hard-forward window cache.",
+    )
+    p.add_argument(
+        "--min-steps-before-saturate",
+        type=int,
+        default=None,
+        help="Declare v3 C″: ignore hinge saturation until this step (recipe 100).",
+    )
+    p.add_argument(
+        "--skip-p2",
+        action="store_true",
+        help="Declare v3: never enter AbsRel P2 (default recipe).",
     )
     p.add_argument(
         "--early-stop-on-fwd-saturate",
@@ -566,6 +677,26 @@ def main(argv: Optional[List[str]] = None) -> int:
         dh_cfg["near_absrel_p90_weight"] = float(args.near_absrel_p90_weight)
     if args.near_absrel_p90_tau is not None:
         dh_cfg["near_absrel_p90_tau"] = float(args.near_absrel_p90_tau)
+    if args.absrel_weight is not None:
+        dh_cfg["absrel_weight"] = float(args.absrel_weight)
+    if args.silog_weight is not None:
+        dh_cfg["silog_weight"] = float(args.silog_weight)
+    if args.nll_weight is not None:
+        dh_cfg["nll_weight"] = float(args.nll_weight)
+    if args.fwd_softmin_temp is not None:
+        dh_cfg["softmin_temperature_m"] = float(args.fwd_softmin_temp)
+    if args.near_fwd_absrel_pinball_weight is not None:
+        dh_cfg["near_fwd_absrel_pinball_weight"] = float(
+            args.near_fwd_absrel_pinball_weight
+        )
+    if args.near_fwd_absrel_pinball_tau is not None:
+        dh_cfg["near_fwd_absrel_pinball_tau"] = float(
+            args.near_fwd_absrel_pinball_tau
+        )
+    if args.min_n_fwd_trigger is not None:
+        dh_cfg["min_n_fwd_trigger"] = int(args.min_n_fwd_trigger)
+    if args.min_steps_before_saturate is not None:
+        dh_cfg["min_steps_before_saturate"] = int(args.min_steps_before_saturate)
     if args.base is not None:
         if int(args.base) < 8:
             p.error("--base must be >= 8")
@@ -787,6 +918,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"@τ={dh_cfg.get('near_absrel_pinball_tau', 0.9)} "
         f"fwd_hinge={dh_cfg.get('fwd_overread_hinge_weight', 0)} "
         f"absrel_p90={dh_cfg.get('near_absrel_p90_weight', 0)} "
+        f"near_fwd_pinball={dh_cfg.get('near_fwd_absrel_pinball_weight', 0)} "
+        f"silog_w={dh_cfg.get('silog_weight', 0.5)} "
+        f"absrel_w={dh_cfg.get('absrel_weight', 1.0)} "
+        f"softmin_T={dh_cfg.get('softmin_temperature_m', 0)} "
+        f"min_n_fwd={dh_cfg.get('min_n_fwd_trigger', 0)} "
         f"ckpt_dir={ckpt_dir}"
     )
 
@@ -795,24 +931,67 @@ def main(argv: Optional[List[str]] = None) -> int:
     last_holdout: Optional[float] = None
     fwd_sat_streak = 0
     absrel_lr_dropped = False
-    sat_eps = float(dh_cfg.get("fwd_hinge_saturate_eps", 0.005))
+    sat_eps = float(dh_cfg.get("fwd_hinge_saturate_eps", 1.0e-4))
     sat_patience = int(dh_cfg.get("fwd_hinge_saturate_patience", 50))
     lr_drop = float(dh_cfg.get("absrel_lr_drop_on_saturate", 10.0))
+    min_steps_sat = int(dh_cfg.get("min_steps_before_saturate", 0))
+    min_n_fwd = int(dh_cfg.get("min_n_fwd_trigger", 0))
+    use_fwd_cache = bool(args.fwd_hard_cache) or min_n_fwd > 0
+    fwd_cache: List[Any] = []
+    cache_rng = np.random.default_rng(int(args.split_seed) + 17)
+    if use_fwd_cache:
+        fwd_cache = build_fwd_hard_window_cache(
+            train_eps,
+            window=int(args.window),
+            center_frac=float(dh_cfg.get("center_frac", 0.5)),
+            trigger_m=float(dh_cfg.get("trigger_m", 3.0)),
+        )
+        k_req = max(1, min_n_fwd) if min_n_fwd > 0 else 1
+        print(
+            f"[depth-train] fwd hard cache size={len(fwd_cache)} "
+            f"min_n_fwd={k_req} (declare v3 S′)"
+        )
+        if len(fwd_cache) < k_req:
+            print(
+                f"[depth-train] FAIL: fwd hard cache size={len(fwd_cache)} < K={k_req}",
+                file=sys.stderr,
+            )
+            with log_path.open("a") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "early_refuse": True,
+                            "reason": "fwd_hard_cache_too_small",
+                            "fwd_cache_size": len(fwd_cache),
+                            "min_n_fwd": k_req,
+                        }
+                    )
+                    + "\n"
+                )
+            return 1
     model.train()
     stopped_early = False
     stop_reason = None
     for step in range(1, int(args.steps) + 1):
-        windows = _sample_approach_biased_windows(
-            buf,
-            int(args.wm_batch),
-            int(args.window),
-            oversample=int(dh_cfg.get("approach_oversample", 1)),
-            min_depth_m=float(dh_cfg["scale_depth_min_m"]),
-            max_depth_m=float(dh_cfg["scale_depth_max_m"]),
-            min_gt_delta_m=float(dh_cfg.get("delta_min_gt_m", 0.5)),
-            support_ratio=float(dh_cfg.get("delta_support_ratio", 0.0)),
-            n_frames=int(dh_cfg["n_frames"]),
-        )
+        if use_fwd_cache:
+            windows = sample_fwd_hard_windows(
+                fwd_cache,
+                batch=int(args.wm_batch),
+                min_n_fwd=max(1, min_n_fwd) if min_n_fwd > 0 else 1,
+                rng=cache_rng,
+            )
+        else:
+            windows = _sample_approach_biased_windows(
+                buf,
+                int(args.wm_batch),
+                int(args.window),
+                oversample=int(dh_cfg.get("approach_oversample", 1)),
+                min_depth_m=float(dh_cfg["scale_depth_min_m"]),
+                max_depth_m=float(dh_cfg["scale_depth_max_m"]),
+                min_gt_delta_m=float(dh_cfg.get("delta_min_gt_m", 0.5)),
+                support_ratio=float(dh_cfg.get("delta_support_ratio", 0.0)),
+                n_frames=int(dh_cfg["n_frames"]),
+            )
         arrays = windows_to_perception_arrays(windows)
         if "depth" not in arrays:
             print("[depth-train] FAIL: batch missing depth", file=sys.stderr)
@@ -823,6 +1002,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         loss, stats = depth_head_loss(
             pred, log_sigma, gt[:, -1],
             absrel_weight=float(dh_cfg["absrel_weight"]),
+            silog_weight=float(dh_cfg.get("silog_weight", 0.5)),
             nll_weight=float(dh_cfg["nll_weight"]),
             max_depth_m=float(dh_cfg["max_depth_m"]),
             near_weight=float(dh_cfg.get("near_weight", 0.0)),
@@ -841,9 +1021,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             ),
             near_absrel_p90_weight=float(dh_cfg.get("near_absrel_p90_weight", 0.0)),
             near_absrel_p90_tau=float(dh_cfg.get("near_absrel_p90_tau", 0.9)),
+            near_fwd_absrel_pinball_weight=float(
+                dh_cfg.get("near_fwd_absrel_pinball_weight", 0.0)
+            ),
+            near_fwd_absrel_pinball_tau=float(
+                dh_cfg.get("near_fwd_absrel_pinball_tau", 0.9)
+            ),
+            softmin_temperature_m=float(dh_cfg.get("softmin_temperature_m", 0.0)),
             center_frac=float(dh_cfg.get("center_frac", 0.5)),
             trigger_m=float(dh_cfg.get("trigger_m", 3.0)),
         )
+        stats = {
+            **stats,
+            "phase": "p1",
+            "absrel_weight": float(dh_cfg["absrel_weight"]),
+            "silog_weight": float(dh_cfg.get("silog_weight", 0.5)),
+            "fwd_cache_size": int(len(fwd_cache)),
+            "softmin_T": float(dh_cfg.get("softmin_temperature_m", 0.0)),
+        }
         # Temporal / Δ-depth: predict the first frame of the window with full
         # n_frames context and match |Δ band-mean| to GT on approach-alive rows
         # — teaches ③ without drowning AbsRel. Requires window STRICTLY > n_frames:
@@ -915,19 +1110,24 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"n_near={stats.get('n_near', 0)} "
                 f"n_valid={stats['n_valid']}"
             )
-        # Declare v2 C′: saturation of forward hinge.
+        # Declare v3 C″: saturation of forward hinge (ignore nan / n_fwd<K; min_steps).
         fh = stats.get("fwd_overread_hinge")
+        n_fwd_step = int(stats.get("n_fwd_trigger", 0) or 0)
+        k_gate = max(1, min_n_fwd) if min_n_fwd > 0 else 1
         if (
             float(dh_cfg.get("fwd_overread_hinge_weight", 0.0)) > 0.0
+            and step >= min_steps_sat
             and fh is not None
             and fh == fh  # not NaN
+            and n_fwd_step >= k_gate
         ):
             if float(fh) < sat_eps:
                 fwd_sat_streak += 1
             else:
                 fwd_sat_streak = 0
             if fwd_sat_streak >= sat_patience:
-                if args.early_stop_on_fwd_saturate:
+                # Default recipe: --skip-p2 + --early-stop-on-fwd-saturate → stop (no P2).
+                if args.early_stop_on_fwd_saturate or args.skip_p2:
                     stopped_early = True
                     stop_reason = (
                         f"fwd_overread_hinge<{sat_eps} for {sat_patience} steps "

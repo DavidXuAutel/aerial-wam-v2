@@ -22,6 +22,8 @@ from experiments.aerial.rl.train_depth_head import (
     _apply_freeze_encoder,
     _load_depth_cfg,
     _sample_approach_biased_windows,
+    build_fwd_hard_window_cache,
+    sample_fwd_hard_windows,
     main as train_depth_main,
 )
 
@@ -267,6 +269,124 @@ def test_near_absrel_p90_penalizes_tail():
         wild, log_sigma, gt, near_weight=0.0, near_absrel_p90_weight=1.0
     )
     assert s_wild["near_absrel_p90"] > s_mild["near_absrel_p90"]
+
+
+def test_silog_weight_zero_drops_silog_from_loss():
+    """Declare v3 C″: P1 must be able to shut full-mask SILog (not only AbsRel)."""
+    gt = torch.ones(1, 8, 8) * 5.0
+    pred = gt * 1.5
+    log_sigma = torch.zeros_like(gt)
+    loss_on, _ = depth_head_loss(
+        pred, log_sigma, gt, absrel_weight=0.0, silog_weight=0.5, nll_weight=0.0
+    )
+    loss_off, _ = depth_head_loss(
+        pred, log_sigma, gt, absrel_weight=0.0, silog_weight=0.0, nll_weight=0.0
+    )
+    assert float(loss_on.item()) > 0.0
+    assert float(loss_off.item()) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_fwd_miss_hinge_uses_trigger_not_relative():
+    """Declare v3 A″: hinge = relu(D̂_fwd − trigger) on GT_fwd ≤ trigger."""
+    H = W = 16
+    gt = torch.ones(1, H, W) * 10.0
+    gt[:, 4:12, 4:12] = 2.0  # GT_fwd = 2 ≤ 3
+    log_sigma = torch.zeros_like(gt)
+    # Over GT but still under trigger → relative hinge would fire; miss hinge must not.
+    under_trig = gt.clone()
+    under_trig[:, 4:12, 4:12] = 2.5
+    # Past trigger → miss hinge fires.
+    over_trig = gt.clone()
+    over_trig[:, 4:12, 4:12] = 4.0
+    _, s_under = depth_head_loss(
+        under_trig,
+        log_sigma,
+        gt,
+        absrel_weight=0.0,
+        silog_weight=0.0,
+        nll_weight=0.0,
+        fwd_overread_hinge_weight=1.0,
+        center_frac=0.5,
+        trigger_m=3.0,
+    )
+    _, s_over = depth_head_loss(
+        over_trig,
+        log_sigma,
+        gt,
+        absrel_weight=0.0,
+        silog_weight=0.0,
+        nll_weight=0.0,
+        fwd_overread_hinge_weight=1.0,
+        center_frac=0.5,
+        trigger_m=3.0,
+    )
+    assert s_under["fwd_overread_hinge"] == pytest.approx(0.0, abs=1e-5)
+    assert s_over["fwd_overread_hinge"] == pytest.approx(1.0, abs=1e-4)
+    assert s_over["fwd_hinge_hard"] == pytest.approx(1.0, abs=1e-4)
+
+
+def test_softmin_matches_hardmin_as_T_goes_to_zero():
+    from experiments.aerial.rl.depth_geometry import forward_min_depth_torch
+
+    d = torch.rand(2, 16, 16) * 20 + 1.0
+    hard = forward_min_depth_torch(d, center_frac=0.5, softmin_temperature_m=0.0)
+    soft = forward_min_depth_torch(d, center_frac=0.5, softmin_temperature_m=0.01)
+    # Softmin ≥ hard min; small T keeps them close.
+    assert torch.all(soft >= hard - 1e-3)
+    assert torch.allclose(hard, soft, rtol=0.15, atol=0.5)
+
+
+def test_near_fwd_absrel_pinball_emphasizes_tail():
+    H = W = 16
+    gt = torch.ones(1, H, W) * 10.0
+    gt[:, 4:12, 4:12] = 2.0
+    log_sigma = torch.zeros_like(gt)
+    mild = gt.clone()
+    mild[:, 4:12, 4:12] = 2.2
+    wild = gt.clone()
+    wild[:, 4:12, 4:12] = 2.2
+    wild[:, 6:8, 6:8] = 8.0  # bad AbsRel in forward crop
+    _, s_mild = depth_head_loss(
+        mild,
+        log_sigma,
+        gt,
+        absrel_weight=0.0,
+        silog_weight=0.0,
+        nll_weight=0.0,
+        near_fwd_absrel_pinball_weight=1.0,
+        near_fwd_absrel_pinball_tau=0.9,
+        center_frac=0.5,
+        near_focus_m=5.0,
+    )
+    _, s_wild = depth_head_loss(
+        wild,
+        log_sigma,
+        gt,
+        absrel_weight=0.0,
+        silog_weight=0.0,
+        nll_weight=0.0,
+        near_fwd_absrel_pinball_weight=1.0,
+        near_fwd_absrel_pinball_tau=0.9,
+        center_frac=0.5,
+        near_focus_m=5.0,
+    )
+    assert s_wild["near_fwd_absrel_pinball"] > s_mild["near_fwd_absrel_pinball"]
+
+
+def test_fwd_hard_cache_rejects_undersized_and_fills_batch():
+    far = _const_depth_window([10.0] * 8)
+    near = _const_depth_window([2.0] * 8)
+    cache = build_fwd_hard_window_cache(
+        [far, near], window=4, center_frac=0.5, trigger_m=3.0
+    )
+    assert len(cache) >= 1
+    assert all(
+        float(w[-1].obs.depth.mean()) <= 3.0 for w in cache
+    )
+    with pytest.raises(ValueError, match="fwd hard cache"):
+        sample_fwd_hard_windows(cache[:0], batch=4, min_n_fwd=4, rng=np.random.default_rng(0))
+    batch = sample_fwd_hard_windows(cache, batch=4, min_n_fwd=1, rng=np.random.default_rng(0))
+    assert len(batch) == 4
 
 
 def test_delta_scale_loss_approach_gate_skips_flat_windows():
@@ -537,7 +657,7 @@ def test_init_ckpt_base32_refuses_base64(tmp_path, monkeypatch, capsys):
     )
     monkeypatch.setattr(
         "experiments.aerial.rl.train_depth_head._split_train_holdout",
-        lambda eps, holdout_frac, seed: (eps, eps),
+        lambda eps, holdout_frac, seed: (eps, eps, {"regime": "test", "n_holdout": 0}),
     )
 
     class _FakeBuf:

@@ -5,14 +5,22 @@ import numpy as np
 
 from experiments.aerial.rl.v4_zero_eval import (
     ZeroThresholds,
+    build_tau_miss_diag,
     check_0a,
     check_0c,
     check_0d,
+    check_0d_from_triggered,
+    check_0h,
     check_support_b,
+    check_tau_miss,
     clearance_sweep,
+    dhat_tau_miss_crosstab,
+    engage_release_hysteresis,
     near_absrel_gt_bins,
     pixel_absrel_stats,
     suggest_delta,
+    tau_by_speed_bins,
+    temporal_min_per_episode,
 )
 
 
@@ -49,6 +57,17 @@ def test_support_b_fail_single_frame_dominates():
     assert bad["ok"] is False
 
 
+def test_0h_engage_miss_at_outer():
+    thr = ZeroThresholds(engage_miss_max=0.10)
+    eng = 12.2
+    gt = np.array([12.0] * 9 + [11.0])
+    dhat = np.array([11.0] * 9 + [13.0])  # 1/10 miss
+    r = check_0h(gt, dhat, engage_outer_m=eng, thr=thr)
+    assert r["n_cond"] == 10
+    assert r["p_engage_miss"] == 0.1
+    assert r["ok"] is True
+
+
 def test_0d_miss_rate_and_consecutive():
     thr = ZeroThresholds(trigger_m=3.0)
     gt = np.array([2.0, 2.5, 2.0, 2.0, 4.0])
@@ -57,6 +76,77 @@ def test_0d_miss_rate_and_consecutive():
     assert r["ok"] is False
     assert r["max_consecutive_miss"] == 3
     assert r["n_near_forward_frames"] == r["n_cond"] == 4
+
+
+def test_temporal_min_per_episode_k1_identity():
+    v = np.array([4.0, 3.0, 5.0, 2.0], dtype=np.float64)
+    e = np.array([0, 0, 1, 1], dtype=np.int64)
+    out = temporal_min_per_episode(v, e, k=1)
+    assert np.allclose(out, v)
+
+
+def test_temporal_min_per_episode_causal_and_resets():
+    # ep0: 4,3,5 → K=2 → 4, min(4,3)=3, min(3,5)=3
+    # ep1: 9,1 → K=2 → 9, min(9,1)=1  (must not see ep0)
+    v = np.array([4.0, 3.0, 5.0, 9.0, 1.0], dtype=np.float64)
+    e = np.array([0, 0, 0, 1, 1], dtype=np.int64)
+    out = temporal_min_per_episode(v, e, k=2)
+    assert np.allclose(out, [4.0, 3.0, 3.0, 9.0, 1.0])
+
+
+def test_temporal_min_reduces_0d_miss_rate():
+    thr = ZeroThresholds(trigger_m=3.0)
+    gt = np.array([2.0, 2.0, 2.0], dtype=np.float64)
+    dhat = np.array([3.5, 2.5, 3.5], dtype=np.float64)  # miss, hit, miss
+    e = np.array([0, 0, 0], dtype=np.int64)
+    raw = check_0d(gt, dhat, thr=thr, episode_ids=e)
+    assert raw["p_miss_trigger"] == round(2 / 3, 4)
+    assert raw["max_consecutive_miss"] == 1
+    filt = temporal_min_per_episode(dhat, e, k=2)
+    # [3.5, min(3.5,2.5)=2.5, min(2.5,3.5)=2.5] → only warm-up miss remains
+    assert np.allclose(filt, [3.5, 2.5, 2.5])
+    r2 = check_0d(gt, filt, thr=thr, episode_ids=e)
+    assert r2["p_miss_trigger"] == round(1 / 3, 4)
+    assert r2["max_consecutive_miss"] == 1
+
+
+def test_temporal_min_breaks_consec_run():
+    thr = ZeroThresholds(trigger_m=3.0)
+    gt = np.array([2.0, 2.0, 2.0, 2.0], dtype=np.float64)
+    # two consec misses, then a good read, then a miss that K=2 clears via prior good
+    dhat = np.array([3.5, 3.5, 2.0, 3.5], dtype=np.float64)
+    e = np.array([0, 0, 0, 0], dtype=np.int64)
+    raw = check_0d(gt, dhat, thr=thr, episode_ids=e)
+    assert raw["max_consecutive_miss"] == 2
+    filt = temporal_min_per_episode(dhat, e, k=2)
+    # 3.5, 3.5, min(3.5,2)=2, min(2,3.5)=2
+    r2 = check_0d(gt, filt, thr=thr, episode_ids=e)
+    assert r2["max_consecutive_miss"] == 2  # early run untouched
+    assert r2["n_cond"] == 4
+    # rate: raw 3/4 miss → filt 2/4
+    assert abs(r2["p_miss_trigger"] - 0.5) < 1e-6
+
+
+def test_engage_release_hysteresis_holds_through_overread():
+    # engage at 2.5, over-read 3.5 still held until release 4.0
+    dhat = np.array([2.5, 3.5, 3.5, 4.1], dtype=np.float64)
+    e = np.array([0, 0, 0, 0], dtype=np.int64)
+    eng = engage_release_hysteresis(dhat, e, trigger_m=3.0, release_m=4.0)
+    assert eng.tolist() == [True, True, True, False]
+
+
+def test_hysteresis_can_break_0d_consec():
+    thr = ZeroThresholds(trigger_m=3.0)
+    gt = np.array([2.0, 2.0, 2.0], dtype=np.float64)
+    # hit then two over-reads — raw consec=2; with release=4 hold covers them
+    dhat = np.array([2.5, 3.5, 3.5], dtype=np.float64)
+    e = np.array([0, 0, 0], dtype=np.int64)
+    raw = check_0d(gt, dhat, thr=thr, episode_ids=e)
+    assert raw["max_consecutive_miss"] == 2
+    eng = engage_release_hysteresis(dhat, e, trigger_m=3.0, release_m=4.0)
+    r2 = check_0d_from_triggered(gt, eng, thr=thr, episode_ids=e)
+    assert r2["max_consecutive_miss"] == 0
+    assert r2["p_miss_trigger"] == 0.0
 
 
 def test_heldout_episodes_seeded_split():
@@ -143,3 +233,68 @@ def test_aggregate_primary_ignores_0f_fail():
     assert v["ok"] is False
     assert v["ok_primary"] is False
     assert v["ok_0f"] is False
+
+
+def test_check_tau_miss_rate_and_consecutive():
+    thr = ZeroThresholds(min_tau_s=1.0)
+    tau_gt = np.array([0.5, 0.8, 0.5, 0.5, 2.0])
+    tau_hat = np.array([1.2, 0.5, 1.1, 1.2, 0.5])
+    e = np.array([0, 0, 0, 0, 0])
+    r = check_tau_miss(
+        tau_gt,
+        tau_hat,
+        min_tau_s=thr.min_tau_s,
+        false_trigger_max=thr.false_trigger_max,
+        episode_ids=e,
+    )
+    assert r["n_tau_miss_cond"] == 4
+    assert r["p_tau_miss"] == 0.75
+    assert r["max_consecutive_tau_miss"] == 2
+    assert r["ok"] is False
+
+
+def test_dhat_tau_miss_crosstab_counts():
+    g = np.array([2.0, 2.0, 2.0, 4.0])
+    d = np.array([3.5, 2.5, 3.5, 2.0])
+    tg = np.array([0.5, 0.5, 2.0, 0.5])
+    th = np.array([1.2, 0.5, 1.2, 0.5])
+    out = dhat_tau_miss_crosstab(g, d, tg, th, trigger_m=3.0, min_tau_s=1.0)
+    assert out["n_both_cond"] == 2
+    assert out["table"]["dhat_miss_and_tau_miss"] == 1
+    assert out["table"]["neither"] == 1
+
+
+def test_tau_by_speed_bins_includes_high_speed_tail():
+    v = np.array([0.1, 1.0, 6.0])
+    tg = np.array([0.5, 0.5, 0.5])
+    th = np.array([1.2, 0.5, 1.2])
+    rows = tau_by_speed_bins(v, tg, th, min_tau_s=1.0)
+    tail = [r for r in rows if r.get("v_lo") == 5.0][0]
+    assert tail["n_frames"] == 1
+    assert tail["p_tau_miss"] == 1.0
+
+
+def test_build_tau_miss_diag_contract_fields():
+    g = np.array([2.0, 2.0])
+    d = np.array([3.5, 2.5])
+    th = np.array([1.2, 0.5])
+    v = np.array([2.0, 2.0])
+    e = np.array([0, 0])
+    diag = build_tau_miss_diag(
+        g,
+        d,
+        th,
+        v,
+        e,
+        thr=ZeroThresholds(trigger_m=3.0, min_tau_s=1.0),
+        yaml_min_depth_m=1.5,
+        center_frac=0.5,
+        tau_ckpt="tau.pt",
+        dt_samples=[0.2, 0.2],
+        dt_fallback_count=0,
+    )
+    assert diag["authoritative"] is False
+    assert diag["p_tau_miss"] == 0.5
+    assert diag["center_frac"] == 0.5
+    assert diag["B_b_min_depth"]["yaml_min_depth_m"] == 1.5
+    assert diag["dt_hist"]["p50"] == 0.2

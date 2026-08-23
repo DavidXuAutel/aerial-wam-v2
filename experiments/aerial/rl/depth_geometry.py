@@ -34,18 +34,23 @@ def forward_min_depth(depth: np.ndarray, *, center_frac: float) -> float:
     """
     h, w = depth.shape[-2], depth.shape[-1]
     cf = float(np.clip(center_frac, 0.05, 1.0))
-    dh, dw = int(h * cf), int(w * cf)
+    # Match forward_min_depth_torch: at least 1 px per axis (int(h*cf) alone can be 0).
+    dh, dw = max(1, int(h * cf)), max(1, int(w * cf))
     r0, c0 = (h - dh) // 2, (w - dw) // 2
     crop = np.asarray(depth[r0 : r0 + dh, c0 : c0 + dw], dtype=np.float64)
     return _min_finite_positive(crop)
 
 
-def forward_min_depth_torch(depth, *, center_frac: float):
-    """Batched differentiable forward-crop min — same geometry as :func:`forward_min_depth`.
+def forward_min_depth_torch(
+    depth, *, center_frac: float, softmin_temperature_m: float = 0.0
+):
+    """Batched forward-crop min — same crop as :func:`forward_min_depth`.
 
-    ``depth``: ``[B,H,W]`` or ``[H,W]``. Gradients flow to the argmin pixel(s)
-    (hard min; no softmin temperature — declare v2 D-2).
-    Non-finite / non-positive entries are treated as +inf so they never win.
+    ``depth``: ``[B,H,W]`` or ``[H,W]``. Non-finite / non-positive → +inf.
+
+    ``softmin_temperature_m<=0`` → hard min (eval ⓪d / sampling).
+    ``softmin_temperature_m>0`` → softmin ``-T logΣ exp(-x/T)`` over finite
+    crop pixels (declare v3 A″; T frozen at 0.05 m in recipe).
     """
     import torch
 
@@ -55,11 +60,19 @@ def forward_min_depth_torch(depth, *, center_frac: float):
     dh, dw = max(1, int(h * cf)), max(1, int(w * cf))
     r0, c0 = (h - dh) // 2, (w - dw) // 2
     crop = d[:, r0 : r0 + dh, c0 : c0 + dw]
-    invalid = ~(torch.isfinite(crop) & (crop > 0))
-    filled = crop.masked_fill(invalid, float("inf"))
-    flat = filled.reshape(b, -1)
-    mins = flat.min(dim=-1).values
-    # If a row is all-invalid, min is +inf — caller should mask.
+    valid = torch.isfinite(crop) & (crop > 0)
+    T = float(softmin_temperature_m)
+    if T <= 0.0:
+        filled = crop.masked_fill(~valid, float("inf"))
+        mins = filled.reshape(b, -1).min(dim=-1).values
+    else:
+        neg = torch.where(valid, -crop / T, torch.full_like(crop, float("-inf")))
+        lse = torch.logsumexp(neg.reshape(b, -1), dim=-1)
+        mins = torch.where(
+            torch.isfinite(lse),
+            -T * lse,
+            torch.full_like(lse, float("inf")),
+        )
     return mins if depth.ndim == 3 else mins[0]
 
 

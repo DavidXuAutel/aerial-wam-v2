@@ -121,3 +121,18 @@ def test_predict_cones_none_when_all_invalid():
     pred = DepthMinPredictor(n_frames=1)
     _bind_stub_depth(pred, np.full((4, 4), np.nan, dtype=np.float32))
     assert pred.predict_cones(_obs(size=4)) is None
+
+
+def test_forward_min_depth_min_crop_size():
+    from experiments.aerial.rl.depth_geometry import forward_min_depth
+
+    d_np = np.full((10, 10), 4.0, dtype=np.float64)
+    d_np[4:6, 4:6] = 1.5
+    assert forward_min_depth(d_np, center_frac=0.05) == 1.5
+
+    torch = pytest.importorskip("torch")
+    from experiments.aerial.rl.depth_geometry import forward_min_depth_torch
+
+    d_t = torch.from_numpy(d_np).unsqueeze(0)
+    hard = float(forward_min_depth_torch(d_t, center_frac=0.05).item())
+    assert hard == 1.5

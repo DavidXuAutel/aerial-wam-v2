@@ -13,6 +13,8 @@
 **✅ 四信号已在「同一 r60 ft-head + 一次 merge」下合拢 PASS。** `_v0_gate --merge` exit 0 → `v0_gate_r60_20260814.json`(H100 `.25`); flags 已翻(`depth_head.enable` + `safety.kind: threshold`)。②④ **n=8**（现已与 frozen §4.1 对齐，re-freeze 2026-08-17）。④ **实证=④c** ratio=0.113；④b `n_contact=0` 为终态空过（`before_ok=null` / `before_vacuous=true`；JSON 仍 emit `before=1.0` 仅兼容，**不是**测得的干预先于接触）。
 
 > **⚠️ supersede（2026-08-21，审计链：原文不改写）** —— 上段「④ PASS」在**有功效近带语料**下不再可作为 shield 安全性证据：同一 r60 部署头在 V4-⓪ **控制臂**（诚实 held-out）上 **⓪d 权威 FAIL**（`consec=2` 稳固；速率腿待 `n_near_forward_frames`）。性质同「V1 WM gate INVALIDATED」。**④ 标低功效、重新入列重跑**；④c `0.113` 本身不推翻。详见 §4.1 注记 + [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) §3 (J)–(R)。
+>
+> **⚠️ supersede 续（2026-08-21，只登记、暂不跑）** —— ④ 重跑 **绑定 depth head 定稿**（v3 不可用：①d FAIL + ⓪d/consec FAIL；部署线仍 r60 老头）。**在 head 定稿前不 launch** ④ rollout / partial emit。清单项 = E′ deferred；见 §3 E′ + [`V4_RUNBOOK_125_STATUS.md`](V4_RUNBOOK_125_STATUS.md)。
 
 ---
 
@@ -24,7 +26,7 @@
 | **①d** | AbsRel ≤0.30 | ✅ head A 0.132(代表)/0.167(approach OOD);✅ **head B local 0.0483**(晚⁷);✅ **r60 ft-head holdout 0.0641**(同上 partial 1) | **无 —— r60 ckpt 已在 partial 1 通过** |
 | **②** | N=**8**;progress ≥random+5.0 ∨ final_dist ≤random−3.0 | ✅ **r60 merge PASS**(H100 2026-08-14): progress **13.49** vs random **−4.30**; final_dist **16.54** vs **34.12**; **n=8** | **无 —— partial 24 + merge 已 PASS**（n 已 re-freeze） |
 | **③** | reproj median 相对误差 ≤0.25;有效窗 ≥8 | ✅ head A 0.05–0.12(余量对 0.25 不宽);✅ **r60 ft-head median 0.212 / n=90**(H100 2026-08-14) | **无 —— partial 3 已落盘** |
-| **④** | ④c ratio ≤0.80；④b ≥0.50 仅当有接触 | ✅ **r60 merge PASS**: ④c ratio **0.113**；④b **N/A**（`n_contact=0`，`before_vacuous`）；JSON `before=1.0` 仅兼容；**n=8** | **⚠️ 2026-08-21 更正：标低功效、重新入列重跑** —— 同一 r60 部署头在 V4-⓪ 控制臂上 `⓪d miss=0.076 / consec=2`（违反「不得 ≥2 连续」）⇒ 罩在 7.6% 近障机会上未触发；`n=8` + `0 接触` ⇒ 接触率 95% 上界 ≈ **3/8 = 0.375**，「零接触」与「37% 接触」不可区分。**④c `0.113` 不推翻**（测行为改变量、非漏触发）。详见 §4.1 supersede 注记 |
+| **④** | ④c ratio ≤0.80；④b ≥0.50 仅当有接触 | ✅ **r60 merge PASS**: ④c ratio **0.113**；④b **N/A**（`n_contact=0`，`before_vacuous`）；JSON `before=1.0` 仅兼容；**n=8** | **⚠️ 2026-08-21 更正：标低功效、重新入列；续：deferred（等 depth head 定稿，暂不跑）** —— 控制臂 `⓪d miss=0.076 / consec=2`；`n=8` 功效上界 ≈0.375。**④c `0.113` 不推翻**。详见 §4.1 + §3 E′ |
 
 ### 2.1 核心 gap:head 一致性
 
@@ -52,7 +54,7 @@
 - [ ] **C1. P0b: shield 消费侧切到锥** — 在 ④ 重跑前做;会改 ④ 行为 → 需重跑 emit partial
 - [x] **D. n 的 re-freeze** — ✅ 2026-08-17 用户拍板 **n=8**；见 §4
 - [x] **E. ②④ 重跑** — ✅ `v0_partial_24_r60_20260814.json` PASS(n=8; ② progress 13.49/−4.30; ④c ratio 0.113; ④b N/A 空过)
-- [ ] **E′. ④ 低功效重跑（2026-08-21 入列）** — V4-⓪ 控制臂权威 FAIL 后 supersede；须在功效近带语料 / 新感知头上重 emit ④（不降阈值）。前置：感知侧改法 held-out 验过 ⓪c/d，或至少声明仍用现头重跑的功效设计
+- [ ] **E′. ④ 低功效重跑（2026-08-21 入列；2026-08-21 续：deferred）** — V4-⓪ 控制臂权威 FAIL 后 supersede；须在功效近带语料 / **定稿后的**感知头上重 emit ④（不降阈值）。**前置硬闸**：depth head 定稿（同时过 ⓪c/d 且 ①d 锚不丢；v3 不满足）。**现阶段只登记、不 launch rollout**。
 - [x] **F. `--merge` 全四 partial JSON** — ✅ **`v0_gate_r60_20260814.json` MERGED PASS exit 0**; flags 已翻
 
 ### 3.1 H100 查证进展(2026-08-12 第一轮已回)
@@ -167,6 +169,7 @@ ls -d ~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/approach_scale_d18 2>
 
 ## 6. 变更记录
 
+- **2026-08-21** — **④ 重跑登记为 deferred（只登记、暂不跑）**。改了什么：**仅文书**；§1 banner 加续 supersede；§3 E′ 标 deferred + 硬闸「depth head 定稿」；**未 launch** rollout、**未改** §4.1 阈值/flags。为什么：④ 绑定感知头；v3 头不可用（①d/⓪d）；须等头定稿后再重 emit。见 [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) §3 (AI)、[`V4_RUNBOOK_125_STATUS.md`](V4_RUNBOOK_125_STATUS.md)。
 - **2026-08-21** — **④ 判为低功效、重新入列重跑（依据 = V4-⓪ 控制臂；原文不改写，注记加在 §1 banner + §4.1）**。改了什么：给 §1 一句话结论加 supersede banner；§4.1（洞 2）与 §2 的 ④ 行加 supersede 注记；**未改任何 §4.1 阈值、未改 flags**。为什么：V4-P3 控制臂在**同一个 r60 部署头**上、诚实 held-out + 315 近带帧 support 下测得 **⓪d 权威 FAIL**（稳固支点 = `max_consec_miss=2`；速率腿待 `n_near_forward_frames`）。功效：`n=8` + `0 接触` ⇒ 接触率 95% 上界 ≈ 3/8 = **0.375**。**④c `ratio=0.113` 不推翻**。产物：`artifacts/v4_zero_p3_oldhead_merged_20260821.json`；详见 [`V4_GATE_STATUS.md`](V4_GATE_STATUS.md) §3 (J)–(R)。
 - **2026-08-17** — §4 **诚实边界**显式化：洞 1 = 事后合法化（08-14 merge@n=8 → 08-17 冻结对齐），非事前干净通过；与 V1-① 功效正交。
 - **2026-08-17** — **洞 2 收口**：④b `n_contact=0` 接受为终态（`before_ok=null` / `before_vacuous`）；④ 实证=④c；JSON `frac=1.0` 仅兼容。§3 待办 D 标为已完成（洞 1）。

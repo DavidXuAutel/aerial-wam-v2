@@ -344,7 +344,7 @@ def run_shield_eval_p0c(
     *,
     target_n: int = FROZEN_N_PER_LAYER,
     near_collision_depth_m: float = 1.5,
-    shield_trigger_depth_m: float = 3.0,
+    shield_trigger_depth_m: float = 3.0,  # legacy V0; V4 deploy uses three_zone (ignored)
     max_steps: int = 200,
     reward_cfg: Any = None,
     tau_predictor: Any = None,
@@ -354,12 +354,11 @@ def run_shield_eval_p0c(
     both_arms_unshielded: bool = False,
 ) -> Tuple[Dict[str, Any], PairedEvalResult]:
     """Signal ④ shield eval with P0c spare refill and drop counters."""
-    from experiments.aerial.rl.safety import DepthTauShield
+    from experiments.aerial.rl.safety import ThreeZoneSpeedShield
+    from experiments.aerial.rl.three_zone import ThreeZoneSpec
 
-    shield = None if both_arms_unshielded else DepthTauShield(
-        min_depth_m=float(shield_trigger_depth_m),
-        min_tau_s=1.0,
-    )
+    _ = shield_trigger_depth_m  # V0 legacy; V4 uses three-zone governor
+    shield = None if both_arms_unshielded else ThreeZoneSpeedShield(zone=ThreeZoneSpec())
     interventions_on: List[List[bool]] = []
     collided_on: List[List[bool]] = []
     near_coll_on: List[List[bool]] = []

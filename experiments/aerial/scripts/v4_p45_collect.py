@@ -152,7 +152,14 @@ def build_episode_pool(args: argparse.Namespace) -> Tuple[List[Dict[str, Any]], 
 
     cfg = yaml.safe_load((root / args.config).read_text()) or {}
     if args.host:
-        cfg.setdefault("env", {})["host"] = str(args.host)
+        cfg.setdefault("env", {})
+        cfg["env"]["host"] = str(args.host)
+        cfg["env"]["port"] = int(args.port)
+        cfg["env"]["backend"] = "airsim"
+        cfg["env"]["grab_depth"] = True
+        cfg["env"].setdefault("camera", str(args.camera))
+        cfg["env"].setdefault("vehicle", str(args.vehicle))
+        cfg["env"].setdefault("step_hz", float(args.step_hz))
     env = _build_env(cfg.get("env", {}) or {})
     reward_cfg = RewardConfig(**(cfg.get("reward", {}) or {})) if cfg.get("reward") else RewardConfig()
     arrival_m = float(reward_cfg.success_dist_m)
@@ -248,6 +255,8 @@ def collect_pool(args: argparse.Namespace, pool: List[Dict[str, Any]], scan_diag
         ep["p45_meta"]["approach_dist_m"] = float(args.approach_dist_m)
         ep["p45_meta"]["layer"] = ep.get("layer", "unknown")
 
+    from experiments.aerial.rl.collect_dataset import _deep_update
+
     cfg: dict = {
         "env": {
             "backend": "airsim",
@@ -265,6 +274,14 @@ def collect_pool(args: argparse.Namespace, pool: List[Dict[str, Any]], scan_diag
             "max_steps": int(args.max_steps),
         },
     }
+    cfg_path = Path(args.config).expanduser()
+    if not cfg_path.is_absolute():
+        cfg_path = root / cfg_path
+    if cfg_path.is_file():
+        import yaml
+
+        yaml_cfg = yaml.safe_load(cfg_path.read_text()) or {}
+        cfg = _deep_update(yaml_cfg, cfg)
 
     manifest: list[dict] = []
     reports: list[dict] = []

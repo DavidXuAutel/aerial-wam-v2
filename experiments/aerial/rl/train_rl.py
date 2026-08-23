@@ -26,7 +26,13 @@ from experiments.aerial.rl.dynamics import StubLatentDynamics
 from experiments.aerial.rl.env.action import DEFAULT_STEP_HZ, body_delta_limits
 from experiments.aerial.rl.env.obs import PolicyObservation
 from experiments.aerial.rl.reward import DEFAULT_ONLINE_SUCCESS_DIST_M, RewardConfig
-from experiments.aerial.rl.safety import DepthTauShield, NullSafetyShield, ThresholdSafetyShield
+from experiments.aerial.rl.safety import (
+    DepthTauShield,
+    NullSafetyShield,
+    ThreeZoneSpeedShield,
+    ThresholdSafetyShield,
+)
+from experiments.aerial.rl.three_zone import ThreeZoneSpec
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +194,14 @@ def _build_safety(safety_cfg: Any) -> Any:
             min_depth_m=float(_get(safety_cfg, "min_depth_m", 3.0)),
             min_tau_s=float(_get(safety_cfg, "min_tau_s", 1.0)),
             max_p_coll=float(_get(safety_cfg, "max_p_coll", 0.5)),
+        )
+    if kind in ("three_zone", "three_zone_speed"):
+        zone = ThreeZoneSpec.from_mapping(safety_cfg)
+        return ThreeZoneSpeedShield(
+            zone=zone,
+            min_tau_s=float(_get(safety_cfg, "min_tau_s", 1.0)),
+            max_p_coll=float(_get(safety_cfg, "max_p_coll", 0.5)),
+            retreat_step_m=float(_get(safety_cfg, "retreat_step_m", 3.0)),
         )
     raise ValueError(f"unknown safety kind {kind!r}")
 

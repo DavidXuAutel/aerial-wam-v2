@@ -290,10 +290,13 @@ class TauPredictor:
     calibrator: Optional[FoeTauCalibrator] = None
     _prev_rgb: Optional[np.ndarray] = field(default=None, repr=False)
     _prev_t: Optional[float] = field(default=None, repr=False)
+    # Last |flow| mean in the forward cone (diagnostic only; not consumed by shield).
+    _last_flow_mag: Optional[float] = field(default=None, repr=False)
 
     def reset(self) -> None:
         self._prev_rgb = None
         self._prev_t = None
+        self._last_flow_mag = None
 
     def _resolved_kind(self) -> str:
         k = str(self.kind or "gt_proxy").lower()
@@ -332,6 +335,16 @@ class TauPredictor:
         if prev_t is not None and np.isfinite(t) and np.isfinite(prev_t) and t > prev_t:
             dt = float(t - prev_t)
         flow = optical_flow_farneback(prev, rgb)
+        # Cheap T-3 proxy: mean |flow| over forward cone (no second Farneback).
+        try:
+            h, w = int(flow.shape[0]), int(flow.shape[1])
+            cf = float(np.clip(self.center_frac, 0.05, 1.0))
+            ch, cw = max(1, int(round(h * cf))), max(1, int(round(w * cf)))
+            y0, x0 = (h - ch) // 2, (w - cw) // 2
+            crop = flow[y0 : y0 + ch, x0 : x0 + cw]
+            self._last_flow_mag = float(np.mean(np.linalg.norm(crop, axis=-1)))
+        except Exception:  # noqa: BLE001 — diagnostic best-effort
+            self._last_flow_mag = None
         foe = estimate_foe(flow)
         if calibrated and self.calibrator is not None:
             feats = foe_flow_features(flow, foe=foe, center_frac=self.center_frac)

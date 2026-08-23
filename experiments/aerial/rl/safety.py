@@ -10,6 +10,10 @@ Only the contract is fixed here. ``NullSafetyShield`` never overrides (V0/V1
 default). A real ``DepthTauShield`` is deferred until the perception heads that
 produce ``D̂`` / ``τ`` exist (V2+); ``ThresholdSafetyShield`` shows the intended
 trigger wiring against fields that may not be populated yet.
+
+**Three-zone deploy (2026-08-23)**: ``ThreeZoneSpeedShield`` replaces the single
+3 m depth latch with a graduated speed governor (8/5/1.5 m @ 2/1/0.2 m/s).
+τ / p_coll emergencies still latch + retreat.
 """
 from __future__ import annotations
 
@@ -18,7 +22,13 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 import numpy as np
 
+from experiments.aerial.rl.env.action import MAX_BODY_VELOCITY, clip_body_delta
 from experiments.aerial.rl.env.obs import Observation
+from experiments.aerial.rl.three_zone import ThreeZoneSpec, planned_speed_m_s
+from experiments.aerial.rl.tau_predictor import (
+    DEFAULT_MIN_CLOSING_M_S,
+    closing_speed_m_s,
+)
 
 
 @runtime_checkable
@@ -37,61 +47,71 @@ class NullSafetyShield:
     def override_action(self, obs: Observation) -> np.ndarray:
         return np.zeros(4, dtype=np.float64)
 
+    def apply_action(
+        self,
+        action: np.ndarray,
+        obs: Observation,
+        wm_out: Optional[Any] = None,
+        limits: Optional[np.ndarray] = None,
+    ) -> tuple[np.ndarray, bool]:
+        lim = limits
+        return clip_body_delta(action, lim), False
+
 
 @dataclass
 class ThresholdSafetyShield:
     """Trigger contract for D̂ ∪ τ ∪ p_coll (fields wired at V2+).
 
-    Reads optional predictions off ``obs.info`` / ``wm_out`` — if none are
-    present it degrades to never-override, so it is safe to install early.
+    **Standoff semantics (v5, 2026-08-22)** — ``min_depth_m`` is the boundary of
+    the *stable-hover zone*, not the distance at which braking *starts*. The
+    vehicle must bleed closing speed **before** crossing the standoff so it is
+    near-stationary **inside** ``min_depth_m``. Kinematic engage when::
 
-    **Latch + bounded state-feedback retreat** (V2, re-freeze 2026-08-11 晚¹²).
-    History — each design fixed the prior one's failure and exposed the next:
-      1. pure *pre-latch* hover (return zeros, no latch): the goal-seeker keeps
-         pushing forward while the shield cancels it → oscillates in/out of the
-         band → near_coll_rate_on ≫ off, ratio inverts.
-      2. latch + *unbounded continuous retreat* (body −x EVERY step forever): fixed
-         (1)'s oscillation, but with the policy latched off the vehicle retreats
-         **blindly with no rear sensing** and, in enclosed scenes, backs into the
-         rear/side wall — 晚¹⁰ telemetry ``coll_after_latch=9/9``, crash ~33 steps
-         after an immediate latch. Surviving 3× longer but still crashing 9/10 is
-         not avoidance — it relocates the crash.
-      3. latch + *pure hold* (zeros): stops the rear crash, but a zero body-delta
-         does NOT arrest forward momentum — the vehicle **coasts into the band**
-         after latching and parks there — 晚¹¹ ``near_count_on`` up to 200/200,
-         ``near_coll_rate_on`` 0.385, ratio 12.96. The retreat in (2) was doing
-         double duty: countering the *optimistic predictor* AND killing forward
-         momentum; hold dropped both.
-      4. latch + **bounded state-feedback retreat** — current. Retreat body −x only
-         WHILE ``D̂`` < ``min_depth_m`` (the reaction standoff); HOLD (zeros) once
-         ``D̂`` ≥ standoff. This kills forward momentum and backs out of the band
-         (fixes (3)), then STOPS retreating at the standoff instead of reversing
-         into the rear wall (fixes (2)). Reliable only because 晚⁷ eliminated the
-         near-band predictor optimism (DA3 retrain: forward ``D̂`` 6.4→0.65 m,
-         near-band P(trigger)=1.0, now accurate / under-reading near the band): so
-         ``D̂`` ≥ standoff ⟺ genuinely ≈3 m clear (the earlier "retreat-until-D̂-safe
-         then hover" parked in-band precisely because optimistic ``D̂`` recovered
-         past safe while GT was still <1.5 m; that premise is gone). The *latch*
-         keeps the policy from re-approaching after the vehicle settles at the
-         standoff. Net: front clearance settles at ≥ standoff (near_coll_rate_on→0),
-         bounded backward travel (no rear crash), intervention before contact (④b).
-         ``reset()`` clears the latch between episodes (the eval reuses one
-         instance). See frozen-spec ④a re-freeze note (2026-08-11 晚¹²).
+        D̂ < min_depth_m + v_fwd * min_tau_s
+
+    (same ``min_tau_s`` reaction budget as the τ leg; thresholds unchanged).
+
+    Override uses **graduated body −x** scaled to ``v_fwd`` (capped by
+    ``retreat_step_m``), including while still **outside** the standoff but
+    inside the braking envelope — not a step function at 3 m.
+
+    Prior latch + bounded retreat history (晚¹⁰–¹²) remains; v5 fixes the
+    high-speed “coast into 3 m then panic” failure mode.
+
+    **Legacy** — superseded for deploy by :class:`ThreeZoneSpeedShield`.
     """
 
-    # Reaction standoff (NOT the near-collision metric): trigger when predicted
-    # clearance < this. Default 3.0 m > the 1.5 m ④a metric so the shield reacts
-    # before entering the band; the metric stays frozen at 1.5 in v0_metrics.
+    # Reaction standoff outer boundary — must be stable/hovering inside, not enter at cruise.
     min_depth_m: float = 3.0
-    min_tau_s: float = 1.0            # brake if time-to-contact < this
+    min_tau_s: float = 1.0            # τ breach + kinematic depth braking horizon (s)
     max_p_coll: float = 0.5           # brake if WM collision prob > this
-    brake_gain: float = 1.0
-    retreat_step_m: float = 3.0       # body −x retreat request while breached (collector re-clips to the rate cap)
+    min_closing_m_s: float = DEFAULT_MIN_CLOSING_M_S
+    brake_gain: float = 1.0           # retreat dx ≈ v_fwd * brake_gain per step (then clipped)
+    retreat_step_m: float = 3.0       # max |body −x| per override step
     _engaged: bool = field(default=False, init=False, repr=False)
 
     def reset(self) -> None:
         """Clear the per-episode latch (the shield instance is reused across episodes)."""
         self._engaged = False
+
+    def _kinematic_standoff_limit_m(self, v_fwd: float) -> float:
+        """Outer engage surface: standoff + distance closed in ``min_tau_s`` at ``v_fwd``."""
+        return float(self.min_depth_m) + max(float(v_fwd), 0.0) * float(self.min_tau_s)
+
+    def _depth_channel_breach(self, d_hat: float, v_fwd: float) -> bool:
+        d = float(d_hat)
+        if d < float(self.min_depth_m):
+            return True
+        if v_fwd > float(self.min_closing_m_s):
+            return d < self._kinematic_standoff_limit_m(v_fwd)
+        return False
+
+    def _needs_speed_bleed(self, obs: Observation) -> bool:
+        d_hat = obs.info.get("depth_min_pred")
+        if d_hat is None:
+            return False
+        v = closing_speed_m_s(obs)
+        return self._depth_channel_breach(float(d_hat), v)
 
     def _breached(self, obs: Observation, wm_out: Optional[Any] = None) -> bool:
         d_hat = obs.info.get("depth_min_pred")
@@ -99,7 +119,9 @@ class ThresholdSafetyShield:
         p_coll = None
         if wm_out is not None:
             p_coll = getattr(wm_out, "p_coll", None)
-        if d_hat is not None and float(d_hat) < self.min_depth_m:
+        if d_hat is not None and self._depth_channel_breach(
+            float(d_hat), closing_speed_m_s(obs)
+        ):
             return True
         if tau is not None and float(tau) < self.min_tau_s:
             return True
@@ -108,10 +130,6 @@ class ThresholdSafetyShield:
         return False
 
     def should_override(self, obs: Observation, wm_out: Optional[Any] = None) -> bool:
-        # Latch for the rest of the episode once breached, so we hold clear of the
-        # band — rather than oscillating in/out of it (which would keep sampling
-        # near-collision frames on the shield-on arm) or re-approaching once the
-        # predicted clearance nominally recovers.
         if self._engaged:
             return True
         if self._breached(obs, wm_out):
@@ -120,24 +138,26 @@ class ThresholdSafetyShield:
         return False
 
     def override_action(self, obs: Observation) -> np.ndarray:
-        # Bounded state-feedback retreat (晚¹²). While still inside the reaction
-        # standoff (``D̂`` < ``min_depth_m``) retreat body −x: a zero-delta HOLD does
-        # NOT arrest forward momentum, so the vehicle coasts into the band and parks
-        # there (晚¹¹: near_count_on up to 200/200, ratio 12.96). Once ``D̂`` ≥ the
-        # standoff, HOLD (zeros) — do NOT keep retreating, or the blind body −x drive
-        # with no rear sensing backs into the rear/side wall (晚¹⁰: coll_after_latch
-        # =9/9, crash ~33 steps after latching). This stops the retreat AT the
-        # standoff. Trusting ``D̂`` ≥ standoff as "genuinely clear" is safe only post-
-        # 晚⁷ (near-band DA3 retrain: forward D̂ 6.4→0.65 m, under-reads near the band
-        # so D̂<standoff holds true while GT<1.5); the pre-晚⁷ optimistic D̂ recovered
-        # past standoff while GT was still <1.5 → parked in band. The latch (see
-        # should_override) keeps the policy from re-approaching once settled. The
-        # collector re-clips −x through ``body_delta_limits(1/step_hz)`` to the rate
-        # cap, so retreat is a steady per-step increment, not a teleport.
-        d_hat = obs.info.get("depth_min_pred")
-        if d_hat is not None and float(d_hat) < float(self.min_depth_m):
-            return np.array([-abs(float(self.retreat_step_m)), 0.0, 0.0, 0.0], dtype=np.float64)
-        return np.zeros(4, dtype=np.float64)
+        if not self._needs_speed_bleed(obs):
+            return np.zeros(4, dtype=np.float64)
+        v = closing_speed_m_s(obs)
+        # Graduated −x: bleed closing speed before/at standoff; collector clips to rate cap.
+        mag = min(
+            float(self.retreat_step_m),
+            max(float(v), float(self.min_closing_m_s)) * float(self.brake_gain),
+        )
+        return np.array([-abs(mag), 0.0, 0.0, 0.0], dtype=np.float64)
+
+    def apply_action(
+        self,
+        action: np.ndarray,
+        obs: Observation,
+        wm_out: Optional[Any] = None,
+        limits: Optional[np.ndarray] = None,
+    ) -> tuple[np.ndarray, bool]:
+        if self.should_override(obs, wm_out):
+            return clip_body_delta(self.override_action(obs), limits), True
+        return clip_body_delta(action, limits), False
 
 
 @dataclass
@@ -147,6 +167,8 @@ class DepthTauShield(ThresholdSafetyShield):
     Same trigger/override contract as :class:`ThresholdSafetyShield`, but records
     which independent channel(s) breached for V1-③ diagnostics. Writes
     ``obs.info['shield_channels']`` on the step the latch engages.
+
+    **Legacy** — deploy uses :class:`ThreeZoneSpeedShield`.
     """
 
     _last_channels: tuple[str, ...] = field(default=(), init=False, repr=False)
@@ -166,7 +188,9 @@ class DepthTauShield(ThresholdSafetyShield):
         p_coll = None
         if wm_out is not None:
             p_coll = getattr(wm_out, "p_coll", None)
-        if d_hat is not None and float(d_hat) < self.min_depth_m:
+        if d_hat is not None and self._depth_channel_breach(
+            float(d_hat), closing_speed_m_s(obs)
+        ):
             out.append("depth")
         if tau is not None and float(tau) < self.min_tau_s:
             out.append("tau")
@@ -184,3 +208,105 @@ class DepthTauShield(ThresholdSafetyShield):
             obs.info["shield_channels"] = list(channels)
             return True
         return False
+
+
+@dataclass
+class ThreeZoneSpeedShield:
+    """Graduated speed governor from ``D̂_fwd`` + τ/p_coll emergency latch.
+
+  * **Depth**: cap body +x to ``planned_speed(D̂) * dt`` — **no episode latch**.
+  * **τ / p_coll**: latch + graduated −x retreat (same as v5 threshold shield).
+
+  Default zones: **8 / 5 / 1.5 m @ 2 / 1 / 0.2 m/s**, cruise 5 m/s,
+  engage ≈ **12.2 m** — replaces the problematic single **3 m** depth trigger.
+    """
+
+    zone: ThreeZoneSpec = field(default_factory=ThreeZoneSpec)
+    min_tau_s: float = 1.0
+    max_p_coll: float = 0.5
+    min_closing_m_s: float = DEFAULT_MIN_CLOSING_M_S
+    brake_gain: float = 1.0
+    retreat_step_m: float = 3.0
+    _emergency_engaged: bool = field(default=False, init=False, repr=False)
+    _last_channels: tuple[str, ...] = field(default=(), init=False, repr=False)
+
+    @property
+    def last_channels(self) -> tuple[str, ...]:
+        return self._last_channels
+
+    def reset(self) -> None:
+        self._emergency_engaged = False
+        self._last_channels = ()
+
+    def _emergency_channels(self, obs: Observation, wm_out: Optional[Any] = None) -> tuple[str, ...]:
+        out: list[str] = []
+        tau = obs.info.get("tau_pred")
+        p_coll = None
+        if wm_out is not None:
+            p_coll = getattr(wm_out, "p_coll", None)
+        if tau is not None and float(tau) < self.min_tau_s:
+            out.append("tau")
+        if p_coll is not None and float(p_coll) > self.max_p_coll:
+            out.append("p_coll")
+        return tuple(out)
+
+    def _emergency_override(self, obs: Observation) -> np.ndarray:
+        v = closing_speed_m_s(obs)
+        mag = min(
+            float(self.retreat_step_m),
+            max(float(v), float(self.min_closing_m_s)) * float(self.brake_gain),
+        )
+        return np.array([-abs(mag), 0.0, 0.0, 0.0], dtype=np.float64)
+
+    def _dt_from_limits(self, limits: Optional[np.ndarray]) -> float:
+        if limits is not None and float(limits[0]) > 0:
+            return float(limits[0]) / float(MAX_BODY_VELOCITY[0])
+        return float(self.zone.dt_s)
+
+    def _cap_forward(self, action: np.ndarray, obs: Observation, limits: Optional[np.ndarray]) -> tuple[np.ndarray, bool]:
+        d_hat = obs.info.get("depth_min_pred")
+        if d_hat is None:
+            return action, False
+        v_cap = planned_speed_m_s(float(d_hat), self.zone)
+        obs.info["three_zone_speed_cap_m_s"] = round(v_cap, 4)
+        dt = self._dt_from_limits(limits)
+        max_dx = v_cap * dt
+        capped = np.asarray(action, dtype=np.float64).reshape(4).copy()
+        if capped[0] > max_dx + 1e-6:
+            capped[0] = max_dx
+            return capped, True
+        return capped, False
+
+    def apply_action(
+        self,
+        action: np.ndarray,
+        obs: Observation,
+        wm_out: Optional[Any] = None,
+        limits: Optional[np.ndarray] = None,
+    ) -> tuple[np.ndarray, bool]:
+        action = np.asarray(action, dtype=np.float64).reshape(4)
+        if self._emergency_engaged:
+            return clip_body_delta(self._emergency_override(obs), limits), True
+        channels = self._emergency_channels(obs, wm_out)
+        if channels:
+            self._emergency_engaged = True
+            self._last_channels = channels
+            obs.info["shield_channels"] = list(channels)
+            return clip_body_delta(self._emergency_override(obs), limits), True
+
+        capped, changed = self._cap_forward(action, obs, limits)
+        if changed:
+            ch = list(obs.info.get("shield_channels") or [])
+            if "three_zone" not in ch:
+                ch.append("three_zone")
+            obs.info["shield_channels"] = ch
+        return clip_body_delta(capped, limits), changed
+
+    def should_override(self, obs: Observation, wm_out: Optional[Any] = None) -> bool:
+        """Backward-compat: true only for τ/p_coll emergency latch."""
+        if self._emergency_engaged:
+            return True
+        return bool(self._emergency_channels(obs, wm_out))
+
+    def override_action(self, obs: Observation) -> np.ndarray:
+        return self._emergency_override(obs)

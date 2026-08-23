@@ -1,7 +1,7 @@
 # V4 深度 loss 改法 — 跑前声明 v2（2026-08-21）
 
-> **状态**：已声明，待 H100 验收。  
-> **取代**：[`V4_DEPTH_LOSS_DECLARE_20260821.md`](V4_DEPTH_LOSS_DECLARE_20260821.md)（下称 **v1**）—— v1 已跑、**held-out 未过线**，本文件为**新声明**，不改写 v1 原文。  
+> **状态**：**H100 已跑、主表/附表 FAIL**；被 [`V4_DEPTH_LOSS_DECLARE_v3_20260821.md`](V4_DEPTH_LOSS_DECLARE_v3_20260821.md) 取代。ckpt 归档不部署。  
+> **取代**：[`V4_DEPTH_LOSS_DECLARE_20260821.md`](V4_DEPTH_LOSS_DECLARE_20260821.md)（下称 **v1**）—— v1 已跑、**held-out 未过线**，本文件为**当时**新声明，不改写 v1 原文。  
 > **红线**：不改 §4.6 / §4.1 任一阈值；`enable_policy_update` 仍 false；深度 FT **只上 H100**（不上 4090）。
 
 ---

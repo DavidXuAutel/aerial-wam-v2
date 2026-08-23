@@ -31,9 +31,10 @@ import logging
 import math
 import sys
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 import numpy as np
+import yaml
 
 from experiments.aerial.rl import dataset as ds
 from experiments.aerial.rl.train_rl import build_from_config
@@ -95,6 +96,23 @@ def _build_cfg(args: argparse.Namespace) -> dict:
     return cfg
 
 
+def _deep_update(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    out = copy.deepcopy(base)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_update(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _resolve_cfg(args: argparse.Namespace) -> dict:
+    if not args.config:
+        return _build_cfg(args)
+    cfg = yaml.safe_load(Path(args.config).read_text()) or {}
+    return _deep_update(cfg, _build_cfg(args))
+
+
 def _mock_goal_episode() -> dict:
     """A start→goal episode so the heuristic actually moves the mock drone.
 
@@ -118,6 +136,8 @@ def main(argv: "list[str] | None" = None) -> int:
     p.add_argument("--camera", default="front_custom")
     p.add_argument("--vehicle", default="drone_1")
     p.add_argument("--grab-depth", action="store_true")
+    p.add_argument("--config", default=None,
+                   help="yaml config (safety/depth/tau); CLI env/collect fields override")
     p.add_argument("--annotation", default=None,
                    help="OpenFly annotation JSON of start/goal episodes (real collection)")
     p.add_argument("--approach-bias", action="store_true",
@@ -157,7 +177,7 @@ def main(argv: "list[str] | None" = None) -> int:
                          "usable": not bad and not quar})
         reports.append(rep)
 
-    loop = build_from_config(_build_cfg(args))
+    loop = build_from_config(_resolve_cfg(args))
     loop.collector.on_episode = _sink
     # Mock dry-run with no annotation: inject a goal so the heuristic moves and
     # the run is non-trivial (real collection gets goals from --annotation).

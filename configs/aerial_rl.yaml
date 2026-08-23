@@ -125,10 +125,20 @@ imagination:
   horizon: 10              # <= MAX_IMAGINATION_HORIZON (spec §9 cap)
 
 safety:
-  kind: depth_tau            # V1b dual-channel (D̂ ∪ τ ∪ p_coll) with diagnostics
-  min_depth_m: 1.5
-  min_tau_s: 1.0
+  # Three-zone speed governor (declare 20260823): replaces single 3 m depth latch.
+  kind: three_zone
+  l1_m: 8.0                  # outer speed line (2 m/s cap inside)
+  l2_m: 5.0                  # mid speed line (1 m/s cap inside)
+  l3_m: 1.5                  # inner stop line (aligns frozen ④ near-collision band)
+  v1_m_s: 2.0
+  v2_m_s: 1.0
+  v_stop_m_s: 0.2
+  v_cruise_m_s: 5.0
+  a_max_m_s2: 2.5            # conservative vs #28 measured brake p90≈3.23
+  delay_s: 0.2               # perception delay budget (offline kinematic only)
+  min_tau_s: 1.0             # τ / p_coll emergency latch (unchanged)
   max_p_coll: 0.5
+  retreat_step_m: 3.0
 
 # V1b short-horizon imagination planner (test-time scoring, not V4 AC training).
 planner:
@@ -146,7 +156,7 @@ tau_predictor:
   min_closing_m_s: 0.05
   max_tau_s: 60.0
   dt_s: 0.1
-  ckpt: /home/a25689/aerial-rl-skeleton/experiments/aerial/rl/checkpoints/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt  # H100/runtime path from V1 gate
+  ckpt: experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt
   device: cpu
 
 corrector:

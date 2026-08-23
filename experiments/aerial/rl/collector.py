@@ -197,9 +197,13 @@ class RolloutCollector:
                     goal_rel=goal_rel_from_obs(obs),
                     body_vel=body_vel_from_obs(obs),
                 )
-            if self.safety is not None and self.safety.should_override(obs, wm_out=wm_out):
-                action = clip_body_delta(self.safety.override_action(obs), limits)
-                intervened = True
+            if self.safety is not None:
+                apply_fn = getattr(self.safety, "apply_action", None)
+                if callable(apply_fn):
+                    action, intervened = apply_fn(action, obs, wm_out=wm_out, limits=limits)
+                elif self.safety.should_override(obs, wm_out=wm_out):
+                    action = clip_body_delta(self.safety.override_action(obs), limits)
+                    intervened = True
 
             next_obs, info = self.env.step(action)
             if self.dynamics is not None and self._latent is not None:
