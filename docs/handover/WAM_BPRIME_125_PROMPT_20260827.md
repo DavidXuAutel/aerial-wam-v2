@@ -1,6 +1,7 @@
 # 125 Agent：跑 B′ 诊断（git 同步后）
 
-> Mac 已 push **github/main**（commit `1b88e25+`）。125 checkout 拉取后执行。
+> **执行归属**：后续 WAM 主线任务 **一律在本机（125）Agent 完成**；Mac 只 push 代码。  
+> Mac 已 push **github/main**（`f69860b` 或更新）。125：`git fetch github && git merge github/main`。
 
 ## 拉代码
 
