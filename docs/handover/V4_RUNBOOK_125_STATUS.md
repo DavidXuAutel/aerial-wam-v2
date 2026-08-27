@@ -1,18 +1,15 @@
 # V4 RUNBOOK 125 STATUS
 
 - **date**: 2026-08-28
-- **执行归属（2026-08-28 起）**：**后续任务一律在 cursor-125 Agent 上跑**（评测、B/B′、C、文档勾选、经 125→H100 训）；Mac 只 git push / 小改 handoff
-- **代码同步**：125 `git fetch github && git merge github/main`（Mac push **github**；公司网可再 `git push origin` 对齐 bare）
-- **Mac**：文档/接线；**不开** 125 长跑、**不直连** H100
-- **H100 连接**：一律经 **125 → H100**；Mac 不直连
-- **主线纪律**：一切围绕想象到点；偏离立刻修正 — 见 runbook 篇首
-- **state**: **执行入口** [`../experiments/aerial/RUNBOOK_wam_imagination.md`](../../experiments/aerial/RUNBOOK_wam_imagination.md)
-- **enable_policy_update**: false（大脑未接）
-- **已落地**：A 绿；H100 全量 WM + B 复测；C2 31 ep；**B 仍不够**
-- **下一步（125 Agent · 立即）**：读 [`WAM_BPRIME_125_PROMPT_20260827.md`](WAM_BPRIME_125_PROMPT_20260827.md) → `git pull` → 跑 **B′-1/B′-2** → 写 STATUS/runbook；过 B 阈前 **禁止 E**
-- **H100 WM（2026-08-27 DONE）**：`wm_ckpt_coll_full_20260827/wm_step_1000.pt`；H100 log `logs/wm_coll_full_h100_20260827.log`
-- **B 产物**：`artifacts/wam_imagine_coll_rank_h100full_20260827.json`（insufficient；median_p_coll_gap=**0.0018**≪0.05）
-- **C2**：`dataset_wam_loop_20260827/` — **31 ep**（30 OK / 1 quarantine）；meta 已写
+- **执行归属**：**后续任务一律 cursor-125 Agent**（经 bridge/`agent`）；Mac 只 git/handoff；H100 只经 125
+- **代码同步**：125 `git fetch github && git merge github/main`（Mac push github；125 github 鉴权曾失败需修）
+- **B′（DONE）**：B′-1 **weak_geometry**（window R²≈−0.55）；B′-2 window gap=**0.00177**≈single **0.0018** → encode 非主因
+- **coll_rep H100（DONE · FAIL）**：`wm_ckpt_coll_rep_20260828/wm_step_1500.pt`；B gap=**−0.0020**；B′-1 仍 weak；learning gate FAIL；yaml 加压无效
+- **下一步（125）**：须 **代码刀**（coll hinge / depth-aux 进 latent 监督）→ H100 再训 → 重跑 B；**勿优先 B′-3**；**禁止 E**
+- **enable_policy_update**: false
+- **H100 WM（coll_full）**：`wm_ckpt_coll_full_20260827/wm_step_1000.pt`
+- **B 产物**：`…_h100full_…json` gap=0.0018；`…_collrep_20260828.json` gap=−0.0020
+- **C2**：`dataset_wam_loop_20260827/` — 31 ep
 - **目标诚实口径**：坐标目标，非视觉搜目标
 - **安全栈**：深度+限速罩 = 覆盖层
 - **旧 RUNBOOK_v4**：审计保留；日常以 `RUNBOOK_wam_imagination.md` 为准

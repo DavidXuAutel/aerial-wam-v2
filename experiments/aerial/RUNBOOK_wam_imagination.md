@@ -377,7 +377,7 @@ H100：由 **125** SSH 拉齐代码与语料后训 WM / AC；**禁止从 Mac 直
 | 步骤 | 状态 | 产物 / 备注 |
 |------|------|-------------|
 | A 结构 | **完成** | goal 条件 π；125 `test_actor_goal_cond` 2 passed（2026-08-27） |
-| B 碰撞区分 | **不够（H100 全量 WM 仍不够）** | `…_h100full_…json` gap=**0.0018**；**B′ 诊断待跑**（latent 探针 / encode 对照 / coll v2） |
+| B 碰撞区分 | **不够** | B′：**weak_geometry**；window gap≈single 0.0018；coll_rep H100 后 gap=**−0.0020** 仍 insufficient；下一刀 **代码级 coll 监督**（非 B′-3）；**禁止 E** |
 | C 数据 | **125 C2 完成（2026-08-27）** | `dataset_wam_loop_20260827/` · **34 npz / 33 OK** · meta `role=wm_loop`；topup `episode_00031–00033`；`logs/wam_c2_collect_20260827.log` |
 | D WM | **DONE（H100 2026-08-27）** | `wm_ckpt_coll_full_20260827/wm_step_1000.pt`；log `logs/wm_coll_full_h100_20260827.log`；B 仍 insufficient |
 | E 策略重训 | 未做 | **不可**在 B 未过阈时长训 |
