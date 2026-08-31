@@ -117,6 +117,26 @@ def test_predict_cones_none_when_unloaded():
     assert pred.predict_cones(_obs()) is None
 
 
+def test_predict_min_and_cones_single_depth_pass():
+    dmap = _depth_map()
+    pred = DepthMinPredictor(n_frames=1)
+    calls = {"n": 0}
+
+    def _run(obs: Observation) -> np.ndarray:
+        calls["n"] += 1
+        pred._hist.append(np.asarray(obs.rgb, dtype=np.uint8))
+        return np.asarray(dmap, dtype=np.float32)
+
+    pred._model = object()
+    pred._run_depth_head = _run  # type: ignore[method-assign]
+    obs = _obs(rgb=np.ones((8, 8, 3), dtype=np.uint8))
+    d_min, cones = pred.predict_min_and_cones(obs)
+    assert calls["n"] == 1
+    assert d_min == pytest.approx(2.0)
+    assert cones is not None
+    assert cones["forward"] == pytest.approx(3.0)
+
+
 def test_predict_cones_none_when_all_invalid():
     pred = DepthMinPredictor(n_frames=1)
     _bind_stub_depth(pred, np.full((4, 4), np.nan, dtype=np.float32))

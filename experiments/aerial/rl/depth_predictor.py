@@ -77,15 +77,26 @@ class DepthMinPredictor:
             depth, _ = self._model.predict_from_window(tensor.to(self.device))
         return depth.squeeze(0).detach().float().cpu().numpy()
 
+    def _min_from_depth(self, d: np.ndarray) -> Optional[float]:
+        finite = d[np.isfinite(d) & (d > 0)]
+        if finite.size == 0:
+            return None
+        return float(np.min(finite))
+
+    def _cones_from_depth(
+        self, d: np.ndarray, *, center_frac: float = 0.5
+    ) -> Optional[Dict[str, float]]:
+        cones = cone_clearances(d, center_frac=center_frac)
+        if all(cones[k] == float("inf") for k in CONE_KEYS):
+            return None
+        return cones
+
     def predict_min(self, obs: Observation) -> Optional[float]:
         """Push ``obs.rgb`` into history; return min ``D̂`` or None if unloaded."""
         d = self._run_depth_head(obs)
         if d is None:
             return None
-        finite = d[np.isfinite(d) & (d > 0)]
-        if finite.size == 0:
-            return None
-        return float(np.min(finite))
+        return self._min_from_depth(d)
 
     def predict_cones(
         self,
@@ -100,12 +111,22 @@ class DepthMinPredictor:
         region; ``inf`` means no obstacle seen there.
 
         Not wired into the collector/shield until P0b — :meth:`predict_min`
-        remains the sole input for ``depth_min_pred``.
+        remains available as the full-field min fallback. P0b collector fills
+        ``obs.info['depth_cones_pred']`` from this method when present.
         """
         d = self._run_depth_head(obs)
         if d is None:
             return None
-        cones = cone_clearances(d, center_frac=center_frac)
-        if all(cones[k] == float("inf") for k in CONE_KEYS):
-            return None
-        return cones
+        return self._cones_from_depth(d, center_frac=center_frac)
+
+    def predict_min_and_cones(
+        self,
+        obs: Observation,
+        *,
+        center_frac: float = 0.5,
+    ) -> tuple[Optional[float], Optional[Dict[str, float]]]:
+        """Single depth-head pass: full-field min + five cones on the same D̂."""
+        d = self._run_depth_head(obs)
+        if d is None:
+            return None, None
+        return self._min_from_depth(d), self._cones_from_depth(d, center_frac=center_frac)

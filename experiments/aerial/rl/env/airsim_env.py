@@ -133,12 +133,19 @@ class AirSimDroneEnv:
         client.armDisarm(True, **self._vk)
         # Past this point control is armed; guarantee release on any failure so a
         # crashed reset never leaves the single-consumer renderer occupied.
+        paused = False
         try:
             # Episode positions are +up world; AirSim pose is NED, so negate z.
             pose = airsim.Pose(
                 airsim.Vector3r(float(start[0]), float(start[1]), -float(start[2])),
                 airsim.to_quaternion(0.0, 0.0, float(yaw0)),
             )
+            # Pause physics while teleporting + first observe. On some Outdoor
+            # hosts (.110) an unpaused reset drops through collision (~25 m Z)
+            # during the depth grab RPC and fails spawn gates.
+            if hasattr(client, "simPause"):
+                client.simPause(True)
+                paused = True
             client.simSetVehiclePose(pose, True, **self._vk)
 
             for _ in range(max(0, self.config.warmup_frames)):
@@ -146,13 +153,43 @@ class AirSimDroneEnv:
 
             # Force a depth frame on reset so health_check can run even when
             # per-step grab_depth is False (rate-oriented collection).
+            # Depth+pose are taken while paused so Z does not collapse during the
+            # slow DepthPlanar RPC on Outdoor (.110).
             obs = self.observe(force_depth=True)
+            if episode is not None:
+                p0 = np.asarray(obs.position, dtype=np.float64).reshape(3)
+                if float(np.linalg.norm(p0 - start)) > 5.0:
+                    client.simSetVehiclePose(pose, True, **self._vk)
+                    obs = self.observe(force_depth=True)
+            if paused:
+                client.simPause(False)
+                paused = False
+                # Paused IMU is often near-zero (fails lin_acc gate). Unpause,
+                # re-seat, and refresh IMU + kinematics only — do NOT re-grab
+                # depth (that RPC is long enough for another free-fall).
+                client.simSetVehiclePose(pose, True, **self._vk)
+                try:
+                    client.moveByVelocityAsync(0.0, 0.0, 0.0, 0.05, **self._vk)
+                except Exception:  # noqa: BLE001
+                    pass
+                time.sleep(0.05)
+                client.simSetVehiclePose(pose, True, **self._vk)
+                imu = self._grab_imu(client)
+                if imu:
+                    obs.imu = imu
+                obs.state = np.asarray(self.observe_state(), dtype=np.float32)
             if self.config.health_check:
                 self._assert_healthy(obs)
             return obs
         except Exception:  # noqa: BLE001 - release control, then re-raise
             self.close()
             raise
+        finally:
+            if paused:
+                try:
+                    client.simPause(False)
+                except Exception:  # noqa: BLE001
+                    pass
 
     def step(self, action: np.ndarray) -> tuple[Observation, Dict[str, Any]]:
         """Execute a 4-D body delta as a velocity command over ``1/step_hz``.

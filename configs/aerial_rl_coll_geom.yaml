@@ -1,0 +1,65 @@
+# Aerial WAM v2 — coll_geom training config (runbook B 2026-08-28).
+# Extends aerial_rl.yaml with P0 action-conditioned coll hinge and depth-aux.
+
+env:
+  backend: mock
+  host: 10.229.20.125
+  port: 41451
+  camera: front_custom
+  vehicle: drone_1
+  width: 224
+  height: 224
+  step_hz: 5.0
+  grab_depth: false
+  health_check: true
+  seed: 0
+
+buffer:
+  capacity_episodes: 1000
+  seed: 0
+
+reward:
+  w_progress: 1.0
+  w_collision: 10.0
+  w_maneuver: 0.01
+  success_bonus: 10.0
+  success_dist_m: 3.0
+  w_maneuver_final: 0.01
+  maneuver_curriculum_threshold: 0.0
+  maneuver_curriculum_ramp: 1.0
+
+dynamics:
+  kind: torch
+  latent_dim: 8
+  collide_radius_m: 2.0
+
+world_model:
+  recurrent_dim: 512
+  stoch_dim: 32
+  stoch_classes: 32
+  pred_transform: symlog
+  reward_head: two_hot
+  num_bins: 255
+  bin_lo: -20.0
+  bin_hi: 20.0
+  free_bits: 1.0
+  loss_scales:
+    pred: 1.0
+    dyn: 1.0
+    rep: 0.1
+    reward: 10.0
+  # Collision & geometry supervision (runbook B 2026-08-28):
+  coll_pos_weight: 2.0
+  coll_near_depth_m: 12.0
+  coll_rank_hinge_weight: 4.0
+  coll_rank_hinge_margin: 0.30
+  coll_hinge_fwd_max_m: 4.5
+  coll_fwd_depth_aux_weight: 2.0
+  reward_dt: 0.2
+  decoder:
+    train_only: true
+  lr: 1.0e-4
+  train_steps_per_update: 1
+  grad_clip: 1000.0
+  device: cuda
+  checkpoint_dir: experiments/aerial/rl/artifacts/wm_ckpt_coll_geom_20260828

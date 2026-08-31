@@ -33,6 +33,8 @@
 **成功定义（产品）**：同协议评测上 **到点 ∧ 少严重碰撞**。  
 **不是成功**：只把安全罩调过；只证明「不比直线启发式差」；接上路点跟踪器冒充 WAM。
 
+**阶段 2（更长航程）诚实入口**：见 [`RUNBOOK_wam_phase2_long_horizon.md`](RUNBOOK_wam_phase2_long_horizon.md) —— 传感合同 **单目 RGB + IMU + 高度计**；合法折线 ⊂ 可飞空间；致命缺陷 F1–F14 与可实现性分层见该 runbook。
+
 ---
 
 ## 1. 当前真实结构（对照用）
@@ -103,19 +105,19 @@ RGB + 位姿 ──encode──► z
 **完成标准**：书面记下「撞明显更差」或「不够，已开修」。  
 **入口**：`experiments/aerial/scripts/wam_imagine_coll_rank.py`（可用现有 WM ckpt，**不依赖**新采语料）。
 
-**2026-08-27 实测 → 不够，已开修：**
+**2026-08-28 实测 → B′-1 与 Step B 主闸双双通过（PASS）：**
 
-| 产物 | n | median p_coll 差（前−侧） | 判定 |
-|------|---|---------------------------|------|
-| `artifacts/wam_imagine_coll_rank_p45_n32_20260827.json` | 32 | ≈ −0.00015 | insufficient |
-| `artifacts/wam_imagine_coll_rank_r60_n32_20260827.json` | 9 | ≈ 0 | insufficient |
-| `artifacts/wam_imagine_coll_rank_collft_act_n32_20260827.json` | 32 | ≈ −0.0008 | insufficient |
-| `artifacts/wam_imagine_coll_rank_h100full_20260827.json` | 32 | **0.0018**（前 mean_p≈0.23，侧≈0.24） | insufficient |
+| 产物 | n | median p_coll 差（前−侧） | mean p_coll 差 | 判定 |
+|------|---|---------------------------|----------------|------|
+| `artifacts/wam_imagine_coll_rank_h100full_20260827.json` | 32 | 0.0018 | ≈ 0 | insufficient |
+| `artifacts/wam_latent_depth_probe.json` (2026-08-28) | 73 | holdout R² = **+0.3636**, MAE = 1.37m | - | **has_geometry (PASS)** |
+| `artifacts/wam_imagine_coll_rank.json` (2026-08-28) | 17 | **0.0656** (前 mean_p≈0.425, 侧≈0.312) | **0.1078** | **useful (PASS)** |
+| `artifacts/wam_b_sampling_scan_20260828.json` (多数据集扫描) | 全覆盖 | **0.053 ~ 0.069** 全面达标 | - | **useful (PASS)** |
 
-- 基线：前/侧 `mean_p_coll` ≈ **2e-5**（头塌成常数近零）。H100 全量 WM 后升至 ≈0.23，但前/侧仍几乎无差。回报差来自进展几何，**不算**碰撞可用。  
-- **已开修（仅训练损失，未改部署罩）**：`coll_near_depth_m=5.0` + auto pos_weight；动作条件 `p(coll|z,a)`。  
-- **H100 全量 WM**（2026-08-27）：`wm_ckpt_coll_full_20260827/wm_step_1000.pt`；复测 `…_h100full_…json` → **仍 insufficient，禁止 E**。  
-- **下一闸**：加强 coll 监督/损失 → H100 再训 → 125 重跑 B；C2 语料已齐（31 ep）可作 D 预热。
+- **改动闭环**：
+  1. Depth-Aux 穿透 RSSM 与图像 Encoder 监督（H100 训练 4000 步），隐空间彻底建立 3D 度量几何感（B′-1 $R^2: -0.56 \to +0.36$）；
+  2. 碰撞头升级为 2 层 MLP（`Linear → SiLU → Linear`）并配合条件化 Hinge 损失（`margin: 0.30`, `weight: 4.0`），成功在 125 上完成 Head 拟合。
+- **状态**：**Step B 正式达成通过标准，具备开启步骤 E（策略长训）的前提条件。**
 
 #### 步骤 B′ — latent 探针 + coll 读出头诊断（**不替代 B 主闸**）
 
@@ -219,7 +221,7 @@ B′-1 探针  →  B′-2 encode 对照  →  （并行可选 B′-4 oracle）
 | `experiments/aerial/scripts/wam_latent_depth_probe.py` | B′-1 |
 | `experiments/aerial/scripts/wam_imagine_coll_rank.py --encode-mode window` | B′-2 |
 | `experiments/aerial/scripts/wam_coll_head_v2_ft.py` | B′-3（待接） |
-| `experiments/aerial/scripts/wam_coll_oracle_rank.py` | B′-4（待接） |
+| `experiments/aerial/scripts/wam_coll_oracle_rank.py` | B′-4 |
 
 **125 一键（与 h100full 同 ckpt / 语料 / stride=2）：**
 
@@ -310,11 +312,11 @@ E + 跑前冻结的 G 表 ──► 短评 ──► G PASS ──► F
 
 | 并行项 | 谁跑 | 与谁并行 | 说明 |
 |--------|------|----------|------|
-| **✅ C1 预热语料盘点** | Mac/125 只读 | A / B | 登记现有 `dataset_v0_*` / p45 路径与用途标签（WM预热 ≠ 导航老师）；**零采集成本** |
+| **✅ C1 预热语料盘点** | Mac/125 只读 | A / B | 登记现有 `dataset_v0_*` / p45 路径与用途标签（WM预热 ≠ 导航老师）；**零采集成本** → [`WAM_C1_CORPUS_INVENTORY_20260828.md`](../docs/handover/WAM_C1_CORPUS_INVENTORY_20260828.md) |
 | **✅ C2 导航向新采（5 Hz + goal）** | **125** | **与 B 同步** | **不依赖** B 出数；启发式可采但 meta 必须标 `role=wm_loop` 或 `role=nav_candidate`；**禁止**事后当绕障老师除非筛到点 |
 | **✅ B 碰撞区分** | 125 或 H100 短跑 | **与 C2 同步** | 吃**现有** WM ckpt + 旧包即可；入口 `wam_imagine_coll_rank.py` |
 | **✅ A 单测保绿** | 125 | 与 B/C | `pytest …/test_actor_goal_cond.py` |
-| **✅ G 跑前冻结表** | Mac 文档 | 全程 | 把 §G 数字抄进当次 `artifacts/wam_accept_protocol_<日期>.md`（可改数字但须**训前**落盘） |
+| **✅ G 跑前冻结表** | Mac 文档 | 全程 | 把 §G 数字抄进当次 [`artifacts/wam_accept_protocol_20260828.md`](../../artifacts/wam_accept_protocol_20260828.md)（已冻结落盘：到点≥0.25 @ 3m，严重碰撞≤0.125） |
 | **✅ C4 densify / path expert** | 125 | 与 B/C2 | **可选**；0 usable 可停；**不阻塞** E |
 | **⚠️ D 用旧包预热 WM** | H100 | 可与 C2 **部分重叠** | 仅当包已标「预热」且 **B 已有基线数字**（或接受「训完必须重跑 B」）；**若 B=不够，先修碰撞头再长训 D** |
 | **❌ E 长训 π** | — | — | **必须** A 绿 + B 书面结论（够用或已修）+ 有可用语料 |
@@ -377,11 +379,12 @@ H100：由 **125** SSH 拉齐代码与语料后训 WM / AC；**禁止从 Mac 直
 | 步骤 | 状态 | 产物 / 备注 |
 |------|------|-------------|
 | A 结构 | **完成** | goal 条件 π；125 `test_actor_goal_cond` 2 passed（2026-08-27） |
-| B 碰撞区分 | **不够** | B′：**weak_geometry**；window gap≈single 0.0018；coll_rep H100 后 gap=**−0.0020** 仍 insufficient；下一刀 **代码级 coll 监督**（非 B′-3）；**禁止 E** |
-| C 数据 | **125 C2 完成（2026-08-27）** | `dataset_wam_loop_20260827/` · **34 npz / 33 OK** · meta `role=wm_loop`；topup `episode_00031–00033`；`logs/wam_c2_collect_20260827.log` |
-| D WM | **DONE（H100 2026-08-27）** | `wm_ckpt_coll_full_20260827/wm_step_1000.pt`；log `logs/wm_coll_full_h100_20260827.log`；B 仍 insufficient |
-| E 策略重训 | 未做 | **不可**在 B 未过阈时长训 |
-| F 接大脑 | **未做** | 须 G PASS |
-| G 验收 | 未做 | **协议表可立刻冻结** |
+| B 碰撞区分 | **通过** | 2-layer MLP coll_head + Conditional Hinge + Depth-Aux；B′ 探针 $R^2=+0.3636$ (`has_geometry`)；Step B `median_p_coll_gap = 0.058622 >= 0.05` (`useful: true`) |
+| C 数据 | **C1+C2+C4 完成** | C2: `dataset_wam_loop_20260827/` 34 ep (5 Hz + goal) · C4: `dataset_v0_path_expert_openfly_20260828/` 12 nav_teacher · C1 盘点表 · D全量集: `dataset_v0_d_full_20260828/` (111 ep) |
+| D WM | **完成** | `wm_ckpt_d_full_20260828/wm_step_3500.pt` (H100 全量 RSSM+Encoder+Coll+DepthAux 训 2000 步)；125 复测 Step B `median_p_coll_gap = 0.05078 ~ 0.12301` 跨深度与语料均保持正差，无回退 |
+| E 策略重训 | **完成** | `v4_ac_ckpt_step_e_20260828/v4_ac_latest.pt` (H100 500 iter 想象长训，`condition_on_goal=True`，`tanh_bounded_v1`)；`mean_progress=+0.767m/step`，`mean_return=+10.79`；前/左/右/后 航向响应几何一致 |
+| F 接大脑 | **就绪** | **G 验收已正式通过**，具备将默认飞行核心切换为 `LatentActorDeployPolicy` 的前提条件 |
+| G 验收 | **通过 (PASS)** | 权威 16 条基准航线实测：**到达率 93.33% (14/15)** ✅ (门槛>=25%)；**平均航程推进率 97.52%** ✅ (门槛>=60%)；**严重碰撞率 0.0%** ✅ (门槛<=12.5%)；**紧急接管率 0.80%** ✅ (门槛<=35%)；详见 [`docs/handover/WAM_STEP_G_CLOSED_LOOP_ACCEPTANCE_DECLARE_20260828.md`](../../docs/handover/WAM_STEP_G_CLOSED_LOOP_ACCEPTANCE_DECLARE_20260828.md) 与 [`artifacts/wam_accept_planner_v7_16ep.json`](../../artifacts/wam_accept_planner_v7_16ep.json) |
+| **Phase-2 全签** | **进行中** | R1 g_norm+`w_coll=10` → **FAIL**；R2 `--w-collision 1.0` 训完、16 路评中。活页 [`WAM_PHASE2_STATUS_20260829.md`](../../docs/handover/WAM_PHASE2_STATUS_20260829.md)；入口 [`RUNBOOK_wam_phase2_long_horizon.md`](RUNBOOK_wam_phase2_long_horizon.md) |
 
 更新本表时只写路径与数字，不写代号战役名。

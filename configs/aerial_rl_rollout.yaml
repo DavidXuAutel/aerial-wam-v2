@@ -19,7 +19,7 @@
 
 env:
   backend: airsim          # REQUIRED for authoritative ②/④ (gate fails-closed on mock)
-  host: 10.229.20.125      # 4090 renderer (works from H100 client AND from the 4090 itself)
+  host: 10.229.20.110      # AirSim renderer (migrated 2026-08-31; client may be 125/H100)
   port: 41451
   camera: front_custom
   vehicle: drone_1

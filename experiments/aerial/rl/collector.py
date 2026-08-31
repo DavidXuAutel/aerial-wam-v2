@@ -169,7 +169,8 @@ class RolloutCollector:
                 if callable(set_goal):
                     set_goal(getattr(self.env, "goal", None))
                 action = np.asarray(
-                    self.planner.plan(obs, action), dtype=np.float64
+                    self.planner.plan(obs, action, latent=self._latent),
+                    dtype=np.float64,
                 ).reshape(4)
                 action = clip_body_delta(action, limits)
             intervened = False
@@ -182,9 +183,28 @@ class RolloutCollector:
             # that path is unit-tested (test_followups) but not yet exercised in
             # this collection loop.
             if self.depth_predictor is not None:
-                d_min = self.depth_predictor.predict_min(obs)
-                if d_min is not None:
-                    obs.info["depth_min_pred"] = float(d_min)
+                pred_both = getattr(self.depth_predictor, "predict_min_and_cones", None)
+                if callable(pred_both):
+                    d_min, cones = pred_both(obs)
+                    if d_min is not None:
+                        obs.info["depth_min_pred"] = float(d_min)
+                    if isinstance(cones, dict):
+                        obs.info["depth_cones_pred"] = {
+                            k: (float(v) if v is not None else None)
+                            for k, v in cones.items()
+                        }
+                else:
+                    d_min = self.depth_predictor.predict_min(obs)
+                    if d_min is not None:
+                        obs.info["depth_min_pred"] = float(d_min)
+                    pred_cones = getattr(self.depth_predictor, "predict_cones", None)
+                    if callable(pred_cones):
+                        cones = pred_cones(obs)
+                        if isinstance(cones, dict):
+                            obs.info["depth_cones_pred"] = {
+                                k: (float(v) if v is not None else None)
+                                for k, v in cones.items()
+                            }
             if self.tau_predictor is not None:
                 tau = self.tau_predictor.predict_tau(obs)
                 if tau is not None:
@@ -218,6 +238,17 @@ class RolloutCollector:
             ep_info = {**info, **terms, "intervention": intervened}
             if goal_xyz is not None:
                 ep_info["goal"] = goal_xyz.copy()
+            # ATTR / P7: persist shield inputs onto transition.info
+            if isinstance(obs.info, dict):
+                for k in (
+                    "depth_min_pred",
+                    "depth_cones_pred",
+                    "tau_pred",
+                    "shield_channels",
+                    "three_zone_speed_cap_m_s",
+                ):
+                    if k in obs.info and k not in ep_info:
+                        ep_info[k] = obs.info[k]
             transitions.append(
                 Transition(
                     obs=obs, action=action, reward=r, done=done,

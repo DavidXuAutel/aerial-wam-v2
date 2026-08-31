@@ -1366,6 +1366,33 @@ class TorchRSSMDynamics(LatentDynamics, nn.Module):
         return torch.cat([h, z], dim=-1).squeeze(0).float().cpu().numpy()
 
     @torch.no_grad()
+    def observe_and_advance(
+        self,
+        prev_latent: np.ndarray,
+        action: np.ndarray,
+        current_obs: Observation,
+    ) -> np.ndarray:
+        """Streamed posterior: advance ``h`` with action, update ``z`` from obs."""
+        self.eval()
+        prev = torch.from_numpy(np.ascontiguousarray(prev_latent)).to(
+            self.device, self.torch_dtype
+        ).reshape(1, self.latent_dim)
+        h_prev = prev[:, : self.recurrent_dim]
+        z_prev = prev[:, self.recurrent_dim :]
+        a = torch.from_numpy(np.ascontiguousarray(action)).to(
+            self.device, self.torch_dtype
+        ).reshape(1, self.action_dim)
+        h_next = self.rssm.advance_h(h_prev, z_prev, a)
+
+        rgb = torch.from_numpy(np.ascontiguousarray(current_obs.rgb)).unsqueeze(0).to(self.device)
+        proprio = torch.from_numpy(
+            np.ascontiguousarray(current_obs.proprio4())
+        ).to(self.torch_dtype).unsqueeze(0).to(self.device)
+        embed = self._embed(rgb, proprio)
+        z_next = self.rssm._sample(self.rssm.post_probs(h_next, embed))
+        return torch.cat([h_next, z_next], dim=-1).squeeze(0).float().cpu().numpy()
+
+    @torch.no_grad()
     def step(
         self,
         z: np.ndarray,

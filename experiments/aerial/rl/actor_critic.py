@@ -37,6 +37,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from experiments.aerial.rl.env.action import DEFAULT_STEP_HZ, body_delta_limits
+from experiments.aerial.rl.goal_features import GOAL_NORM_DIM, GOAL_REL_DIM, g_norm_from_goal_rel
 from experiments.aerial.rl.imagination import ImaginedRollout
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,12 @@ class ActorCriticConfig:
     #: Per-axis action bound; ``None`` -> ``body_delta_limits(1/step_hz)``, the
     #: single source of truth shared with the deployed path.
     action_limits: Optional[Tuple[float, ...]] = None
+    #: When True, actor/critic input is ``concat(z, goal_feat)``.
+    #: ``goal_feat_mode`` selects encoding (Phase-2 re-anchor 2026-08-30):
+    #:   * ``meter`` — raw body ``goal_rel`` [fwd,left,up,dist_m] (Step E / 基线)
+    #:   * ``g_norm`` — ``[û_xyz, log1p(d)]`` (F9; R1/R2 ckpts only)
+    condition_on_goal: bool = True
+    goal_feat_mode: str = "meter"
     device: str = "cpu"
 
     def __post_init__(self) -> None:
@@ -92,6 +99,12 @@ class ActorCriticConfig:
             raise ValueError(
                 f"policy_class must be one of {_POLICY_CLASSES}, got {self.policy_class!r}"
             )
+        mode = str(self.goal_feat_mode).strip().lower()
+        if mode not in ("meter", "g_norm"):
+            raise ValueError(
+                f"goal_feat_mode must be 'meter' or 'g_norm', got {self.goal_feat_mode!r}"
+            )
+        self.goal_feat_mode = mode
         ad = int(self.action_dim)
         if self.action_limits is None:
             lim = body_delta_limits(1.0 / float(self.step_hz))
@@ -180,8 +193,12 @@ class ImaginationActorPolicy:
         self._ac = ac
         self.deterministic = bool(deterministic)
 
-    def act_latent(self, z: np.ndarray) -> np.ndarray:
-        return self._ac.act_latent(z, deterministic=self.deterministic)
+    def act_latent(
+        self, z: np.ndarray, goal_rel: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+        return self._ac.act_latent(
+            z, goal_rel=goal_rel, deterministic=self.deterministic
+        )
 
 
 @dataclass
@@ -202,8 +219,9 @@ class LatentActorCritic:
         cfg = self.config
         self._device = torch.device(str(cfg.device))
         ld, ad, hd = int(cfg.latent_dim), int(cfg.action_dim), int(cfg.hidden_dim)
-        self._actor = _MLP(ld, ad, hd).to(self._device)
-        self._critic = _MLP(ld, 1, hd).to(self._device)
+        in_dim = ld + (GOAL_REL_DIM if bool(cfg.condition_on_goal) else 0)
+        self._actor = _MLP(in_dim, ad, hd).to(self._device)
+        self._critic = _MLP(in_dim, 1, hd).to(self._device)
         self._limits = torch.as_tensor(
             np.asarray(cfg.action_limits, dtype=np.float32), device=self._device,
         )
@@ -215,6 +233,33 @@ class LatentActorCritic:
             lr=float(cfg.actor_lr),
         )
         self._critic_opt = torch.optim.Adam(self._critic.parameters(), lr=float(cfg.critic_lr))
+
+    def _feat_tensor(
+        self, z: np.ndarray, goal_rel: Optional[np.ndarray] = None
+    ) -> "torch.Tensor":
+        z = np.asarray(z, dtype=np.float32)
+        if z.ndim == 1:
+            z = z.reshape(1, -1)
+        z = z.reshape(-1, self.config.latent_dim)
+        if not bool(self.config.condition_on_goal):
+            return torch.as_tensor(z, device=self._device)
+        if goal_rel is None:
+            g = np.zeros((z.shape[0], GOAL_REL_DIM), dtype=np.float32)
+        else:
+            g = np.asarray(goal_rel, dtype=np.float32).reshape(-1, GOAL_REL_DIM)
+            if g.shape[0] == 1 and z.shape[0] > 1:
+                g = np.repeat(g, z.shape[0], axis=0)
+            if g.shape[0] != z.shape[0]:
+                raise ValueError(
+                    f"goal_rel batch {g.shape[0]} != z batch {z.shape[0]}"
+                )
+        if str(self.config.goal_feat_mode) == "g_norm":
+            g_feat = np.stack(
+                [g_norm_from_goal_rel(g[i]) for i in range(g.shape[0])], axis=0
+            )
+        else:
+            g_feat = g
+        return torch.as_tensor(np.concatenate([z, g_feat], axis=-1), device=self._device)
 
     @classmethod
     def from_config(cls, cfg: Any) -> "LatentActorCritic":
@@ -231,6 +276,8 @@ class LatentActorCritic:
                 critic_lr=float(cfg.get("critic_lr", 1.0e-4)),
                 action_scale=float(cfg.get("action_scale", ActorCriticConfig.action_scale)),
                 step_hz=float(cfg.get("step_hz", DEFAULT_STEP_HZ)),
+                condition_on_goal=bool(cfg.get("condition_on_goal", True)),
+                goal_feat_mode=str(cfg.get("goal_feat_mode", "meter")),
                 device=str(cfg.get("device", "cpu")),
             )
             return cls(config=ac_cfg)
@@ -245,22 +292,35 @@ class LatentActorCritic:
                     getattr(cfg, "action_scale", ActorCriticConfig.action_scale)
                 ),
                 step_hz=float(getattr(cfg, "step_hz", DEFAULT_STEP_HZ)),
+                condition_on_goal=bool(getattr(cfg, "condition_on_goal", True)),
+                goal_feat_mode=str(getattr(cfg, "goal_feat_mode", "meter")),
                 device=str(getattr(cfg, "device", "cpu")),
             )
         )
 
     def _z_tensor(self, z: np.ndarray) -> "torch.Tensor":
-        z = np.asarray(z, dtype=np.float32).reshape(-1, self.config.latent_dim)
-        return torch.as_tensor(z, device=self._device)
+        """Deprecated alias: goal-blind features only."""
+        return self._feat_tensor(z, goal_rel=None)
 
-    def value(self, z: np.ndarray) -> np.ndarray:
+    def value(
+        self, z: np.ndarray, goal_rel: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         z_arr = np.asarray(z, dtype=np.float32)
         orig = z_arr.shape
         if z_arr.ndim == 1:
             z_arr = z_arr.reshape(1, -1)
+        if z_arr.ndim == 3:
+            b, t, d = z_arr.shape
+            z_flat = z_arr.reshape(b * t, d)
+            g_flat = None
+            if goal_rel is not None:
+                g_flat = np.asarray(goal_rel, dtype=np.float32).reshape(b * t, GOAL_REL_DIM)
+            with torch.no_grad():
+                v = self._critic(self._feat_tensor(z_flat, g_flat)).squeeze(-1)
+            return v.cpu().numpy().reshape(b, t)
         flat = z_arr.reshape(-1, self.config.latent_dim)
         with torch.no_grad():
-            v = self._critic(self._z_tensor(flat)).squeeze(-1)
+            v = self._critic(self._feat_tensor(flat, goal_rel)).squeeze(-1)
         out = v.cpu().numpy()
         if len(orig) == 1:
             return out
@@ -278,16 +338,22 @@ class LatentActorCritic:
         """Per-axis action bound (= deployed ``body_delta_limits(1/step_hz)``)."""
         return np.asarray(self.config.action_limits, dtype=np.float64)
 
-    def _pre_dist(self, z_t: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:
+    def _pre_dist(self, feat_t: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:
         """Pre-squash Gaussian ``(mean, std)``. Under legacy this IS the action dist."""
-        mean = self._actor(z_t) * float(self.config.action_scale)
+        mean = self._actor(feat_t) * float(self.config.action_scale)
         std = torch.exp(self._log_std).clamp(min=1e-4, max=2.0)
         return mean, std
 
-    def act_latent(self, z: np.ndarray, *, deterministic: bool = False) -> np.ndarray:
-        z_t = self._z_tensor(z)
+    def act_latent(
+        self,
+        z: np.ndarray,
+        goal_rel: Optional[np.ndarray] = None,
+        *,
+        deterministic: bool = False,
+    ) -> np.ndarray:
+        feat_t = self._feat_tensor(z, goal_rel)
         with torch.no_grad():
-            mean, std = self._pre_dist(z_t)
+            mean, std = self._pre_dist(feat_t)
             u = mean if deterministic else mean + std * torch.randn_like(mean)
             # ``deterministic`` returns the squashed mode/median, not E[a].
             act = self._limits * torch.tanh(u) if self.bounded else u
@@ -299,7 +365,10 @@ class LatentActorCritic:
         return a
 
     def evaluate_actions(
-        self, z: np.ndarray, actions: np.ndarray
+        self,
+        z: np.ndarray,
+        actions: np.ndarray,
+        goal_rel: Optional[np.ndarray] = None,
     ) -> Tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
         """Log-prob and entropy for taken actions.
 
@@ -313,20 +382,24 @@ class LatentActorCritic:
         into the open box before ``atanh`` — that is a diagnosis path only; the
         C2 policy cannot emit them.
         """
-        z_t = self._z_tensor(z)
+        feat_t = self._feat_tensor(z, goal_rel)
         a_t = torch.as_tensor(actions, dtype=torch.float32, device=self._device)
         if a_t.ndim == 1:
             a_t = a_t.unsqueeze(0)
-        mean, std = self._pre_dist(z_t)
+        mean, std = self._pre_dist(feat_t)
         dist = torch.distributions.Normal(mean, std)
         if not self.bounded:
-            return dist.log_prob(a_t).sum(-1), dist.entropy().sum(-1), self._critic(z_t).squeeze(-1)
+            return (
+                dist.log_prob(a_t).sum(-1),
+                dist.entropy().sum(-1),
+                self._critic(feat_t).squeeze(-1),
+            )
         y = (a_t / self._limits).clamp(-1.0 + _TANH_EPS, 1.0 - _TANH_EPS)
         u = torch.atanh(y)
         log_det = (torch.log(self._limits) + torch.log1p(-y * y)).sum(-1)
         logp = dist.log_prob(u).sum(-1) - log_det
         ent = dist.entropy().sum(-1) + log_det
-        return logp, ent, self._critic(z_t).squeeze(-1)
+        return logp, ent, self._critic(feat_t).squeeze(-1)
 
     def update(self, rollout: ImaginedRollout) -> Dict[str, Any]:
         """One imagination AC step on a batched ``ImaginedRollout``."""
@@ -348,6 +421,15 @@ class LatentActorCritic:
         batch, horizon_p1, ld = z.shape
         horizon = horizon_p1 - 1
 
+        g_all = getattr(rollout, "goal_rel", None)
+        if bool(cfg.condition_on_goal):
+            if g_all is None:
+                g_all = np.zeros((batch, horizon_p1, GOAL_REL_DIM), dtype=np.float32)
+            else:
+                g_all = np.asarray(g_all, dtype=np.float32).reshape(
+                    batch, horizon_p1, GOAL_REL_DIM
+                )
+
         # Flatten [B, H] steps; mask out post-done padding.
         z_flat = z[:, :horizon].reshape(-1, ld)
         a_flat = acts.reshape(-1, acts.shape[-1])
@@ -357,9 +439,13 @@ class LatentActorCritic:
 
         z_alive = z_flat[alive]
         a_alive = a_flat[alive]
+        g_alive = None
+        if bool(cfg.condition_on_goal):
+            g_flat = g_all[:, :horizon].reshape(-1, GOAL_REL_DIM)
+            g_alive = g_flat[alive]
 
         # Reconstruct per-trajectory alive slices for λ-return.
-        vals_all = self.value(z)
+        vals_all = self.value(z, goal_rel=g_all if bool(cfg.condition_on_goal) else None)
         lam_targets = compute_lambda_returns(
             rews, vals_all, gamma=cfg.gamma, lambda_gae=cfg.lambda_gae, done=dones,
         )
@@ -367,7 +453,7 @@ class LatentActorCritic:
 
         target_t = torch.as_tensor(lam_flat, dtype=torch.float32, device=self._device)
 
-        logp, ent, v_pred = self.evaluate_actions(z_alive, a_alive)
+        logp, ent, v_pred = self.evaluate_actions(z_alive, a_alive, goal_rel=g_alive)
 
         # Critic: MSE to λ-return targets.
         critic_loss = F.mse_loss(v_pred, target_t)
@@ -378,7 +464,7 @@ class LatentActorCritic:
 
         # Actor: REINFORCE with stop-grad baseline + entropy bonus.
         with torch.no_grad():
-            baseline = self._critic(self._z_tensor(z_alive)).squeeze(-1)
+            baseline = self._critic(self._feat_tensor(z_alive, g_alive)).squeeze(-1)
         adv_actor = target_t.detach() - baseline  # stop-grad on value for actor
         adv_actor = (adv_actor - adv_actor.mean()) / (adv_actor.std() + 1e-8)
         actor_loss = -(logp * adv_actor).mean() - float(cfg.entropy_scale) * ent.mean()
@@ -398,6 +484,8 @@ class LatentActorCritic:
             "critic_loss": float(critic_loss.item()),
             "mean_return": float(rews.sum(axis=1).mean()),
             "mean_entropy": float(ent.mean().item()),
+            "condition_on_goal": bool(cfg.condition_on_goal),
+            "goal_feat_mode": str(cfg.goal_feat_mode),
         }
 
     @classmethod
@@ -425,6 +513,21 @@ class LatentActorCritic:
                 "audit replay only; training on it is refused)",
                 path, POLICY_UNBOUNDED_LEGACY,
             )
+        if "condition_on_goal" not in raw_cfg:
+            raw_cfg["condition_on_goal"] = False
+            logger.warning(
+                "%s has no condition_on_goal -> loading goal-blind "
+                "(retrain from scratch for imagination-to-goal navigation)",
+                path,
+            )
+        # Step E / pre-F9 ckpts expect metre goal_rel; F9 R1/R2 must set g_norm explicitly.
+        if "goal_feat_mode" not in raw_cfg:
+            raw_cfg["goal_feat_mode"] = "meter"
+            if bool(raw_cfg.get("condition_on_goal", False)):
+                logger.info(
+                    "%s has no goal_feat_mode -> default 'meter' (Phase-1 / Step E contract)",
+                    path,
+                )
         fields = set(ActorCriticConfig.__dataclass_fields__)
         ac_cfg = ActorCriticConfig(
             **{k: raw_cfg[k] for k in fields if k in raw_cfg}
@@ -439,7 +542,7 @@ class LatentActorCritic:
 
 
 class LatentActorDeployPolicy:
-    """Real-env policy: ``encode(obs)`` → ``act_latent(z)`` (V4 M5 rollout)."""
+    """Real-env policy: streaming ``z`` + ``act_latent(z, goal_rel)`` (V4 M5 rollout)."""
 
     def __init__(
         self,
@@ -447,29 +550,89 @@ class LatentActorDeployPolicy:
         actor_critic: LatentActorCritic,
         *,
         deterministic: bool = True,
+        stream_latent: bool = False,
     ) -> None:
         self._dynamics = dynamics
         self._ac = actor_critic
         self.deterministic = bool(deterministic)
+        self.stream_latent = bool(stream_latent)
+        self._prev_pos: Optional[np.ndarray] = None
+        self._prev_t: Optional[float] = None
+        self._latent: Optional[np.ndarray] = None
+        self._prev_act: Optional[np.ndarray] = None
 
     def reset(self) -> None:
-        pass
+        self._prev_pos = None
+        self._prev_t = None
+        self._latent = None
+        self._prev_act = None
+
+    def act_latent(
+        self, z: np.ndarray, goal_rel: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+        if goal_rel is None:
+            gr = np.zeros(GOAL_REL_DIM, dtype=np.float32)
+        else:
+            gr = np.asarray(goal_rel, dtype=np.float32).reshape(GOAL_REL_DIM)
+        return self._ac.act_latent(
+            z, goal_rel=gr, deterministic=self.deterministic
+        )
 
     def act(self, view: Any) -> np.ndarray:
         from experiments.aerial.rl.env.obs import Observation
+        from experiments.aerial.rl.goal_features import goal_rel_body, goal_rel_from_obs
 
-        state = np.array(
-            [
-                view.proprio[0],
-                view.proprio[1],
-                view.proprio[2],
-                0.0,
-                0.0,
-                0.0,
-                view.proprio[3],
-            ],
-            dtype=np.float32,
+        if isinstance(view, Observation):
+            obs = view
+            pos = np.asarray(obs.position, dtype=np.float32)
+            vel = np.asarray(obs.velocity, dtype=np.float32)
+            rgb = obs.rgb
+            t = float(obs.t)
+            yaw = float(obs.yaw)
+            goal = None
+            if isinstance(obs.info, dict):
+                goal = obs.info.get("goal")
+        else:
+            pos = np.asarray(view.position, dtype=np.float32)
+            vel = np.zeros(3, dtype=np.float32)
+            if self._prev_pos is not None and self._prev_t is not None:
+                dt = float(view.t) - float(self._prev_t)
+                if 1e-4 < dt < 1.0:
+                    vel = (pos - self._prev_pos) / float(dt)
+            rgb = view.rgb
+            t = float(view.t)
+            yaw = float(view.yaw)
+            goal = getattr(view, "goal", None)
+            obs = Observation(
+                rgb=rgb,
+                state=np.array(
+                    [pos[0], pos[1], pos[2], vel[0], vel[1], vel[2], yaw],
+                    dtype=np.float32,
+                ),
+                t=t,
+                info={"goal": np.asarray(goal, dtype=np.float32).reshape(3)} if goal is not None else {},
+            )
+
+        self._prev_pos = pos.copy()
+        self._prev_t = t
+
+        if (
+            self.stream_latent
+            and self._latent is not None
+            and self._prev_act is not None
+            and hasattr(self._dynamics, "observe_and_advance")
+        ):
+            z = self._dynamics.observe_and_advance(self._latent, self._prev_act, obs)
+        else:
+            z = self._dynamics.encode(obs)
+        self._latent = np.asarray(z, dtype=np.float64).copy()
+
+        if goal is not None:
+            gr = goal_rel_body(pos, yaw, np.asarray(goal, dtype=np.float64).reshape(3))
+        else:
+            gr = goal_rel_from_obs(obs)
+        act = self._ac.act_latent(
+            z, goal_rel=gr, deterministic=self.deterministic
         )
-        obs = Observation(rgb=view.rgb, state=state, t=float(view.t))
-        z = self._dynamics.encode(obs)
-        return self._ac.act_latent(z, deterministic=self.deterministic)
+        self._prev_act = np.asarray(act, dtype=np.float64).copy()
+        return act

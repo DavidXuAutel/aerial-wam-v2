@@ -20,6 +20,7 @@ import numpy as np
 from experiments.aerial.rl.buffer import Transition
 
 GOAL_REL_DIM = 4  # body-frame fwd, left, up, remaining_dist_m
+GOAL_NORM_DIM = 4  # unit body dir (3) + log1p(dist) — actor/critic conditioning (F9)
 BODY_VEL_DIM = 3  # body-frame linear velocity (fwd, left, up)
 # Reward-head aux (not encoder input): unit goal dir + log1p(dist) + body vel +
 # analytic Δdist from vel·dt (action alone ≠ realized displacement on r60 starts).
@@ -44,6 +45,15 @@ def goal_rel_body(
     left = -s * delta[0] + c * delta[1]
     up = float(delta[2])
     return np.array([fwd, left, up, dist], dtype=np.float32)
+
+
+def g_norm_from_goal_rel(goal_rel: np.ndarray) -> np.ndarray:
+    """Scale-stable goal features ``[û_xyz, log1p(d)]`` aligned with ``reward_aux``."""
+    g = np.asarray(goal_rel, dtype=np.float64).reshape(GOAL_REL_DIM)
+    dist = max(float(g[3]), 1e-6)
+    unit = (g[:3] / dist).astype(np.float32)
+    logd = np.float32(np.log1p(dist))
+    return np.concatenate([unit, np.array([logd], dtype=np.float32)], axis=0)
 
 
 def goal_rel_from_obs(obs: Any) -> np.ndarray:

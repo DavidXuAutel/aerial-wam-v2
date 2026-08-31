@@ -17,7 +17,7 @@
 | **merge** | `⓪ ∧ ⓿ ∧ ①′ ∧ ④′`，其中 `①′ = S_open primary 全过 ∧ S_blocked primary 全过` |
 | **n** | 每层 **16**（合计 32）；不足 ⇒ `authoritative=false`，**禁止降 n** |
 | **评测构型** | **deploy = `safety.kind: three_zone`**（8/5/1.5 @ 2/1，engage_outer **12.2 m**）。离线 P3 权威 = 同参数 **⓪h** + 老头 RGB-only 深度头（**无 IMU 融合**） |
-| **当前状态** | **6ap 已签（2026-08-24）**；**主线 = P4.5 控制臂 hold035 权威 emit**（⓪h primary，⓪d_legacy 只报）。TZ-3Z 并行结案。**P1** coll FAIL；**P4** ⓿e `infeasible`。**`enable_policy_update` = false**。R-16 **(B)**。Supervisor **已停** |
+| **当前状态** | **L3 brake re-ATTR FAIL** — hard_coll **0.0625** ✅ / L3 超速 **0.812** ❌ — `artifacts/v4_p7_attr_tz_l3brake_n32_20260826.json`（seed 4300）。基线 ATTR fork=percept hard_coll=0.5625。5ai′ STOP；P8 BLOCKED；**禁** silent 加 brake_gain；depth 挂起；S-8j；**`enable_policy_update` = false**。 |
 | **主张范围** | 只主张「**不退化 + 安全**」，**不主张「想象 AC 有增益」**；到达能力**仅覆盖机体前向扇区**；「主动终止」**不测** |
 
 **机器分工**（不再逐次确认）：**8×H100** `a25689@10.239.121.25:31126` = 训练 / 数据 / 离线诊断；**4090** `10.229.20.125:41451` = **纯渲染**（gate、探针、planner、闭环 rollout 都在这跑）。
@@ -38,11 +38,11 @@
 | **P4.5** | 语料重采（`S_open : S_blocked ≈ 1:1`，**须抬高近带帧占比**）+ WM 重训 ⇒ **重跑 P3 / P1 / P4** | H100 + 125 | 否则 P1/P3/P4 给注定被替换的 WM 发证 | 🟡 **已跑一轮（2026-08-21）：语料达标 ✅、reward 修好 ✅、⓪ 仍不可发证** —— 语料 `dataset_v0_p45_merged_20260821`（77ep，open35:blocked42 **≈1:1.2 达标**、近带帧 95→**315**）；depth FT + WM(500 步) + re-P3 + re-P1 见 P1 / P3 行。**未完**：⓪c/⓪d FAIL、⓪a 不可采（in-sample）、⓪f 落盘缺项、`p_coll` FAIL。**下一发 = 控制臂（老头 × 新语料），不是再治深度头** |
 | **P5** | shield 触发深度 3.0 → 2.0 裁定 | — | **暂缓**；G1 之后其两个理由都失效 ⇒ **很可能完全不必要**；方向也可能相反（由撞点落盘裁定） | ⏸ |
 | **P6** | `planner.action_limits` 夹到 `body_delta_limits(1/step_hz)` | 代码 | 现默认 `None` | ✅ **DONE（`4e76865`）** — `_build_planner` 设 `action_limits = body_delta_limits(1/step_hz)` |
-| **P7-diag** | planner 纯前向跑 **诊断起点集 `S_diag`** | 125 | **只落盘不判**：逐步 `clearance_fov` ⇒ 得 `C_P7` 分布；判据里 `θ := undefined` | ⬜ |
-| **⟶ 冻结** | 先冻 **`[lo,hi]`**（⓪f ∧ `hi ≤ Q_0.25(C_P7)` ∧ `hi ≤ 8 m`）**加时间戳** ⇒ 再在**同一份逐步 log** 上算 `band_frac` ⇒ 冻 **`θ = 0.8 × median_P7`**、冻 **`k`** | 离线 | **不必再飞**。**禁止**「看到 `band_frac` 分布后再改 `hi`」 | ⬜ |
-| **P7-accept** | planner 在 **`S_accept`** 上跑 **§4.6.3 全判据**（此时 θ 已是外生常数） | 125 | `S_diag` ⟂ `{S_accept ∪ actor gate}`；**`S_accept` ≡ `S_gate`**（actor 必须飞同一批起点） | ⬜ |
-| **⟶ 下车站** | **P7-accept 在 S_blocked FAIL ⇒ 停** | — | 见 §6 | — |
-| **P8** | 才训 actor（**从零，禁 warm-start**）⇒ gate ①′ / ④′ | H100 训 + 125 gate | `enable_policy_update` 仍**由四信号全过前不翻** | ⬜ |
+| **P7-diag** | planner 纯前向跑 **诊断起点集 `S_diag`** | 125 | **只落盘不判**：逐步 `clearance_fov` ⇒ 得 `C_P7` 分布；判据里 `θ := undefined` | ✅ **P7-diag′ DONE**（TZ；n=16 auth arrival=0.25）— `artifacts/v4_p7_diag_tz_s8j_20260826.json` |
+| **⟶ 冻结** | **TZ**：`[lo,hi]=(1.5,8.0]` **已冻**（几何）；再在 diag′ 同 log 上冻 **`θ = 0.8 × median_P7`**、冻 **`k`** | 离线 | **禁止**复用旧 diag θ；**禁止**改 hi 凑数 | ✅ θ=**0.2344** — `artifacts/v4_p7_tz_theta_freeze_20260826.json` |
+| **P7-accept** | planner 在 **`S_accept`** 上跑 **§4.6.3 全判据**（此时 θ 已是外生常数） | 125 | `S_diag` ⟂ `{S_accept ∪ actor gate}`；**`S_accept` ≡ `S_gate`** | ❌ **P7-accept′ FAIL** — arrival=**0.1875** — `artifacts/v4_p7_accept_tz_s8j_20260826.json` |
+| **⟶ 下车站** | **P7-accept 在 S_blocked FAIL ⇒ 停** | — | 见 §6 | ✅ **5ai′ 登记** — [`V4_5AIP_P7_STATION_STOP_DECLARE_20260826.md`](../../docs/handover/V4_5AIP_P7_STATION_STOP_DECLARE_20260826.md) |
+| **P8** | 才训 actor（**从零，禁 warm-start**）⇒ gate ①′ / ④′ | H100 训 + 125 gate | `enable_policy_update` 仍**由四信号全过前不翻** | ⛔ **BLOCKED**（5ai′；accept′ FAIL） |
 
 ---
 
@@ -186,11 +186,11 @@ P5 若改 `min_depth_m` ⇒ **⓪d_legacy 与 ⓪f(3)** 须按新 trigger 重测
 
 | # | 要定的东西 | 谁定 / 怎么定 | 依赖 | 状态 |
 |---|---|---|---|---|
-| 1 | **`[lo, hi]`**（逼障带） | `lo = min_depth_m + δ`，`δ` = 「D̂ 与 τ 误触发率**均 ≤ 0.05**」的最小 clearance；宽度 1.5 m；`hi ≤ Q_0.25(C_P7)` **且** `hi ≤ 8 m`（后者**如实登记为拍的**，只与 ⓪f support 上界对齐） | **⓪f**（P3）+ **P7-diag** | ⬜ 待实测填 |
-| 2 | **`θ`**（band 占用阈值） | `θ = 0.8 × median(band_frac_P7-diag)`，裕度系数 **0.8 已冻结**；**在已冻的 `[lo,hi]` 上、用同一份 P7-diag 逐步 log 算**（不必再飞）。若重导值 **< 0.10 ⇒ 属放松 ⇒ 须单独签字**，不得静默采用 | P7-diag（须先冻 `[lo,hi]`） | ⬜ 待实测填 |
+| 1 | **`[lo, hi]`**（三线工作带） | **TZ**：`(1.5, 8.0]` = (L3, L1]；**不**再由 ⓪f∩C_P7 拟合 | 几何（yaml） | ✅ **已冻（TZ-2，2026-08-26）** |
+| 2 | **`θ`**（band 占用阈值） | `θ = 0.8 × median(band_frac_P7-diag′)`，裕度 **0.8 已冻结**；**仅在冻带上、新 diag′ log**；&lt;0.10 ⇒ 须再签 | P7-diag′ | ✅ θ=**0.2344** |
 | 3 | **`k`**（进展窗口） | 与 C1「进带前 k 步」的 `k` **是否同一个数未定 ⇒ 跑前必须一并冻结** | 无（人定） | ⬜ **待定，两处同时冻** |
-| 4 | **`Q_0.25(C_P7)`** | `C_P7` = P7-diag 中 planner 在 S_blocked **实际经过的 clearance 分布**；分位 `p = 0.25` **已冻结** | P7-diag | ⬜ 待实测填 |
-| 5 | **5ab 分叉：①′d-b 是 primary 还是 secondary** | ⓪f + τ 误触发出数后：**存在**同时满足「并集非介入」与「`hi ≤ Q_0.25(C_P7)`」的带 ⇒ 冻结该带、①′d-b **保持 primary**；**不存在** ⇒ **降 secondary（只报不入 merge）**，机制主张全部落到 **⓿ + P7** | ⓪f | ✅ **分叉规则已签死**（分支由数据选，不是人事后选） |
+| 4 | **`Q_0.25(C_P7)`** | `C_P7` = P7-diag 中 planner 在 S_blocked **实际经过的 clearance 分布**；分位 `p = 0.25` **已冻结** | P7-diag | ✅ p25=**1.56**（diag′） |
+| 5 | **5ab 分叉：①′d-b primary/secondary** | ~~⓪f∩C_P7~~ → **TZ supersede**：deploy=three_zone 时 ①′d-b **primary**（带=(1.5,8]）；旧 5ab 空带分支作废 | TZ-1/2 | ✅ **TZ 全签（2026-08-26）** |
 | 6 | **band 冻结的时序 vs P2** | 正式冻结**排在 P2 之后**；若为进度先用 P2 前的数 ⇒ 必须写 `band_frozen_before_p2 = true` 并标该带 **conditional**，P2 落地后**强制重跑 ⓪f + 重裁 5ab**，且**只许缩窄** | P2 | ✅ 规则已签；**走哪条须跑前声明** |
 | 7 | **primary / secondary 划分** | 15 条全 AND ⇒ 误 FAIL ≈54% ⇒ 必须显式分开，**primary 条数跑前冻结** | 无 | ⬜ **待写死清单** |
 | 8 | **OC 曲线 + seed 数 + 「两 seed 不一致」的裁决规则** | 每条判据**跑前**落盘 OC 曲线；预注册 seed 数与裁决规则；声明 primary/secondary | 需起点几何独立性成立 | ⬜ **待做** |
@@ -263,7 +263,7 @@ P5 若改 `min_depth_m` ⇒ **⓪d_legacy 与 ⓪f(3)** 须按新 trigger 重测
 3. 退回 **WM / 感知侧**（P1 / P3 / P4.5 的重训与语料），或裁定 S_blocked 场景难度本身需 re-freeze（**另案，须新签字**）；
 4. **明令禁止的三种反应**：降 S_blocked 到达率阈值 / 换更容易的起点集后宣布 P7 过 / 把 ①′ 只在 S_open 上判。
 
-**已如实登记的最大风险（5am(d)）**：v5 不启用 ⇒ **一次触发即整局 latch、本局报废**（`safety.py` `if self._engaged: return True`），而 τ 通道在 `v = 5 m/s` 巡航下触发到 **≈5 m** ⇒ **①′a-b ≥ 0.50 的经验可解性完全押在 P7-accept 上**（G1 只论证了「带定义不与罩互斥」，**未论证到达率**）。P7-accept FAIL ⇒ 走上面的下车站，**不得就地放宽阈值、不得顺势启用 v5**。
+**已如实登记的最大风险（5am(d)）**：v5 不启用 ⇒ **一次触发即整局 latch、本局报废**（`safety.py` `if self._engaged: return True`），而 τ 通道在 `v = 5 m/s` 巡航下触发到 **≈5 m** ⇒ **①′a-b ≥ 0.50 的经验可解性完全押在 planner 到达上**（G1 只论证了「带定义不与罩互斥」，**未论证到达率**）。**⟶ 2026-08-26 已实测否证**：spare 权威 P7-diag arrival=**0.1875** ⇒ **5ai 下车站已触发**（见声明）；**不得就地放宽阈值、不得顺势启用 v5、不得进 P8**。
 
 **仍未预注册停止规则的缺口（R-16 剩余，如实登记）**：**⓪ / ⓿ / P3.5 各自 FAIL 后**没有下车站。
 
@@ -303,7 +303,7 @@ P5 若改 `min_depth_m` ⇒ **⓪d_legacy 与 ⓪f(3)** 须按新 trigger 重测
 | — | `S_blocked_tight` 的 `n` 未定 |
 | — | ④′b 用**全场 min** vs ④′c 用**前向遭遇**，两者几何不同 |
 | — | ~~P0c 的 spare 池大小未定量~~ → **已定** `--spare-count=16`（2026-08-20） |
-| — | 无 v5 时「一次触发即报废」对 ①′a-b 的实际难度**未量化**（只能等 P7-accept 实测） |
+| — | ~~无 v5 时「一次触发即报废」对 ①′a-b 的实际难度未量化~~ → **2026-08-26 已量化**：spare auth arrival=**0.1875** ≪0.50 ⇒ **5ai 已触发** |
 | — | C1 的 `k` 与 5ac(a) 的 `k` 是否同一个数**未定** |
 | P0b | shield 消费路径仍是 `predict_min`，`predict_cones()` 未接线 |
 | — | 头一致性缺口：`depth_ckpt_da3_20260810` vs `depth_ckpt_da3_near_20260811` |
@@ -314,7 +314,38 @@ P5 若改 `min_depth_m` ⇒ **⓪d_legacy 与 ⓪f(3)** 须按新 trigger 重测
 
 ## 10. 变更记录
 
-- **2026-08-24（6ap ⓪ primary 迁移签字 + harness）** —— [`V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md`](../../docs/handover/V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md) **12/12 采纳**：⓪h@12.2m **primary**、⓪d@3m **`0d_legacy` report-only**；`v4_zero_eval.aggregate_verdict` 合取改为 `⓪a∧⓪b∧⓪c∧⓪h∧⓪e`；禁止仅为过 ⓪d depth FT。P4.5 深度结案改看 ⓪h。下一发 = 老头 × `p45_merged` hold035 权威 emit。**不改** ⓪a/b/c 阈值、①′/④′/⓿、`enable_policy_update`。
+- **2026-08-26（L3 brake re-ATTR FAIL）** —— n=32 auth seed **4300**；hard_coll **0.0625** ✅；GT≤1.5 步 speed>0.25 **0.812** ❌（基线≈0.828）；arrival=0.0625。整体 **FAIL**；禁 silent 加大 gain；不开 P8 / 不训 depth。产物 `artifacts/v4_p7_attr_tz_l3brake_n32_20260826.json`。文书 [`V4_TZ_L3_ACTIVE_BRAKE_DECLARE_20260826.md`](../../docs/handover/V4_TZ_L3_ACTIVE_BRAKE_DECLARE_20260826.md)。
+- **2026-08-26（ATTR DONE · fork=percept）** —— n=32 auth；arrival=**0.0938**；hard_coll=**0.5625**；n_hard=18；percept=**9** / plan=0；`d̂` null **0/3434**。⇒ **另签 depth FT**；禁自动开训；5ai′ STOP；P8 BLOCKED。产物 `artifacts/v4_p7_attr_tz_n32_20260826.json`。文书 [`V4_5AIP_ATTR_DECLARE_20260826.md`](../../docs/handover/V4_5AIP_ATTR_DECLARE_20260826.md)。
+- **2026-08-26（TZ 另案 · 5/5 全签）** —— 冻带 **(1.5,8.0]**；旧 5ai 挂起；下一 harness+diag′。文书 [`V4_TZ_CRITERIA_REFREEZE_DECLARE_20260826.md`](../../docs/handover/V4_TZ_CRITERIA_REFREEZE_DECLARE_20260826.md)。
+- **2026-08-26（5ai 下车站）** —— spare 权威 P7-diag arrival=**0.1875** + 5ab 空带 ⇒ **V4-MVP 前提否证**；P8 BLOCKED。文书 [`V4_5AI_P7_STATION_STOP_DECLARE_20260826.md`](../../docs/handover/V4_5AI_P7_STATION_STOP_DECLARE_20260826.md)。产物 `artifacts/v4_p7_diag_s8j_spare_20260826.json`。
+- **2026-08-26（P7-diag S-8j）** —— 首趟 C_P7 p25=**1.50** / n=9；spare 权威 p25=**1.83** / n=16 ⇒ 5ab 空带 ⇒ ①′d-b **secondary**。产物 `artifacts/v4_p7_diag_s8j_20260826.json` / `…_spare_20260826.json`。
+- **2026-08-26（深度头 promote S-8j）** —— `aerial_rl.yaml` → S-8j；OR/safety 未动。文书 [`V4_DEPTH_PROMOTE_S8J_DECLARE_20260826.md`](../../docs/handover/V4_DEPTH_PROMOTE_S8J_DECLARE_20260826.md)。
+- **2026-08-26（⓪i 停线探针 G1′ 重签 + 125 重评）** —— S-8j **⓪i auth PASS**；老头仍 FAIL；随后 promote。文书 [`V4_0I_STOP_PROBE_REFREEZE_DECLARE_20260826.md`](../../docs/handover/V4_0I_STOP_PROBE_REFREEZE_DECLARE_20260826.md)。
+- **2026-08-25（⓪i 改门 G1 全签 + 125 重评）** —— operational **1.0 m**；stop HARD。S-8j：**budget ✅**（engage 0.45 / cap_l1 0.83）/ **stop ❌**（z3）⇒ ⓪i 仍 FAIL。老头仍 budget FAIL。部署冻；**不** promote。文书 [`V4_0I_BUDGET_REFREEZE_DECLARE_20260825.md`](../../docs/handover/V4_0I_BUDGET_REFREEZE_DECLARE_20260825.md)。**stop 硬度 → G1′ supersede（2026-08-26）。**
+- **2026-08-25（S-8n 结案 FAIL）** —— fwd overread hinge **1.0**；①d/⓪c/⓪h ✅；full engage **0.98 m** / cap_l1 **1.22 m** / consec **2**（相对 S-8j **回退**）。⓪i 未过。**Pareto 仍 S-8j**；不部署。下一动作 **⓪i 改门待签**。详见 [`V4_DEPTH_FT_S8N_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8N_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8n 3/3 全签 · H100 开训）** —— fwd overread hinge **1.0**；S-8j 底座；focus (5,12.2]；ckpt `depth_ckpt_p45mid_s8n_20260825`；通路 `cursor-125-public`。（superseded）
+- **2026-08-25（S-8n 跑前声明 · 待签）** —— 换形：fwd overread hinge **0→1.0**；S-8j 底座；focus 锁 (5,12.2]。文书 [`V4_DEPTH_FT_S8N_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8N_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8m 结案 FAIL）** —— near-focus lo **7.0**；①d/⓪c ✅；⓪h ❌ consec **13**；full engage **0.88 m** / cap_l1 **1.43 m**（相对 S-8j **回退**）。⓪i 未过。**Pareto 仍 S-8j**；不部署。下一发 **S-8n 已结案 FAIL**。详见 [`V4_DEPTH_FT_S8M_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8M_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8m 3/3 全签 · H100 开训）** —— near-focus lo **7.0**；S-8j 底座锁权/hinge/τ；无 p90；ckpt `depth_ckpt_p45mid_s8m_20260825`；通路 `cursor-125-public`。（superseded）
+- **2026-08-25（S-8m 跑前声明 · 待签）** —— 域再切：near-focus **(5,12.2]→(7,12.2]**；S-8j 底座无 p90。文书 [`V4_DEPTH_FT_S8M_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8M_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8l 结案 FAIL）** —— `near_absrel_p90` **1.0**；①d/⓪c/⓪h ✅；full engage **0.86 m** / cap_l1 **0.84 m** / consec **1**（相对 S-8j engage **回退** 0.45→0.86）。⓪i 未过。**Pareto 仍 S-8j**；不部署。下一发 **S-8m 已结案 FAIL**。详见 [`V4_DEPTH_FT_S8L_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8L_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8l 3/3 全签 · H100 开训）** —— `near_absrel_p90` **1.0@τ=0.9**；S-8j 底座锁权/hinge/τ；ckpt `depth_ckpt_p45mid_s8l_20260825`；通路 `cursor-125-public`。（superseded）
+- **2026-08-25（S-8l 跑前声明 · 待签）** —— 换形：`near_absrel_p90` **0→1.0@τ=0.9**；S-8j 底座锁权/hinge/τ。文书 [`V4_DEPTH_FT_S8L_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8L_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8k 结案 FAIL）** —— signed τ **0.95**；①d **0.3539**@50 破锚；125 评 SKIP；**Pareto 仍 S-8j**。下一发 **S-8l 已签开训**。详见 [`V4_DEPTH_FT_S8K_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8K_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8k 3/3 全签 · H100 开训）** —— signed τ **0.95**；S-8j 底座锁权/hinge；ckpt `depth_ckpt_p45mid_s8k_20260825`；通路 `cursor-125-public`。（superseded by 结案条）
+- **2026-08-25（S-8k 跑前声明 · 待签）** —— 换形：signed τ **0.9→0.95**；S-8j 底座锁权/hinge。文书 [`V4_DEPTH_FT_S8K_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8K_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8j 结案 FAIL）** —— hinge **1.0**；①d/⓪c/⓪h ✅；full engage **0.45 m** / cap_l1 **0.83 m** / consec **1**（相对 S-8i **改善**）。⓪i 未过。**Pareto → S-8j**；不部署。下一发 **S-8k 已结案 FAIL**（①d 破锚）。详见 [`V4_DEPTH_FT_S8J_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8J_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8j 3/3 全签 · H100 开训）** —— near overread hinge **1.0**；S-8i 底座锁权；ckpt `depth_ckpt_p45mid_s8j_20260825`。（superseded）
+- **2026-08-25（S-8j 跑前声明 · 待签）** —— 换形：near overread hinge **0→1.0**；S-8i 底座锁权。文书 [`V4_DEPTH_FT_S8J_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8J_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8i 结案 FAIL）** —— absrel **0.60**；①d/⓪c/⓪h ✅；full engage **0.56 m** ❌ / consec **2** ✅（相对 S-8c engage **改善** 0.75→0.56；优于 S-8h 0.89）。⓪i auth 未过（cap_l1）。**Pareto 曾记 S-8i**；不部署。下一发曾为 S-8j（现结案 FAIL；Pareto 改 **S-8j**）。详见 [`V4_DEPTH_FT_S8I_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8I_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8i 3/3 全签 · H100 开训）** —— absrel **0.60**；ckpt `depth_ckpt_p45mid_s8i_20260825`。（superseded）
+- **2026-08-25（S-8i 跑前声明 · 待签）** —— absrel **0.55→0.60**（末档）；fwd=1.25 / signed=1.5 锁。文书 [`V4_DEPTH_FT_S8I_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8I_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8h 结案 FAIL）** —— absrel **0.55**；①d/⓪c/⓪h ✅；full engage **0.89 m** ❌ / consec **2** ✅ vs S-8c Pareto **0.75 m / 5**。⓪i 未过；不 promote。下一发 **S-8i 待签**。部署头仍冻。详见 [`V4_DEPTH_FT_S8H_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8H_MIDRANGE_DECLARE_20260825.md)。
+- **2026-08-25（S-8h 3/3 全签 · H100 开训）** —— absrel **0.55**；ckpt `depth_ckpt_p45mid_s8h_20260825`。（superseded）
+- **2026-08-25（S-8h 跑前声明 · 待签）** —— S-8c 底座；**唯一**变更 absrel **0.45→0.55**；fwd=1.25 / signed=1.5 锁。文书 [`V4_DEPTH_FT_S8H_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8H_MIDRANGE_DECLARE_20260825.md)。**未全签、未开训**。（superseded）
+- **2026-08-25（S-8g 结案 FAIL）** —— fwd pinball **1.50**；①d/⓪c ✅；full engage **1.04 m** / consec **8** ❌ vs S-8c Pareto **0.75 m / 5**。fwd 轴枯竭；下一发曾为 S-8h（现已结案 FAIL）。部署头仍冻。详见 [`V4_DEPTH_FT_S8G_MIDRANGE_DECLARE_20260825.md`](../../docs/handover/V4_DEPTH_FT_S8G_MIDRANGE_DECLARE_20260825.md) / [`V4_RUNBOOK_125_STATUS.md`](../../docs/handover/V4_RUNBOOK_125_STATUS.md)。
+- **2026-08-24（6ap ⓪ primary 迁移签字 + harness）** —— [`V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md`](../../docs/handover/V4_ZERO_PRIMARY_MIGRATION_REFREEZE_20260824.md) **12/12 采纳**；hold035 emit ⓪h PASS / ⓪c FAIL。
+- **2026-08-24（深度线 v4 声明草案）** —— [`V4_DEPTH_LOSS_DECLARE_v4_20260824.md`](../../docs/handover/V4_DEPTH_LOSS_DECLARE_v4_20260824.md)：**6cq** ⓪c 域 `(1.5,3]` primary；v4 FT + ⓪h 硬验收；待签 + 实现后 H100。
 - **2026-08-21（B-2 Phase C 滞回扫描 DONE：不可解）** —— 声明 [`V4_HYSTERESIS_SCAN_DECLARE_20260821.md`](../../docs/handover/V4_HYSTERESIS_SCAN_DECLARE_20260821.md)；`--scan-trigger-hysteresis-delta`。老头两片 **consec 全 δ=2**；rate 可降、误触变差 ⇒ **不升格 B**。下一路径 `#26`/`5ao`。不改判据阈值。
 - **2026-08-21（D̂ K-min 扫描 DONE：B-1 否定）** —— 声明 [`V4_DHAT_TEMPORAL_MIN_SCAN_DECLARE_20260821.md`](../../docs/handover/V4_DHAT_TEMPORAL_MIN_SCAN_DECLARE_20260821.md)；`--dhat-temporal-min` / `--scan-…`。老头两片 **consec 全 K=2**；rate 可压、误触随 K 变差 ⇒ **须 B-2 滞回**（不升格 K）。不改判据阈值。
 - **2026-08-21（#23 结案读法 DONE + V0 ④ deferred）** —— 编年 §6.7：H100 复核字段齐；①d=0.684 ≠ ⓪f 远场死；双头 = ①d 锚选项、非 ⓪f(3) 强制。V0 ④ 重跑只登记、等 head 定稿（不 launch）。不改判据阈值。

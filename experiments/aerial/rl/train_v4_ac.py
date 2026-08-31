@@ -79,6 +79,12 @@ def main() -> int:
         action="store_true",
         help="skip env collect each iter (use with --dataset for offline z0 AC)",
     )
+    p.add_argument(
+        "--w-collision",
+        type=float,
+        default=None,
+        help="override reward.w_collision for imagination AC (default: yaml)",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -89,6 +95,9 @@ def main() -> int:
     cfg.setdefault("v4", {})
     cfg.setdefault("dynamics", {})
     cfg.setdefault("tau_predictor", {})
+    cfg.setdefault("reward", {})
+    if args.w_collision is not None:
+        cfg["reward"]["w_collision"] = float(args.w_collision)
     cfg["corrector"]["iterations"] = int(args.iters)
     cfg["corrector"]["episodes_per_iter"] = int(args.episodes_per_iter)
     cfg["corrector"]["enable_policy_update"] = True

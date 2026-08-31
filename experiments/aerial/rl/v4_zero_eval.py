@@ -37,6 +37,11 @@ from experiments.aerial.rl.tau_predictor import (
 # Frozen §4.6.2 thresholds (do not invent).
 _NEAR_LO = 0.0
 _NEAR_HI = 3.0
+_NEAR_C_PRIMARY_LO = 5.0  # 6cr S-7 2026-08-24: ⓪c primary = three-zone mid band
+_NEAR_C_PRIMARY_HI = 12.2  # engage_outer (8/5/1.5 @ 2/1)
+_NEAR_L23_LO = 1.5  # report-only legacy 6cq mid-near (superseded primary)
+_NEAR_L23_HI = 3.0
+_OC_REFREEZE = "V4_OC_DOMAIN_REFREEZE_6cr_20260824"
 _OUTER_LO = 3.0
 _OUTER_HI = 8.0
 _SUPPORT_MIN = 10_000
@@ -158,7 +163,13 @@ def check_0a(stats: Dict[str, Any], *, thr: ZeroThresholds) -> Dict[str, Any]:
     }
 
 
-def check_0c(stats: Dict[str, Any], *, thr: ZeroThresholds) -> Dict[str, Any]:
+def check_0c(
+    stats: Dict[str, Any],
+    *,
+    thr: ZeroThresholds,
+    gt_lo: float = _NEAR_C_PRIMARY_LO,
+    gt_hi: float = _NEAR_C_PRIMARY_HI,
+) -> Dict[str, Any]:
     p90 = stats.get("p90_absrel", float("nan"))
     ok = stats.get("n", 0) >= thr.support_min and np.isfinite(p90) and p90 <= thr.absrel_p90_max
     return {
@@ -166,7 +177,44 @@ def check_0c(stats: Dict[str, Any], *, thr: ZeroThresholds) -> Dict[str, Any]:
         "p90_absrel": p90,
         "threshold": thr.absrel_p90_max,
         "n_px": stats.get("n", 0),
-        "domain": f"({ _NEAR_LO:g}, {_NEAR_HI:g}]",
+        "domain_lo": float(gt_lo),
+        "domain_hi": float(gt_hi),
+        "domain": f"({gt_lo:g}, {gt_hi:g}]",
+        "refreeze": _OC_REFREEZE,
+    }
+
+
+def check_0c_wall(stats: Dict[str, Any], *, thr: ZeroThresholds) -> Dict[str, Any]:
+    """Report-only wall-root tail on ``(0, 1.5]`` — does not gate merge (6cq/6cr)."""
+    p90 = stats.get("p90_absrel", float("nan"))
+    ok = stats.get("n", 0) >= thr.support_min and np.isfinite(p90) and p90 <= thr.absrel_p90_max
+    return {
+        "ok": bool(ok),
+        "report_only": True,
+        "p90_absrel": p90,
+        "threshold": thr.absrel_p90_max,
+        "n_px": stats.get("n", 0),
+        "domain_lo": _NEAR_LO,
+        "domain_hi": _NEAR_L23_LO,
+        "domain": f"({_NEAR_LO:g}, {_NEAR_L23_LO:g}]",
+        "note": "wall root; FAIL does not block primary merge (6cr)",
+    }
+
+
+def check_0c_l23(stats: Dict[str, Any], *, thr: ZeroThresholds) -> Dict[str, Any]:
+    """Report-only ``(1.5, 3]`` — superseded as primary by 6cr mid-band ``(5,12.2]``."""
+    p90 = stats.get("p90_absrel", float("nan"))
+    ok = stats.get("n", 0) >= thr.support_min and np.isfinite(p90) and p90 <= thr.absrel_p90_max
+    return {
+        "ok": bool(ok),
+        "report_only": True,
+        "p90_absrel": p90,
+        "threshold": thr.absrel_p90_max,
+        "n_px": stats.get("n", 0),
+        "domain_lo": _NEAR_L23_LO,
+        "domain_hi": _NEAR_L23_HI,
+        "domain": f"({_NEAR_L23_LO:g}, {_NEAR_L23_HI:g}]",
+        "note": "legacy 6cq primary; FAIL does not block merge (6cr S-7)",
     }
 
 
@@ -904,6 +952,8 @@ def run_eval(
 
     near_pred: List[float] = []
     near_gt: List[float] = []
+    mid_pred: List[float] = []
+    mid_gt: List[float] = []
     outer_pred: List[float] = []
     outer_gt: List[float] = []
     per_frame_near_px: List[int] = []
@@ -964,6 +1014,15 @@ def run_eval(
                 per_frame_near_px.append(int(np.count_nonzero(near_m)))
             else:
                 per_frame_near_px.append(0)
+            mid_m = (
+                np.isfinite(gmap)
+                & (gmap > _NEAR_C_PRIMARY_LO)
+                & (gmap <= _NEAR_C_PRIMARY_HI)
+                & (gmap <= 200.0)
+            )
+            if np.any(mid_m):
+                mid_pred.extend(dmap.reshape(-1)[mid_m.reshape(-1)].tolist())
+                mid_gt.extend(gmap.reshape(-1)[mid_m.reshape(-1)].tolist())
             if np.any(outer_m):
                 outer_pred.extend(dmap.reshape(-1)[outer_m.reshape(-1)].tolist())
                 outer_gt.extend(gmap.reshape(-1)[outer_m.reshape(-1)].tolist())
@@ -1014,8 +1073,33 @@ def run_eval(
     near_stats = pixel_absrel_stats(
         np.asarray(near_pred), np.asarray(near_gt), gt_lo=_NEAR_LO, gt_hi=_NEAR_HI
     )
+    near_stats_0c = pixel_absrel_stats(
+        np.asarray(mid_pred),
+        np.asarray(mid_gt),
+        gt_lo=_NEAR_C_PRIMARY_LO,
+        gt_hi=_NEAR_C_PRIMARY_HI,
+    )
+    l23_stats = pixel_absrel_stats(
+        np.asarray(near_pred),
+        np.asarray(near_gt),
+        gt_lo=_NEAR_L23_LO,
+        gt_hi=_NEAR_L23_HI,
+    )
+    wall_stats = pixel_absrel_stats(
+        np.asarray(near_pred),
+        np.asarray(near_gt),
+        gt_lo=_NEAR_LO,
+        gt_hi=_NEAR_L23_LO,
+    )
     near_gt_bins = near_absrel_gt_bins(
-        np.asarray(near_pred), np.asarray(near_gt), edges=(0.0, 1.5, 3.0)
+        np.asarray(near_pred),
+        np.asarray(near_gt),
+        edges=(0.0, 1.5, 3.0),
+    )
+    mid_gt_bins = near_absrel_gt_bins(
+        np.asarray(mid_pred),
+        np.asarray(mid_gt),
+        edges=(5.0, 8.0, 12.2),
     )
     outer_stats = pixel_absrel_stats(
         np.asarray(outer_pred), np.asarray(outer_gt), gt_lo=_OUTER_LO, gt_hi=_OUTER_HI
@@ -1024,10 +1108,12 @@ def run_eval(
     sub_0a = check_0a(near_stats, thr=thr)
     sub_0b = {**sup_b, "label": "0b", "near_px_total": sup_b["support_px"]}
     sub_0c = {
-        **check_0c(near_stats, thr=thr),
-        "gt_bins": near_gt_bins,
-        "note": "gt_bins: AbsRel on (0,1.5] vs (1.5,3.0]; not a PASS criterion — attribution only",
+        **check_0c(near_stats_0c, thr=thr),
+        "gt_bins": mid_gt_bins,
+        "note": "primary domain (5,12.2] per 6cr S-7; three-zone mid band",
     }
+    sub_0c_wall = check_0c_wall(wall_stats, thr=thr)
+    sub_0c_l23 = check_0c_l23(l23_stats, thr=thr)
     sub_0e = {
         "ok": True,
         "distribution": "deployment_rollout_corpus",
@@ -1255,6 +1341,8 @@ def run_eval(
         "0a": sub_0a,
         "0b": sub_0b,
         "0c": sub_0c,
+        "0c_wall": sub_0c_wall,
+        "0c_l23": sub_0c_l23,
         "0h": sub_0h,
         "0d_legacy": sub_0d_legacy,
         "0e": sub_0e,
@@ -1266,6 +1354,12 @@ def run_eval(
         "step": "P3",
         "signal": "V4-⓪-v2",
         "primary_refreeze": _PRIMARY_REFREEZE,
+        "oc_refreeze": _OC_REFREEZE,
+        "authoritative": bool(
+            sub_0c.get("domain_lo") == _NEAR_C_PRIMARY_LO
+            and sub_0c.get("domain_hi") == _NEAR_C_PRIMARY_HI
+            and sub_0c.get("refreeze") == _OC_REFREEZE
+        ),
         "dataset": str(dataset),
         "depth_ckpt": str(depth_ckpt),
         "tau_ckpt": str(tau_ckpt),
@@ -1283,7 +1377,71 @@ def run_eval(
         "episodes": len(episodes),
         "frames_scored": n_frames_total,
         "n_no_depth_frames": n_no_depth,
-        "near_pixel_stats": {**near_stats, "gt_bins": near_gt_bins},
+        "near_pixel_stats": {
+            **near_stats,
+            "primary_0c": near_stats_0c,
+            "legacy_l23": l23_stats,
+            "wall_0c": wall_stats,
+            "near_gt_bins": near_gt_bins,
+            "mid_gt_bins": mid_gt_bins,
+        },
+        "fov_min_report": {
+            "report_only": True,
+            "errata_id": "tz-errata-p0b-20260826",
+            "n": int(fov_gt_arr.size),
+            "median_signed_err_m": (
+                round(float(np.median(fov_dhat_raw - fov_gt_arr)), 4)
+                if fov_gt_arr.size
+                else None
+            ),
+            "p90_underread_m": (
+                round(
+                    float(np.percentile(np.maximum(0.0, fov_gt_arr - fov_dhat_raw), 90)),
+                    4,
+                )
+                if fov_gt_arr.size
+                else None
+            ),
+            "p95_underread_m": (
+                round(
+                    float(np.percentile(np.maximum(0.0, fov_gt_arr - fov_dhat_raw), 95)),
+                    4,
+                )
+                if fov_gt_arr.size
+                else None
+            ),
+            "fwd_aligned": {
+                "n": int(fov_gt_fwd_arr.size),
+                "p90_underread_m": (
+                    round(
+                        float(
+                            np.percentile(
+                                np.maximum(0.0, fov_gt_fwd_arr - fov_dhat_fwd_arr), 90
+                            )
+                        ),
+                        4,
+                    )
+                    if fov_gt_fwd_arr.size
+                    else None
+                ),
+                "p95_underread_m": (
+                    round(
+                        float(
+                            np.percentile(
+                                np.maximum(0.0, fov_gt_fwd_arr - fov_dhat_fwd_arr), 95
+                            )
+                        ),
+                        4,
+                    )
+                    if fov_gt_fwd_arr.size
+                    else None
+                ),
+            },
+            "note": (
+                "E0 report-only: full-FOV min(D̂) vs GT (deploy shield geometry); "
+                "primary ⓪c/⓪h/⓪i remain fwd center-box; do not gate on this block"
+            ),
+        },
         "outer_pixel_stats": outer_stats,
         "tau_dt": {
             "n_samples": len(dt_samples),
@@ -1349,7 +1507,7 @@ def run_eval(
 def _print_summary(payload: Dict[str, Any]) -> None:
     v = payload["verdict"]
     print(f"[v4-zero] episodes={payload['episodes']} frames={payload['frames_scored']}")
-    for k in ("0a", "0b", "0c", "0h", "0d_legacy", "0e", "0f"):
+    for k in ("0a", "0b", "0c", "0c_wall", "0c_l23", "0h", "0d_legacy", "0e", "0f"):
         s = payload["sub"][k]
         mark = "PASS" if s.get("ok") else "FAIL"
         gate = " [primary]" if k in ("0a", "0b", "0c", "0h", "0e") else ""

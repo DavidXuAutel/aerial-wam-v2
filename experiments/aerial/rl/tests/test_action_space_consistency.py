@@ -167,7 +167,7 @@ def test_update_refuses_legacy_policy_class():
 
 
 def test_pre_c2_checkpoint_loads_as_legacy_and_is_untrainable(tmp_path):
-    ac = _ac()
+    ac = _ac(condition_on_goal=False)
     payload = {
         "actor": ac._actor.state_dict(),
         "critic": ac._critic.state_dict(),

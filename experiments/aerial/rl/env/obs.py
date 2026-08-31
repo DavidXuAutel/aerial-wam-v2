@@ -48,6 +48,10 @@ class Observation:
     imu: Dict[str, Any] = field(default_factory=dict)  # supervision only
     t: float = 0.0                       # wall-clock capture time (s)
     info: Dict[str, Any] = field(default_factory=dict)
+    # Indoor odometry and altimeter extensions
+    baro_alt: Optional[float] = None     # barometer / altimeter reading (m)
+    rel_odom: Optional[np.ndarray] = None # relative odometry delta [dx, dy, dz, dyaw] from episode start or step t-1
+    agl_m: Optional[float] = None        # above-ground-level distance (m) from altimeter/downward ToF
 
     def __post_init__(self) -> None:
         self.rgb = np.ascontiguousarray(np.asarray(self.rgb, dtype=np.uint8))
@@ -78,16 +82,26 @@ class Observation:
             dtype=np.float32,
         )
 
-    def policy_view(self) -> "PolicyObservation":
+    def policy_view(
+        self,
+        *,
+        nav_pos: Optional[np.ndarray] = None,
+        nav_yaw: Optional[float] = None,
+        goal: Optional[np.ndarray] = None,
+    ) -> "PolicyObservation":
         """Restrict to the policy-visible fields (RGB + 4-D proprio).
 
-        The collector hands *this*, not the full ``Observation``, to a policy's
-        ``act`` — so depth / IMU / velocity / collision GT are structurally
-        unreachable from inside the policy (a leak attempt raises
-        ``AttributeError`` instead of silently succeeding). Privileged consumers
-        (reward, safety shield) still take the full ``Observation``.
+        Optional ``nav_pos`` / ``nav_yaw`` supply ``p_hat`` for goal_rel when
+        wired by mainline indoor eval (RUNBOOK_indoor_0xm §0.1).
         """
-        return PolicyObservation(rgb=self.rgb, proprio=self.proprio4(), t=self.t)
+        return PolicyObservation(
+            rgb=self.rgb,
+            proprio=self.proprio4(),
+            t=self.t,
+            nav_pos=nav_pos,
+            nav_yaw=nav_yaw,
+            goal=goal,
+        )
 
 
 @dataclass(frozen=True)
@@ -103,13 +117,28 @@ class PolicyObservation:
     rgb: np.ndarray                      # [H, W, 3] uint8 — the only exteroception
     proprio: np.ndarray                  # [4] (x, y, z, yaw)
     t: float = 0.0
+    nav_pos: Optional[np.ndarray] = None  # hat_p for goal_rel (estimator output)
+    nav_yaw: Optional[float] = None       # hat_psi for goal_rel
+    goal: Optional[np.ndarray] = None       # world goal xyz for goal_rel
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "rgb", np.ascontiguousarray(np.asarray(self.rgb, dtype=np.uint8)))
+        object.__setattr__(self, "proprio", np.asarray(self.proprio, dtype=np.float32).reshape(-1))
+        if self.nav_pos is not None:
+            object.__setattr__(self, "nav_pos", np.asarray(self.nav_pos, dtype=np.float64).reshape(3))
+        if self.goal is not None:
+            object.__setattr__(self, "goal", np.asarray(self.goal, dtype=np.float64).reshape(3))
 
     @property
     def position(self) -> np.ndarray:
+        if self.nav_pos is not None:
+            return np.asarray(self.nav_pos, dtype=np.float64)
         return np.asarray(self.proprio[:3], dtype=np.float64)
 
     @property
     def yaw(self) -> float:
+        if self.nav_yaw is not None:
+            return float(self.nav_yaw)
         return float(self.proprio[3])
 
 

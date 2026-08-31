@@ -5,7 +5,7 @@
 
 env:
   backend: mock            # mock | airsim
-  host: 10.229.20.125      # 4090 renderer (see config.env); airsim backend only
+  host: 10.229.20.110      # AirSim renderer (migrated 2026-08-31); airsim backend only
   port: 41451
   camera: front_custom
   vehicle: drone_1
@@ -70,6 +70,16 @@ world_model:
     rep: 0.1
     # V1-②: uplift two-hot reward inside βpred (recon MSE otherwise dominates)
     reward: 10.0
+  # Collision head (runbook B): plain BCE had collapsed to ~0 p_coll.
+  # coll_pos_weight 0 = auto neg/pos from batch; >0 forces. Soft near labels
+  # when coll_near_depth_m > 0 (center depth < thresh → soft 0.5 positive).
+  coll_pos_weight: 0.0
+  coll_near_depth_m: 5.0
+  # P0 coll geom supervision (runbook B 2026-08-28):
+  coll_rank_hinge_weight: 0.0      # 0 = off (baseline); >0 adds forward vs lateral ranking hinge
+  coll_rank_hinge_margin: 0.15     # target separation gap between forward and best-lateral arm
+  coll_hinge_fwd_max_m: 4.0        # geometric condition: only forward depth <= 4m & lat > fwd activates hinge
+  coll_fwd_depth_aux_weight: 0.0   # 0 = off; >0 trains depth_aux_head with log(1 + d_fwd) Huber loss
   # Reward-head aux uses body_vel * reward_dt as realized displacement (r60
   # actions overshoot early-horizon motion). Match env.step_hz (5 → 0.2).
   reward_dt: 0.2
@@ -118,14 +128,19 @@ world_model:
     # Decoder-only Δ-finetune (CLI --freeze-encoder). Keep false in yaml until a
     # head-only run is intentional; enable via CLI for AbsRel-preserving FT.
     freeze_encoder: false
-    checkpoint_dir: experiments/aerial/rl/artifacts/depth_ckpt
+    # Deploy depth head (promote 2026-08-26): S-8j best-holdout under G1′.
+    # Rollback: point checkpoint_path back to depth_ckpt_da3_r60_20260814/…
+    # See docs/handover/V4_DEPTH_PROMOTE_S8J_DECLARE_20260826.md
+    checkpoint_path: experiments/aerial/rl/artifacts/depth_ckpt_p45mid_s8j_20260825/depth_best_holdout_da3_ft_head.pt
+    checkpoint_dir: experiments/aerial/rl/artifacts/depth_ckpt_p45mid_s8j_20260825
 
 imagination:
   batch: 64
   horizon: 10              # <= MAX_IMAGINATION_HORIZON (spec §9 cap)
 
 safety:
-  # Three-zone speed governor (declare 20260823): replaces single 3 m depth latch.
+  # Three-zone speed governor (25 m/s cruise re-freeze 20260829; L/v lines from 20260823).
+  # engage_outer ≈ L1 + schedule_margin_l1 + need(v_cruise,v1,a) ≈ 134.6 m @ defaults.
   kind: three_zone
   l1_m: 8.0                  # outer speed line (2 m/s cap inside)
   l2_m: 5.0                  # mid speed line (1 m/s cap inside)
@@ -133,9 +148,10 @@ safety:
   v1_m_s: 2.0
   v2_m_s: 1.0
   v_stop_m_s: 0.2
-  v_cruise_m_s: 5.0
+  v_cruise_m_s: 25.0
   a_max_m_s2: 2.5            # conservative vs #28 measured brake p90≈3.23
   delay_s: 0.2               # perception delay budget (offline kinematic only)
+  # Omit schedule_margin_* to auto-derive from v_cruise (lag_steps ≈ v_cruise/6.25).
   min_tau_s: 1.0             # τ / p_coll emergency latch (unchanged)
   max_p_coll: 0.5
   retreat_step_m: 3.0

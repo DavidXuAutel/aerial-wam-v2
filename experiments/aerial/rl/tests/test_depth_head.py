@@ -373,6 +373,45 @@ def test_near_fwd_absrel_pinball_emphasizes_tail():
     assert s_wild["near_fwd_absrel_pinball"] > s_mild["near_fwd_absrel_pinball"]
 
 
+def test_near_fwd_pinball_excludes_wall_pixels():
+    H = W = 16
+    gt = torch.ones(1, H, W) * 10.0
+    gt[:, 4:12, 4:12] = 1.0  # wall at 1 m inside forward crop
+    log_sigma = torch.zeros_like(gt)
+    pred = gt.clone()
+    pred[:, 6:8, 6:8] = 5.0  # catastrophic AbsRel on wall only
+    _, s_v4 = depth_head_loss(
+        pred,
+        log_sigma,
+        gt,
+        absrel_weight=0.0,
+        silog_weight=0.0,
+        nll_weight=0.0,
+        near_fwd_absrel_pinball_weight=1.0,
+        near_fwd_absrel_pinball_tau=0.9,
+        center_frac=0.5,
+        near_focus_lo_m=1.5,
+        near_focus_m=3.0,
+    )
+    _, s_legacy = depth_head_loss(
+        pred,
+        log_sigma,
+        gt,
+        absrel_weight=0.0,
+        silog_weight=0.0,
+        nll_weight=0.0,
+        near_fwd_absrel_pinball_weight=1.0,
+        near_fwd_absrel_pinball_tau=0.9,
+        center_frac=0.5,
+        near_focus_lo_m=0.0,
+        near_focus_m=3.0,
+    )
+    assert s_v4["n_near_fwd"] == 0
+    assert np.isnan(s_v4["near_fwd_absrel_pinball"])
+    assert s_legacy["n_near_fwd"] > 0
+    assert s_legacy["near_fwd_absrel_pinball"] > 0.0
+
+
 def test_fwd_hard_cache_rejects_undersized_and_fills_batch():
     far = _const_depth_window([10.0] * 8)
     near = _const_depth_window([2.0] * 8)
@@ -725,3 +764,46 @@ def test_approach_oversample_cli_wins_over_yaml(monkeypatch, tmp_path):
                 "50",
             ]
         )
+
+
+def test_fwd_hinge_saturation_never_active_no_streak():
+    from experiments.aerial.rl.train_depth_head import fwd_hinge_saturation_update
+
+    max_seen, streak = 0.0, 0
+    for _ in range(60):
+        max_seen, streak = fwd_hinge_saturation_update(
+            fwd_hinge=0.0,
+            n_fwd_trigger=8,
+            min_n_fwd=4,
+            fwd_hinge_max_seen=max_seen,
+            sat_eps=1e-4,
+            current_streak=streak,
+        )
+    assert max_seen == 0.0
+    assert streak == 0
+
+
+def test_fwd_hinge_saturation_counts_after_active_then_quiet():
+    from experiments.aerial.rl.train_depth_head import fwd_hinge_saturation_update
+
+    max_seen, streak = 0.0, 0
+    max_seen, streak = fwd_hinge_saturation_update(
+        fwd_hinge=0.5,
+        n_fwd_trigger=8,
+        min_n_fwd=4,
+        fwd_hinge_max_seen=max_seen,
+        sat_eps=1e-4,
+        current_streak=streak,
+    )
+    assert max_seen == 0.5
+    assert streak == 0
+    for _ in range(3):
+        max_seen, streak = fwd_hinge_saturation_update(
+            fwd_hinge=0.0,
+            n_fwd_trigger=8,
+            min_n_fwd=4,
+            fwd_hinge_max_seen=max_seen,
+            sat_eps=1e-4,
+            current_streak=streak,
+        )
+    assert streak == 3

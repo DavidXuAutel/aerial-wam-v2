@@ -37,6 +37,69 @@ from experiments.aerial.rl.perception_data import windows_to_perception_arrays
 from experiments.aerial.rl.v0_metrics import DEFAULT_THRESHOLDS, depth_absrel
 
 
+def _write_depth_checkpoint(
+    path: Path,
+    *,
+    model: torch.nn.Module,
+    step: int,
+    holdout: float,
+    dh_cfg: Dict[str, Any],
+    backbone: str,
+    freeze_enc: bool,
+    init_ckpt: Optional[Path],
+    best_holdout: bool = False,
+) -> None:
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "step": int(step),
+            "n_frames": int(dh_cfg["n_frames"]),
+            "image_size": int(dh_cfg["image_size"]),
+            "base": int(dh_cfg["base"]),
+            "motion_channels": bool(dh_cfg.get("motion_channels", False)),
+            "scale_factorized": bool(dh_cfg.get("scale_factorized", False)),
+            "backbone": backbone,
+            "da3_arch": model.arch if backbone == "da3" else None,
+            "holdout_absrel": holdout,
+            "best_holdout": bool(best_holdout),
+            "depth_cfg": dh_cfg,
+            "init_ckpt": str(init_ckpt) if init_ckpt else None,
+            "freeze_encoder": freeze_enc,
+        },
+        path,
+    )
+
+
+def fwd_hinge_saturation_update(
+    *,
+    fwd_hinge: float,
+    n_fwd_trigger: int,
+    min_n_fwd: int,
+    fwd_hinge_max_seen: float,
+    sat_eps: float,
+    current_streak: int,
+) -> Tuple[float, int]:
+    """Update hinge-saturation streak for declare C″/E′ early-stop.
+
+    Hinge must have been **active** (``max_seen > sat_eps``) before a sub-ε
+    reading counts toward saturation. This blocks the v3/v4 **false early-stop**
+    where init already has ``fwd_hinge≈0`` on the hard-forward cache (A″ dead
+    signal) but pinball is still training.
+    """
+    k_gate = max(1, int(min_n_fwd)) if int(min_n_fwd) > 0 else 1
+    if int(n_fwd_trigger) < k_gate:
+        return float(fwd_hinge_max_seen), int(current_streak)
+    if fwd_hinge is None or not np.isfinite(fwd_hinge):
+        return float(fwd_hinge_max_seen), int(current_streak)
+    fh = float(fwd_hinge)
+    max_seen = max(float(fwd_hinge_max_seen), fh)
+    if fh < float(sat_eps) and max_seen > float(sat_eps):
+        return max_seen, int(current_streak) + 1
+    if fh >= float(sat_eps):
+        return max_seen, 0
+    return max_seen, 0
+
+
 def _load_depth_cfg(config_path: Path) -> Dict[str, Any]:
     cfg = yaml.safe_load(config_path.read_text()) or {}
     wm = dict(cfg.get("world_model", {}) or {})
@@ -54,6 +117,7 @@ def _load_depth_cfg(config_path: Path) -> Dict[str, Any]:
     # never fires). Added training term; ①d gate metric/threshold unchanged.
     dh.setdefault("near_weight", 3.0)
     dh.setdefault("near_focus_m", 5.0)
+    dh.setdefault("near_focus_lo_m", 0.0)
     # V4-⓪ v1 (archived) — off by default.
     dh.setdefault("near_overread_hinge_weight", 0.0)
     dh.setdefault("near_absrel_pinball_weight", 0.0)
@@ -489,6 +553,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Declare v3 softmin T in metres (recipe 0.05); 0=hard min.",
     )
     p.add_argument(
+        "--near-focus-m",
+        type=float,
+        default=None,
+        help="Near-band upper GT bound in metres (v4 recipe: 3.0).",
+    )
+    p.add_argument(
+        "--near-focus-lo-m",
+        type=float,
+        default=None,
+        help="Near-band lower GT bound in metres (v4/6cq recipe: 1.5).",
+    )
+    p.add_argument(
+        "--trigger-m",
+        type=float,
+        default=None,
+        help="Fwd hard-cache GT forward_min threshold (S-8: 12.2; legacy 3.0).",
+    )
+    p.add_argument(
         "--near-fwd-absrel-pinball-weight",
         type=float,
         default=None,
@@ -525,7 +607,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument(
         "--early-stop-on-fwd-saturate",
         action="store_true",
-        help="Declare v2 C′: stop when fwd_overread_hinge stays below eps for patience steps.",
+        help="Declare v2 C′: stop when fwd_overread_hinge stays below eps for "
+        "patience steps **after hinge was once above eps** (E′).",
+    )
+    p.add_argument(
+        "--early-stop-on-holdout-absrel",
+        action="store_true",
+        help="Declare v5 E′: stop when holdout ①d AbsRel exceeds "
+        "--holdout-absrel-max (requires --eval-every > 0).",
+    )
+    p.add_argument(
+        "--holdout-absrel-max",
+        type=float,
+        default=None,
+        help="①d hard-stop threshold (default: gate depth_absrel_max).",
+    )
+    p.add_argument(
+        "--save-best-holdout-ckpt",
+        action="store_true",
+        help="Declare v6c E‴: on each --eval-every holdout eval, save ckpt when "
+        "holdout AbsRel improves (depth_best_holdout*.pt).",
     )
     p.add_argument(
         "--drop-absrel-lr-on-fwd-saturate",
@@ -685,6 +786,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         dh_cfg["nll_weight"] = float(args.nll_weight)
     if args.fwd_softmin_temp is not None:
         dh_cfg["softmin_temperature_m"] = float(args.fwd_softmin_temp)
+    if args.near_focus_m is not None:
+        dh_cfg["near_focus_m"] = float(args.near_focus_m)
+    if args.near_focus_lo_m is not None:
+        dh_cfg["near_focus_lo_m"] = float(args.near_focus_lo_m)
+    if args.trigger_m is not None:
+        dh_cfg["trigger_m"] = float(args.trigger_m)
     if args.near_fwd_absrel_pinball_weight is not None:
         dh_cfg["near_fwd_absrel_pinball_weight"] = float(
             args.near_fwd_absrel_pinball_weight
@@ -930,12 +1037,46 @@ def main(argv: Optional[List[str]] = None) -> int:
     losses: List[float] = []
     last_holdout: Optional[float] = None
     fwd_sat_streak = 0
+    fwd_hinge_max_seen = 0.0
     absrel_lr_dropped = False
     sat_eps = float(dh_cfg.get("fwd_hinge_saturate_eps", 1.0e-4))
     sat_patience = int(dh_cfg.get("fwd_hinge_saturate_patience", 50))
     lr_drop = float(dh_cfg.get("absrel_lr_drop_on_saturate", 10.0))
     min_steps_sat = int(dh_cfg.get("min_steps_before_saturate", 0))
     min_n_fwd = int(dh_cfg.get("min_n_fwd_trigger", 0))
+    holdout_absrel_max = (
+        float(args.holdout_absrel_max)
+        if args.holdout_absrel_max is not None
+        else float(DEFAULT_THRESHOLDS.depth_absrel_max)
+    )
+    if args.early_stop_on_holdout_absrel and int(args.eval_every) <= 0:
+        print(
+            "[depth-train] FAIL: --early-stop-on-holdout-absrel requires "
+            "--eval-every > 0",
+            file=sys.stderr,
+        )
+        return 1
+    if args.save_best_holdout_ckpt and int(args.eval_every) <= 0:
+        print(
+            "[depth-train] FAIL: --save-best-holdout-ckpt requires "
+            "--eval-every > 0",
+            file=sys.stderr,
+        )
+        return 1
+    best_holdout_path: Optional[Path] = None
+    if args.save_best_holdout_ckpt:
+        best_stem = "depth_best_holdout"
+        if backbone == "da3":
+            best_stem += "_da3"
+        if base_w != 32:
+            best_stem += f"_base{base_w}"
+        if args.init_ckpt:
+            best_stem += "_ft"
+        if freeze_enc:
+            best_stem += "_head"
+        best_holdout_path = ckpt_dir / f"{best_stem}.pt"
+    best_holdout_val = float("inf")
+    best_holdout_step = 0
     use_fwd_cache = bool(args.fwd_hard_cache) or min_n_fwd > 0
     fwd_cache: List[Any] = []
     cache_rng = np.random.default_rng(int(args.split_seed) + 17)
@@ -972,6 +1113,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     model.train()
     stopped_early = False
     stop_reason = None
+    if int(args.eval_every) > 0:
+        last_holdout = _holdout_absrel(
+            model,
+            holdout_eps,
+            wm_batch=int(args.wm_batch),
+            window=int(args.window),
+            device=device,
+            max_depth_m=float(dh_cfg["max_depth_m"]),
+        )
+        print(
+            f"[depth-train] holdout baseline AbsRel={last_holdout:.4f} "
+            f"(①d gate ≤ {holdout_absrel_max})"
+        )
     for step in range(1, int(args.steps) + 1):
         if use_fwd_cache:
             windows = sample_fwd_hard_windows(
@@ -1006,6 +1160,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             nll_weight=float(dh_cfg["nll_weight"]),
             max_depth_m=float(dh_cfg["max_depth_m"]),
             near_weight=float(dh_cfg.get("near_weight", 0.0)),
+            near_focus_lo_m=float(dh_cfg.get("near_focus_lo_m", 0.0)),
             near_focus_m=float(dh_cfg.get("near_focus_m", 5.0)),
             near_overread_hinge_weight=float(
                 dh_cfg.get("near_overread_hinge_weight", 0.0)
@@ -1093,8 +1248,48 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(
                 f"[depth-train] step {step}/{args.steps} "
                 f"holdout_absrel={last_holdout:.4f} (gate ①d ≤ "
-                f"{DEFAULT_THRESHOLDS.depth_absrel_max})"
+                f"{holdout_absrel_max})"
             )
+            if (
+                args.save_best_holdout_ckpt
+                and best_holdout_path is not None
+                and np.isfinite(last_holdout)
+                and float(last_holdout) < best_holdout_val
+            ):
+                best_holdout_val = float(last_holdout)
+                best_holdout_step = int(step)
+                _write_depth_checkpoint(
+                    best_holdout_path,
+                    model=model,
+                    step=best_holdout_step,
+                    holdout=best_holdout_val,
+                    dh_cfg=dh_cfg,
+                    backbone=backbone,
+                    freeze_enc=freeze_enc,
+                    init_ckpt=args.init_ckpt,
+                    best_holdout=True,
+                )
+                print(
+                    f"[depth-train] best holdout ckpt @ step {best_holdout_step}: "
+                    f"AbsRel={best_holdout_val:.4f} → {best_holdout_path}"
+                )
+                row["best_holdout_saved"] = True
+            if (
+                args.early_stop_on_holdout_absrel
+                and np.isfinite(last_holdout)
+                and float(last_holdout) > holdout_absrel_max
+            ):
+                stopped_early = True
+                stop_reason = (
+                    f"holdout_absrel={last_holdout:.4f} > {holdout_absrel_max} "
+                    "(①d hard anchor)"
+                )
+                print(f"[depth-train] EARLY STOP: {stop_reason}")
+                row["early_stop"] = True
+                row["stop_reason"] = stop_reason
+                with log_path.open("a") as f:
+                    f.write(json.dumps(row) + "\n")
+                break
             model.train()
         with log_path.open("a") as f:
             f.write(json.dumps(row) + "\n")
@@ -1110,39 +1305,44 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"n_near={stats.get('n_near', 0)} "
                 f"n_valid={stats['n_valid']}"
             )
-        # Declare v3 C″: saturation of forward hinge (ignore nan / n_fwd<K; min_steps).
+        # Declare v3 C″ / v5 E′: hinge saturation only after hinge was once active.
         fh = stats.get("fwd_overread_hinge")
         n_fwd_step = int(stats.get("n_fwd_trigger", 0) or 0)
-        k_gate = max(1, min_n_fwd) if min_n_fwd > 0 else 1
+        if fh is not None and fh == fh:
+            fwd_hinge_max_seen, fwd_sat_streak = fwd_hinge_saturation_update(
+                fwd_hinge=float(fh),
+                n_fwd_trigger=n_fwd_step,
+                min_n_fwd=min_n_fwd,
+                fwd_hinge_max_seen=fwd_hinge_max_seen,
+                sat_eps=sat_eps,
+                current_streak=fwd_sat_streak,
+            )
         if (
             float(dh_cfg.get("fwd_overread_hinge_weight", 0.0)) > 0.0
             and step >= min_steps_sat
-            and fh is not None
-            and fh == fh  # not NaN
-            and n_fwd_step >= k_gate
+            and (
+                args.early_stop_on_fwd_saturate
+                or args.drop_absrel_lr_on_fwd_saturate
+            )
         ):
-            if float(fh) < sat_eps:
-                fwd_sat_streak += 1
-            else:
-                fwd_sat_streak = 0
             if fwd_sat_streak >= sat_patience:
-                # Default recipe: --skip-p2 + --early-stop-on-fwd-saturate → stop (no P2).
-                if args.early_stop_on_fwd_saturate or args.skip_p2:
+                if args.early_stop_on_fwd_saturate:
                     stopped_early = True
                     stop_reason = (
                         f"fwd_overread_hinge<{sat_eps} for {sat_patience} steps "
-                        f"(last={fh})"
+                        f"after max_seen={fwd_hinge_max_seen:.6f} (last={fh})"
                     )
                     print(f"[depth-train] EARLY STOP: {stop_reason}")
                     row_stop = {
                         "step": step,
                         "early_stop": True,
                         "reason": stop_reason,
+                        "fwd_hinge_max_seen": fwd_hinge_max_seen,
                     }
                     with log_path.open("a") as f:
                         f.write(json.dumps(row_stop) + "\n")
                     break
-                if args.drop_absrel_lr_on_fwd_saturate and not absrel_lr_dropped:
+                elif args.drop_absrel_lr_on_fwd_saturate and not absrel_lr_dropped:
                     for g in opt.param_groups:
                         g["lr"] = float(g["lr"]) / lr_drop
                     absrel_lr_dropped = True
@@ -1198,31 +1398,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
 
     if args.save_ckpt:
-        path = save_path
-        torch.save(
-            {
-                "model": model.state_dict(),
-                "step": int(args.steps),
-                "n_frames": int(dh_cfg["n_frames"]),
-                "image_size": int(dh_cfg["image_size"]),
-                "base": int(dh_cfg["base"]),
-                # Architecture flags must round-trip: _DepthHead.from_payload is
-                # what the gate and DepthMinPredictor rebuild from.
-                "motion_channels": bool(dh_cfg.get("motion_channels", False)),
-                "scale_factorized": bool(dh_cfg.get("scale_factorized", False)),
-                # backbone routes build_depth_head at load time ("scratch" default
-                # → _DepthHead; "da3" → DA3DepthHead). da3_arch round-trips the
-                # DINOv2/DPT config so DA3DepthHead.from_payload rebuilds exactly.
-                "backbone": backbone,
-                "da3_arch": model.arch if backbone == "da3" else None,
-                "holdout_absrel": holdout,
-                "depth_cfg": dh_cfg,
-                "init_ckpt": str(args.init_ckpt) if args.init_ckpt else None,
-                "freeze_encoder": freeze_enc,
-            },
-            path,
+        _write_depth_checkpoint(
+            save_path,
+            model=model,
+            step=int(args.steps),
+            holdout=float(holdout),
+            dh_cfg=dh_cfg,
+            backbone=backbone,
+            freeze_enc=freeze_enc,
+            init_ckpt=args.init_ckpt,
         )
-        print(f"[depth-train] wrote {path}")
+        print(f"[depth-train] wrote {save_path}")
+    if args.save_best_holdout_ckpt and best_holdout_path is not None:
+        if np.isfinite(best_holdout_val) and best_holdout_val < float("inf"):
+            print(
+                f"[depth-train] best holdout: step={best_holdout_step} "
+                f"AbsRel={best_holdout_val:.4f} → {best_holdout_path}"
+            )
+        else:
+            print("[depth-train] WARN: no best-holdout ckpt saved (no eval improvement)")
 
     # Soft pass for the trainer process: finite descending loss + finite AbsRel.
     if not losses or not np.isfinite(losses[-1]):

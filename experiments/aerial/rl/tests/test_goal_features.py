@@ -15,6 +15,7 @@ from experiments.aerial.rl.goal_features import (
     goal_rel_body,
     resolve_episode_goal,
     reward_aux_features,
+    g_norm_from_goal_rel,
 )
 
 
@@ -78,3 +79,10 @@ def test_body_vel_and_reward_aux_analytic():
     expect = analytic_progress(g, vb * 0.2, a, w_maneuver=0.01)
     np.testing.assert_allclose(aux[-1], expect, atol=1e-5)
     np.testing.assert_allclose(expect, 1.0 - 0.01, atol=1e-4)
+
+
+def test_g_norm_matches_reward_aux_prefix():
+    g = goal_rel_body(np.zeros(3), 0.0, np.array([40.0, 0.0, 0.0]))
+    gn = g_norm_from_goal_rel(g)
+    aux = reward_aux_features(g, np.zeros(3), np.zeros(4))
+    np.testing.assert_allclose(gn, aux[:4], rtol=1e-5, atol=1e-5)

@@ -231,3 +231,129 @@ def test_torch_encode_differs_from_stub_proprio4():
     assert torch_z.shape == (torch_m.latent_dim,)
     assert torch_m.latent_dim != 8
     assert not np.allclose(stub_z, torch_z[:8])
+
+
+def test_collision_targets_soft_near_depth_and_auto_pos_weight():
+    m = TorchRSSMDynamics(
+        image_size=16, device="cpu", coll_near_depth_m=5.0, coll_pos_weight=0.0
+    )
+    collided = torch.zeros(2, 2)
+    depth = torch.ones(2, 2, 16, 16) * 20.0
+    depth[0, 0] = 2.0  # near
+    collided[1, 1] = 1.0  # hard contact
+    # Soft near only when action is forward.
+    action = torch.zeros(2, 2, 4)
+    action[0, 0, 0] = 1.0  # fwd at near cell
+    action[0, 1, 1] = 1.0  # lateral at far cell
+    target, pw = m._collision_train_targets(collided, depth, action=action)
+    assert float(target[0, 0]) == pytest.approx(0.5)
+    assert float(target[0, 1]) == pytest.approx(0.0)
+    assert float(target[1, 1]) == pytest.approx(1.0)
+    assert float(pw) >= 1.0
+    # Same near depth but lateral action → no soft boost.
+    action2 = torch.zeros(2, 2, 4)
+    action2[0, 0, 1] = 1.0
+    target2, _ = m._collision_train_targets(collided, depth, action=action2)
+    assert float(target2[0, 0]) == pytest.approx(0.0)
+
+
+def test_coll_logits_depends_on_action():
+    m = _tiny_model()
+    feat = torch.zeros(1, m.latent_dim)
+    a_fwd = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    a_left = torch.tensor([[0.0, 1.0, 0.0, 0.0]])
+    # Force 2-layer MLP to pass different action columns with distinct signs.
+    with torch.no_grad():
+        m.coll_head[0].weight.zero_()
+        m.coll_head[0].bias.zero_()
+        m.coll_head[2].weight.zero_()
+        m.coll_head[2].bias.zero_()
+        # Last 4 weights of layer 0 = action dims; route fwd to node 0, left to node 1.
+        m.coll_head[0].weight[0, -4] = 1.0
+        m.coll_head[0].weight[1, -3] = 1.0
+        m.coll_head[2].weight[0, 0] = 1.0
+        m.coll_head[2].weight[0, 1] = -1.0
+    lf = float(m._coll_logits(feat, a_fwd).item())
+    ll = float(m._coll_logits(feat, a_left).item())
+    assert lf > ll
+
+
+def test_coll_rank_hinge_loss_and_depth_aux():
+    """P0 2026-08-28: hinge separates forward vs lateral arm; depth-aux is continuous."""
+    m = TorchRSSMDynamics(
+        image_size=16,
+        device="cpu",
+        coll_near_depth_m=5.0,
+        coll_rank_hinge_weight=2.0,
+        coll_rank_hinge_margin=0.20,
+        coll_fwd_depth_aux_weight=0.8,
+    )
+    assert m.coll_rank_hinge_weight == pytest.approx(2.0)
+    assert m.coll_rank_hinge_margin == pytest.approx(0.20)
+    assert m.coll_fwd_depth_aux_weight == pytest.approx(0.8)
+
+    # 1. Depth aux continuous proximity test
+    collided = torch.zeros(1, 1)
+    depth = torch.ones(1, 1, 16, 16) * 2.5  # half of 5.0m
+    action = torch.zeros(1, 1, 4)
+    action[0, 0, 0] = 1.0  # forward action
+    target, _ = m._collision_train_targets(collided, depth, action=action)
+    # proximity = (5.0 - 2.5) / 5.0 * 0.8 = 0.5 * 0.8 = 0.4
+    assert float(target[0, 0]) == pytest.approx(0.4)
+
+    # 2. Hinge loss when coll_target > 0
+    feat = torch.zeros(1, 1, m.latent_dim)
+    # Initialize coll_head to output 0 for all actions
+    with torch.no_grad():
+        for layer in m.coll_head:
+            if hasattr(layer, "weight"):
+                layer.weight.zero_()
+            if hasattr(layer, "bias"):
+                layer.bias.zero_()
+    loss_hinge, gap = m._coll_rank_hinge_loss(feat, target)
+    # When logits are 0, p_fwd = 0.5, p_lat = 0.5 -> gap = 0.0 -> loss = relu(0.20 - 0.0) = 0.20
+    assert float(gap) == pytest.approx(0.0)
+    assert float(loss_hinge.detach()) == pytest.approx(0.20)
+
+    # 3. Hinge loss is 0 when coll_target is 0 (open space)
+    zero_target = torch.zeros_like(target)
+    loss_hinge_zero, _ = m._coll_rank_hinge_loss(feat, zero_target)
+    assert float(loss_hinge_zero.detach()) == pytest.approx(0.0)
+
+    # 4. Geometric condition test with depth map:
+    # 4a. Forward blocked (2m), lateral open (10m) -> hinge active
+    depth_geom = torch.ones(1, 1, 16, 16) * 10.0
+    depth_geom[0, 0, 4:12, 4:12] = 2.0  # forward obstacle
+    loss_geom_active, _ = m._coll_rank_hinge_loss(feat, target, depth=depth_geom)
+    assert float(loss_geom_active.detach()) == pytest.approx(0.20)
+
+    # 4b. Open space forward (8m > 4m cutoff) -> masked out (0.0)
+    depth_open = torch.ones(1, 1, 16, 16) * 8.0
+    loss_geom_open, _ = m._coll_rank_hinge_loss(feat, target, depth=depth_open)
+    assert float(loss_geom_open.detach()) == pytest.approx(0.0)
+
+    # 4c. Lateral tighter than forward (e.g. narrow corridor) -> masked out (0.0)
+    depth_corridor = torch.ones(1, 1, 16, 16) * 1.0  # sides 1.0m
+    depth_corridor[0, 0, 4:12, 4:12] = 2.0  # forward 2.0m
+    loss_geom_corridor, _ = m._coll_rank_hinge_loss(feat, target, depth=depth_corridor)
+    assert float(loss_geom_corridor.detach()) == pytest.approx(0.0)
+
+
+def test_from_config_reads_coll_geom_keys():
+    cfg = {
+        "recurrent_dim": 16, "stoch_dim": 4, "stoch_classes": 4, "num_bins": 41,
+        "bin_lo": -10.0, "bin_hi": 10.0, "free_bits": 1.0,
+        "loss_scales": {"pred": 1.0, "dyn": 1.0, "rep": 0.1, "reward": 10.0},
+        "lr": 1e-4, "grad_clip": 1000.0, "image_size": 16,
+        "decoder": {"train_only": True}, "device": "cpu",
+        "coll_rank_hinge_weight": 1.5,
+        "coll_rank_hinge_margin": 0.25,
+        "coll_hinge_fwd_max_m": 4.5,
+        "coll_fwd_depth_aux_weight": 0.6,
+    }
+    m = TorchRSSMDynamics.from_config(cfg)
+    assert m.coll_rank_hinge_weight == pytest.approx(1.5)
+    assert m.coll_rank_hinge_margin == pytest.approx(0.25)
+    assert m.coll_hinge_fwd_max_m == pytest.approx(4.5)
+    assert m.coll_fwd_depth_aux_weight == pytest.approx(0.6)
+

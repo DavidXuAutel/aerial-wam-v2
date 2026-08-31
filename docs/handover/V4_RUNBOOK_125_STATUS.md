@@ -1,18 +1,19 @@
 # V4 RUNBOOK 125 STATUS
 
-- **date**: 2026-08-28
+- **date**: 2026-08-30
 - **执行归属**：**后续任务一律 cursor-125 Agent**（经 bridge/`agent`）；Mac 只 git/handoff；H100 只经 125
 - **代码同步**：125 `git fetch github && git merge github/main`（Mac push github；125 github 鉴权曾失败需修）
 - **B′（DONE）**：B′-1 **weak_geometry**（window R²≈−0.55）；B′-2 window gap=**0.00177**≈single **0.0018** → encode 非主因
 - **coll_rep H100（DONE · FAIL）**：`wm_ckpt_coll_rep_20260828/wm_step_1500.pt`；B gap=**−0.0020**；B′-1 仍 weak；learning gate FAIL；yaml 加压无效
-- **下一步（125）**：须 **代码刀**（coll hinge / depth-aux 进 latent 监督）→ H100 再训 → 重跑 B；**勿优先 B′-3**；**禁止 E**
+- **B′-4 oracle（DONE · low_ceiling）**：`artifacts/wam_coll_oracle_gtdepth_20260828.json`；median_oracle_gap=**−0.108**（n=32）；静态 GT cone 在 B 采样上 **不分 forward>lat** → 与 B gap≈0 一致，非单纯「WM 未学到可分几何」
+- **下一步（125）**：**p_coll veto 修后跟折线复评 + 法医** → [`WAM_PHASE2_PCOLL_VETO_REEVAL_125_PROMPT.md`](WAM_PHASE2_PCOLL_VETO_REEVAL_125_PROMPT.md)；活页 [`WAM_PHASE2_STATUS_20260829.md`](WAM_PHASE2_STATUS_20260829.md)。**禁止**只报 mean Prog / g_norm 重训 / Docking / 关罩
 - **enable_policy_update**: false
 - **H100 WM（coll_full）**：`wm_ckpt_coll_full_20260827/wm_step_1000.pt`
 - **B 产物**：`…_h100full_…json` gap=0.0018；`…_collrep_20260828.json` gap=−0.0020
 - **C2**：`dataset_wam_loop_20260827/` — 31 ep
 - **目标诚实口径**：坐标目标，非视觉搜目标
 - **安全栈**：深度+限速罩 = 覆盖层
-- **旧 RUNBOOK_v4**：审计保留；日常以 `RUNBOOK_wam_imagination.md` 为准
+- **旧 RUNBOOK_v4**：审计保留；日常以 `RUNBOOK_wam_imagination.md` + Phase-2 `RUNBOOK_wam_phase2_long_horizon.md` 为准
 
 ## V4 主线 — 当前阻塞与下一发（125 / H100）
 

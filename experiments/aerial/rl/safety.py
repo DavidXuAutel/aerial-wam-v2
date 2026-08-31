@@ -13,7 +13,8 @@ trigger wiring against fields that may not be populated yet.
 
 **Three-zone deploy (2026-08-23)**: ``ThreeZoneSpeedShield`` replaces the single
 3 m depth latch with a graduated speed governor (8/5/1.5 m @ 2/1/0.2 m/s).
-τ / p_coll emergencies still latch + retreat.
+τ emergencies still latch + retreat; ``p_coll`` latch is vetoed when forward
+clearance exceeds L1 (false WM collision while corridor is open).
 """
 from __future__ import annotations
 
@@ -24,7 +25,12 @@ import numpy as np
 
 from experiments.aerial.rl.env.action import MAX_BODY_VELOCITY, clip_body_delta
 from experiments.aerial.rl.env.obs import Observation
-from experiments.aerial.rl.three_zone import ThreeZoneSpec, planned_speed_m_s
+from experiments.aerial.rl.three_zone import (
+    ThreeZoneSpec,
+    engage_outer_for_speed,
+    planned_speed_m_s,
+    resolve_v_ref_m_s,
+)
 from experiments.aerial.rl.tau_predictor import (
     DEFAULT_MIN_CLOSING_M_S,
     closing_speed_m_s,
@@ -212,13 +218,18 @@ class DepthTauShield(ThresholdSafetyShield):
 
 @dataclass
 class ThreeZoneSpeedShield:
-    """Graduated speed governor from ``D̂_fwd`` + τ/p_coll emergency latch.
+    """Graduated speed governor from ``D̂_fwd`` (+ cones) + τ/p_coll latch.
 
-  * **Depth**: cap body +x to ``planned_speed(D̂) * dt`` — **no episode latch**.
+    * **L3 brake (BA)**: when ``d̂_fwd ≤ L3``, per-step −x retreat.
+    * **L3 3D (BB)**: after −x, ``‖Δ‖₂ ≤ v_stop·dt`` (``three_zone_3d``) + active
+      lateral clamp in L3 when cones ≤ L2 (``three_zone_lat``).
+  * **Depth (P0b)**: ``min(cones['forward'], full-min)`` for +x / L3; L3 **外**
+    side cones ≤ L2 clamp toward-obstacle to ≤ v2·dt (``three_zone_lat``, report-only).
   * **τ / p_coll**: latch + graduated −x retreat (same as v5 threshold shield).
 
-  Default zones: **8 / 5 / 1.5 m @ 2 / 1 / 0.2 m/s**, cruise 5 m/s,
-  engage ≈ **12.2 m** — replaces the problematic single **3 m** depth trigger.
+  Default zones: **8 / 5 / 1.5 m @ 2 / 1 / 0.2 m/s**, cruise ceiling **25 m/s**;
+  outer engage is **dynamic** from body-forward ``v_now`` / commanded ``v_x``
+  (capped by cruise). Static engage at full cruise ≈ **134.6 m**.
     """
 
     zone: ThreeZoneSpec = field(default_factory=ThreeZoneSpec)
@@ -227,8 +238,23 @@ class ThreeZoneSpeedShield:
     min_closing_m_s: float = DEFAULT_MIN_CLOSING_M_S
     brake_gain: float = 1.0
     retreat_step_m: float = 3.0
+    deadlock_thresh_steps: int = 3
+    #: Mainline default 0 (F7): non-zero re-enables sustained lateral escape SM.
+    escape_hold_steps: int = 0
+    enable_sustained_escape: bool = False
+    #: When True (default), size outer band from ``max(v_now, v_cmd)`` each step.
+    dynamic_v_ref: bool = True
+    #: Ignore WM ``p_coll`` emergency when forward clearance exceeds this (metres).
+    #: ``None`` (default) → use zone L1. Set ``<=0`` to disable the veto.
+    #: Prevents false p_coll latch → body −x retreat while the corridor is open
+    #: (Phase-2: anti-parallel crawl off the polyline).
+    p_coll_clearance_veto_m: Optional[float] = None
     _emergency_engaged: bool = field(default=False, init=False, repr=False)
     _last_channels: tuple[str, ...] = field(default=(), init=False, repr=False)
+    _consecutive_forward_blocks: int = field(default=0, init=False, repr=False)
+    _escape_steps_remaining: int = field(default=0, init=False, repr=False)
+    _escape_direction: int = field(default=0, init=False, repr=False)
+    _clear_danger_steps: int = field(default=0, init=False, repr=False)
 
     @property
     def last_channels(self) -> tuple[str, ...]:
@@ -237,6 +263,16 @@ class ThreeZoneSpeedShield:
     def reset(self) -> None:
         self._emergency_engaged = False
         self._last_channels = ()
+        self._consecutive_forward_blocks = 0
+        self._escape_steps_remaining = 0
+        self._escape_direction = 0
+        self._clear_danger_steps = 0
+
+    def _p_coll_clearance_veto_m(self) -> Optional[float]:
+        if self.p_coll_clearance_veto_m is None:
+            return float(self.zone.l1_m)
+        v = float(self.p_coll_clearance_veto_m)
+        return v if v > 0.0 else None
 
     def _emergency_channels(self, obs: Observation, wm_out: Optional[Any] = None) -> tuple[str, ...]:
         out: list[str] = []
@@ -247,7 +283,18 @@ class ThreeZoneSpeedShield:
         if tau is not None and float(tau) < self.min_tau_s:
             out.append("tau")
         if p_coll is not None and float(p_coll) > self.max_p_coll:
-            out.append("p_coll")
+            veto = self._p_coll_clearance_veto_m()
+            d_fwd = self._forward_d_hat(obs)
+            if (
+                veto is not None
+                and d_fwd is not None
+                and np.isfinite(float(d_fwd))
+                and float(d_fwd) > float(veto)
+            ):
+                obs.info["shield_p_coll_vetoed"] = True
+                obs.info["shield_p_coll_veto_d_fwd_m"] = round(float(d_fwd), 4)
+            else:
+                out.append("p_coll")
         return tuple(out)
 
     def _emergency_override(self, obs: Observation) -> np.ndarray:
@@ -263,19 +310,200 @@ class ThreeZoneSpeedShield:
             return float(limits[0]) / float(MAX_BODY_VELOCITY[0])
         return float(self.zone.dt_s)
 
+    def _cones(self, obs: Observation) -> Optional[dict]:
+        raw = obs.info.get("depth_cones_pred")
+        return raw if isinstance(raw, dict) else None
+
+    def _forward_d_hat(self, obs: Observation) -> Optional[float]:
+        """Forward clearance: prioritize dedicated forward cone.
+        Only fall back to full-min if cones are unavailable.
+        """
+        cones = self._cones(obs)
+        if cones is not None:
+            fwd = cones.get("forward")
+            if fwd is not None and np.isfinite(float(fwd)):
+                return float(fwd)
+        full = obs.info.get("depth_min_pred")
+        if full is not None and np.isfinite(float(full)):
+            return float(full)
+        return None
+
     def _cap_forward(self, action: np.ndarray, obs: Observation, limits: Optional[np.ndarray]) -> tuple[np.ndarray, bool]:
-        d_hat = obs.info.get("depth_min_pred")
+        d_hat = self._forward_d_hat(obs)
         if d_hat is None:
             return action, False
-        v_cap = planned_speed_m_s(float(d_hat), self.zone)
-        obs.info["three_zone_speed_cap_m_s"] = round(v_cap, 4)
         dt = self._dt_from_limits(limits)
-        max_dx = v_cap * dt
         capped = np.asarray(action, dtype=np.float64).reshape(4).copy()
+        v_now = float(closing_speed_m_s(obs))
+        v_cmd = max(0.0, float(capped[0]) / max(dt, 1e-6))
+        if bool(self.dynamic_v_ref):
+            v_ref = resolve_v_ref_m_s(self.zone, v_now_m_s=v_now, v_cmd_m_s=v_cmd)
+            v_cap = planned_speed_m_s(float(d_hat), self.zone, v_ref_m_s=v_ref)
+            eng = engage_outer_for_speed(self.zone, v_ref)
+        else:
+            v_ref = float(self.zone.v_cruise_m_s)
+            v_cap = planned_speed_m_s(float(d_hat), self.zone)
+            eng = float(self.zone.engage_outer_m)
+        obs.info["three_zone_speed_cap_m_s"] = round(v_cap, 4)
+        obs.info["three_zone_d_hat_fwd_m"] = round(float(d_hat), 4)
+        obs.info["three_zone_v_ref_m_s"] = round(v_ref, 4)
+        obs.info["three_zone_engage_outer_m"] = round(float(eng), 4)
+        max_dx = v_cap * dt
         if capped[0] > max_dx + 1e-6:
             capped[0] = max_dx
             return capped, True
         return capped, False
+
+    def _cap_lateral(
+        self, action: np.ndarray, obs: Observation, limits: Optional[np.ndarray]
+    ) -> tuple[np.ndarray, bool]:
+        """P0b: when side/up/down cone ≤ L2, clamp toward-obstacle axis to ≤ v2·dt.
+
+        Body frame: +x fwd, +y left, +z up. ``three_zone_lat`` is report-only
+        (not an emergency latch channel).
+        """
+        cones = self._cones(obs)
+        if cones is None:
+            return action, False
+        dt = self._dt_from_limits(limits)
+        max_lat = float(self.zone.v2_m_s) * dt
+        l2 = float(self.zone.l2_m)
+        capped = np.asarray(action, dtype=np.float64).reshape(4).copy()
+        hit: list[str] = []
+
+        def _finite(key: str) -> Optional[float]:
+            v = cones.get(key)
+            if v is None:
+                return None
+            f = float(v)
+            return f if np.isfinite(f) else None
+
+        left = _finite("left")
+        right = _finite("right")
+        up = _finite("up")
+        down = _finite("down")
+        # +y = left: toward left obstacle ⇒ clamp positive y
+        if left is not None and left <= l2 and capped[1] > max_lat + 1e-6:
+            capped[1] = max_lat
+            hit.append("left")
+        # −y = right
+        if right is not None and right <= l2 and capped[1] < -max_lat - 1e-6:
+            capped[1] = -max_lat
+            hit.append("right")
+        # +z = up
+        if up is not None and up <= l2 and capped[2] > max_lat + 1e-6:
+            capped[2] = max_lat
+            hit.append("up")
+        # −z = down
+        if down is not None and down <= l2 and capped[2] < -max_lat - 1e-6:
+            capped[2] = -max_lat
+            hit.append("down")
+        if not hit:
+            return capped, False
+        ch = list(obs.info.get("shield_channels") or [])
+        if "three_zone_lat" not in ch:
+            ch.append("three_zone_lat")
+        if "three_zone" not in ch:
+            ch.append("three_zone")
+        obs.info["shield_channels"] = ch
+        obs.info["three_zone_lat_axes"] = hit
+        return capped, True
+
+    def _norm_clamp_l3(
+        self, action: np.ndarray, obs: Observation, limits: Optional[np.ndarray]
+    ) -> tuple[np.ndarray, bool]:
+        """BB B1: when in L3 brake path, cap ‖Δbody‖₂ ≤ v_stop·dt."""
+        dt = self._dt_from_limits(limits)
+        max_norm = float(self.zone.v_stop_m_s) * dt
+        capped = np.asarray(action, dtype=np.float64).reshape(4).copy()
+        norm = float(np.linalg.norm(capped))
+        if norm <= max_norm + 1e-9 or norm < 1e-12:
+            return capped, False
+        scaled = capped * (max_norm / norm)
+        ch = list(obs.info.get("shield_channels") or [])
+        if "three_zone_3d" not in ch:
+            ch.append("three_zone_3d")
+        if "three_zone" not in ch:
+            ch.append("three_zone")
+        obs.info["shield_channels"] = ch
+        return scaled, True
+
+    def _cap_lateral_l3_active(
+        self, action: np.ndarray, obs: Observation, limits: Optional[np.ndarray]
+    ) -> tuple[np.ndarray, bool]:
+        """BB B2: L3内 cones≤L2 ⇒ clamp |Δ_axis| ≤ v_stop·dt (both directions)."""
+        d_hat = self._forward_d_hat(obs)
+        if d_hat is None or float(d_hat) > float(self.zone.l3_m):
+            return action, False
+        cones = self._cones(obs)
+        if cones is None:
+            return action, False
+        dt = self._dt_from_limits(limits)
+        max_axis = float(self.zone.v_stop_m_s) * dt
+        l2 = float(self.zone.l2_m)
+        capped = np.asarray(action, dtype=np.float64).reshape(4).copy()
+        hit: list[str] = []
+
+        def _finite(key: str) -> Optional[float]:
+            v = cones.get(key)
+            if v is None:
+                return None
+            f = float(v)
+            return f if np.isfinite(f) else None
+
+        left = _finite("left")
+        right = _finite("right")
+        up = _finite("up")
+        down = _finite("down")
+        if (left is not None and left <= l2) or (right is not None and right <= l2):
+            if abs(capped[1]) > max_axis + 1e-6:
+                capped[1] = float(np.clip(capped[1], -max_axis, max_axis))
+                if left is not None and left <= l2:
+                    hit.append("left")
+                if right is not None and right <= l2:
+                    hit.append("right")
+        if (up is not None and up <= l2) or (down is not None and down <= l2):
+            if abs(capped[2]) > max_axis + 1e-6:
+                capped[2] = float(np.clip(capped[2], -max_axis, max_axis))
+                if up is not None and up <= l2:
+                    hit.append("up")
+                if down is not None and down <= l2:
+                    hit.append("down")
+        if not hit:
+            return capped, False
+        ch = list(obs.info.get("shield_channels") or [])
+        if "three_zone_lat" not in ch:
+            ch.append("three_zone_lat")
+        if "three_zone" not in ch:
+            ch.append("three_zone")
+        obs.info["shield_channels"] = ch
+        obs.info["three_zone_lat_axes"] = hit
+        return capped, True
+
+    def _l3_active_brake(
+        self, obs: Observation, limits: Optional[np.ndarray]
+    ) -> Optional[tuple[np.ndarray, bool]]:
+        """BA declare: when min(d̂_fwd, full_min) <= L3, per-step −x retreat (no episode latch)."""
+        d_hat = self._forward_d_hat(obs)
+        full = obs.info.get("depth_min_pred")
+        full_f = float(full) if full is not None and np.isfinite(float(full)) else None
+
+        d_crit = d_hat
+        if full_f is not None and (d_crit is None or full_f < d_crit):
+            d_crit = full_f
+
+        if d_crit is None or float(d_crit) > float(self.zone.l3_m):
+            return None
+        ch = list(obs.info.get("shield_channels") or [])
+        if "three_zone_brake" not in ch:
+            ch.append("three_zone_brake")
+        if "three_zone" not in ch:
+            ch.append("three_zone")
+        obs.info["shield_channels"] = ch
+        obs.info["three_zone_speed_cap_m_s"] = round(float(self.zone.v_stop_m_s), 4)
+        obs.info["three_zone_d_hat_fwd_m"] = round(float(d_crit), 4)
+        self._last_channels = tuple(ch)
+        return clip_body_delta(self._emergency_override(obs), limits), True
 
     def apply_action(
         self,
@@ -285,22 +513,85 @@ class ThreeZoneSpeedShield:
         limits: Optional[np.ndarray] = None,
     ) -> tuple[np.ndarray, bool]:
         action = np.asarray(action, dtype=np.float64).reshape(4)
-        if self._emergency_engaged:
-            return clip_body_delta(self._emergency_override(obs), limits), True
         channels = self._emergency_channels(obs, wm_out)
+        if self._emergency_engaged:
+            if not channels:
+                self._clear_danger_steps += 1
+                if self._clear_danger_steps >= 3:
+                    self._emergency_engaged = False
+                    self._clear_danger_steps = 0
+            else:
+                self._clear_danger_steps = 0
+            if self._emergency_engaged:
+                obs.info["shield_emergency_override"] = True
+                return clip_body_delta(self._emergency_override(obs), limits), True
+
         if channels:
             self._emergency_engaged = True
             self._last_channels = channels
             obs.info["shield_channels"] = list(channels)
+            obs.info["shield_emergency_override"] = True
             return clip_body_delta(self._emergency_override(obs), limits), True
 
+        braked = self._l3_active_brake(obs, limits)
+        if braked is not None:
+            out, _ = braked
+            out, norm_ch = self._norm_clamp_l3(out, obs, limits)
+            out, lat_ch = self._cap_lateral_l3_active(out, obs, limits)
+            if norm_ch or lat_ch:
+                self._last_channels = tuple(obs.info.get("shield_channels") or [])
+            obs.info["shield_emergency_override"] = True
+            return clip_body_delta(out, limits), True
+
         capped, changed = self._cap_forward(action, obs, limits)
+        lat, lat_ch = self._cap_lateral(capped, obs, limits)
+        if changed or lat_ch:
+            self._consecutive_forward_blocks += 1
+            obs.info["shield_governor_cap"] = True
+        else:
+            self._consecutive_forward_blocks = max(0, self._consecutive_forward_blocks - 1)
+
+        # Risk 4: Sustained Directional Wall-Following Escape (OFF on mainline; F7)
+        d_fwd = self._forward_d_hat(obs)
+        if bool(self.enable_sustained_escape) and int(self.escape_hold_steps) > 0:
+            if self._escape_steps_remaining > 0:
+                if d_fwd is not None and float(d_fwd) > 4.5:
+                    self._escape_steps_remaining = 0
+                else:
+                    self._escape_steps_remaining -= 1
+                    dt = self._dt_from_limits(limits)
+                    v_lat_escape = min(0.35, float(self.zone.v2_m_s) * 0.6)
+                    lat[1] = self._escape_direction * v_lat_escape * dt
+                    lat[3] = self._escape_direction * 0.18
+                    ch = list(obs.info.get("shield_channels") or [])
+                    if "three_zone_sustained_escape" not in ch:
+                        ch.append("three_zone_sustained_escape")
+                    obs.info["shield_channels"] = ch
+                    lat_ch = True
+            elif self._consecutive_forward_blocks >= self.deadlock_thresh_steps:
+                cones = self._cones(obs)
+                l_val = float(cones.get("left", 5.0)) if cones and cones.get("left") is not None else 5.0
+                r_val = float(cones.get("right", 5.0)) if cones and cones.get("right") is not None else 5.0
+                self._escape_direction = 1 if l_val >= r_val else -1
+                self._escape_steps_remaining = int(self.escape_hold_steps)
+                dt = self._dt_from_limits(limits)
+                v_lat_escape = min(0.35, float(self.zone.v2_m_s) * 0.6)
+                lat[1] = self._escape_direction * v_lat_escape * dt
+                lat[3] = self._escape_direction * 0.18
+                ch = list(obs.info.get("shield_channels") or [])
+                if "three_zone_sustained_escape" not in ch:
+                    ch.append("three_zone_sustained_escape")
+                obs.info["shield_channels"] = ch
+                lat_ch = True
+
         if changed:
             ch = list(obs.info.get("shield_channels") or [])
             if "three_zone" not in ch:
                 ch.append("three_zone")
             obs.info["shield_channels"] = ch
-        return clip_body_delta(capped, limits), changed
+        if changed or lat_ch:
+            self._last_channels = tuple(obs.info.get("shield_channels") or [])
+        return clip_body_delta(lat, limits), bool(changed or lat_ch)
 
     def should_override(self, obs: Observation, wm_out: Optional[Any] = None) -> bool:
         """Backward-compat: true only for τ/p_coll emergency latch."""

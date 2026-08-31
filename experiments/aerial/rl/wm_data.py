@@ -97,10 +97,18 @@ def windows_to_arrays(windows: List[Episode]) -> Dict[str, np.ndarray]:
     collided = np.asarray(
         [[_collided(w, t) for t in range(length)] for w in windows], dtype=np.bool_
     )
+    def _goal_rel_wm(obs) -> np.ndarray:
+        from experiments.aerial.rl.pose_estimate import GtProxyPoseEstimator, resolve_pose_from_obs, stamp_pose_on_obs
+
+        if resolve_pose_from_obs(obs) is None:
+            pe = GtProxyPoseEstimator().reset(obs)
+            stamp_pose_on_obs(obs, pe)
+        return goal_rel_from_obs(obs)
+
     goal_rel = np.stack(
         [
             np.stack(
-                [goal_rel_from_obs(_obs(w, t)) for t in range(length)],
+                [_goal_rel_wm(_obs(w, t)) for t in range(length)],
                 axis=0,
             )
             for w in windows

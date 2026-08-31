@@ -115,6 +115,20 @@ class StubLatentDynamics(LatentDynamics):
         z[: min(4, self.latent_dim)] = base[: min(4, self.latent_dim)]
         return z
 
+    def observe_and_advance(
+        self,
+        prev_latent: np.ndarray,
+        action: np.ndarray,
+        current_obs: Observation,
+    ) -> np.ndarray:
+        """Test stub: carry streaming state (distinct from fresh ``encode``)."""
+        z = self.encode(current_obs)
+        prev = np.asarray(prev_latent, dtype=np.float64).reshape(self.latent_dim)
+        tail = min(4, self.latent_dim)
+        if tail > 0:
+            z[:tail] = 0.7 * prev[:tail] + 0.3 * z[:tail]
+        return z
+
     def step(
         self,
         z: np.ndarray,

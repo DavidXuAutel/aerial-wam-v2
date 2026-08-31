@@ -58,3 +58,40 @@ def test_collector_writes_depth_min_pred_before_shield():
     assert stats.interventions >= 1
     # The stored transition's obs.info must carry the prediction.
     assert ep[0].obs.info.get("depth_min_pred") == 0.5
+    # ATTR: same pred must also land on transition.info for P7/attr harness.
+    assert ep[0].info.get("depth_min_pred") == 0.5
+
+
+def test_collector_copies_tau_pred_into_ep_info():
+    class _StubEnv:
+        def __init__(self):
+            self.config = type("C", (), {"step_hz": 5.0})()
+            self.goal = np.array([10.0, 0.0, 0.0])
+
+        def reset(self, episode=None):
+            return _obs(depth_val=10.0)
+
+        def step(self, action):
+            return _obs(depth_val=10.0), {"cmd": action.tolist()}
+
+    class _Tau:
+        def reset(self):
+            pass
+
+        def predict_tau(self, obs):
+            return 2.5
+
+    class _Policy:
+        def act(self, view):
+            return np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+
+    buf = ReplayBuffer(capacity_episodes=2, seed=0)
+    col = RolloutCollector(
+        _StubEnv(), _Policy(), buf,
+        max_steps=2, target_hz=0.0,
+        tau_predictor=_Tau(),
+        skip_reset_collision=False,
+    )
+    ep, _ = col.collect_episode()
+    assert ep[0].obs.info.get("tau_pred") == 2.5
+    assert ep[0].info.get("tau_pred") == 2.5

@@ -206,6 +206,10 @@ def _check_learning(model: TorchRSSMDynamics, buf: ReplayBuffer,
                 "loss_dyn": float(out.get("loss_dyn", float("nan"))),
                 "loss_rep": float(out.get("loss_rep", float("nan"))),
                 "loss_reward": float(out.get("loss_reward", float("nan"))),
+                "loss_coll": float(out.get("loss_coll", float("nan"))),
+                "loss_coll_hinge": float(out.get("loss_coll_hinge", float("nan"))),
+                "loss_depth_aux": float(out.get("loss_depth_aux", float("nan"))),
+                "coll_hinge_gap": float(out.get("coll_hinge_gap", float("nan"))),
                 "grad_norm": float(out.get("grad_norm", float("nan"))),
             }
             with log_path.open("a") as f:
@@ -213,6 +217,10 @@ def _check_learning(model: TorchRSSMDynamics, buf: ReplayBuffer,
         if i % max(1, steps // 10) == 0:
             print(f"[wm-validate] step {i:4d} | loss={out['loss']:.4f} "
                   f"recon={out['recon_err']:.4f} rew={out.get('loss_reward', float('nan')):.3f} "
+                  f"coll={out.get('loss_coll', float('nan')):.3f} "
+                  f"hinge={out.get('loss_coll_hinge', float('nan')):.3f} "
+                  f"d_aux={out.get('loss_depth_aux', float('nan')):.3f} "
+                  f"gap={out.get('coll_hinge_gap', float('nan')):.3f} "
                   f"dyn={out['loss_dyn']:.3f} "
                   f"rep={out['loss_rep']:.3f} ent={ent_fracs[-1]:.2f} "
                   f"|g|={out['grad_norm']:.1f}")
@@ -297,6 +305,17 @@ def main(argv: List[str] | None = None) -> int:
         help="tail fraction of episodes excluded from training (must match "
         "_wm_fidelity_eval --heldout-frac for an honest V1-② gate; 0 = all eps)",
     )
+    p.add_argument(
+        "--init-ckpt",
+        default=None,
+        help="warm-start from an existing wm_step_*.pt (loads weights before training)",
+    )
+    p.add_argument(
+        "--save-step",
+        type=int,
+        default=None,
+        help="step number embedded in wm_step_<N>.pt (default: init_step+steps or steps)",
+    )
     args = p.parse_args(argv)
 
     root = Path(args.dataset)
@@ -313,6 +332,24 @@ def main(argv: List[str] | None = None) -> int:
     sample_obs = buf.sample_windows(1, 1)[0][0].obs
     wm_cfg["image_size"] = int(np.asarray(sample_obs.rgb).shape[0])
     model = TorchRSSMDynamics.from_config(wm_cfg)
+    init_step = 0
+    if args.init_ckpt:
+        init_path = Path(args.init_ckpt)
+        if not init_path.is_absolute():
+            init_path = Path.cwd() / init_path
+        payload = model.load_checkpoint(str(init_path))
+        init_step = int(payload.get("step") or 0)
+        skipped = payload.get("load_skipped") or []
+        # Stale Adam moments from an old coll_head (feature-only vs feature+action)
+        # or other skipped tensors will crash optimizer.step().
+        model.optimizer = torch.optim.AdamW(
+            model.parameters(), lr=float(wm_cfg.get("lr", 1e-4)), betas=(0.9, 0.95)
+        )
+        print(
+            f"[wm-validate] init ckpt → {init_path} (step={init_step}"
+            + (f", skipped={len(skipped)} tensors" if skipped else "")
+            + "; optimizer reset)"
+        )
     print(f"[wm-validate] model on {model.device} | latent_dim={model.latent_dim} "
           f"| image_size={wm_cfg['image_size']}")
 
@@ -341,9 +378,14 @@ def main(argv: List[str] | None = None) -> int:
           f"(feed to `_v0_gate --learning-log {log_path}`)")
     print(f"[wm-validate] {'PASS' if passed else 'FAIL'}: "
           f"learning={learn_ok} non_divergence={diverge_ok}")
-    if passed and args.save_ckpt:
-        ckpt_path = ckpt_dir / f"wm_step_{args.steps}.pt"
-        model.save_checkpoint(str(ckpt_path), step=args.steps)
+    if args.save_ckpt:
+        save_step = (
+            int(args.save_step)
+            if args.save_step is not None
+            else (init_step + int(args.steps) if args.init_ckpt else int(args.steps))
+        )
+        ckpt_path = ckpt_dir / f"wm_step_{save_step}.pt"
+        model.save_checkpoint(str(ckpt_path), step=save_step)
         print(f"[wm-validate] checkpoint → {ckpt_path}")
     return 0 if passed else 1
 

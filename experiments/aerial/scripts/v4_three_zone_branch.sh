@@ -6,7 +6,7 @@
 #   source experiments/aerial/scripts/env_4090.sh
 #   STAMP=20260823 EPISODES=24 MODE=all bash experiments/aerial/scripts/v4_three_zone_branch.sh
 #
-# Modes: collect | collect_near | merge_near | merge_full | sync | eval | all | all_near | topup_near
+# Modes: collect | collect_near | collect_mid | merge_near | merge_full | sync | eval | all | all_near | topup_near | topup_mid
 # Doc: docs/handover/V4_THREE_ZONE_BRANCH_125_H100_20260823.md
 set -euo pipefail
 
@@ -142,6 +142,49 @@ phase_collect_near() {
   say "collect_near done: ${NEAR_REL}"
 }
 
+phase_collect_mid() {
+  # S5F-3: mid-range topup for (5, 12.2] — start farther, shorter approach so
+  # trajectories dwell in engage_outer / cap_l1 rather than diving to L3.
+  say "=== Phase A2m: mid-range collect (GT_fwd ∈ (5,12.2]) ==="
+  # shellcheck disable=SC1091
+  source experiments/aerial/scripts/env_4090.sh
+  export PYTHONPATH="${ROOT}${PYTHONPATH:+:$PYTHONPATH}"
+  MID_STAMP="${MID_STAMP:-${STAMP}_mid}"
+  MID_DATASET_NAME="dataset_v0_three_zone_mid_${MID_STAMP}"
+  MID_REL="experiments/aerial/rl/artifacts/${MID_DATASET_NAME}"
+  APPROACH_DIST_MID="${APPROACH_DIST_MID:-14}"
+  PROBE_MID_M="${PROBE_MID_M:-8.0}"
+  START_CLEARANCE_MID="${START_CLEARANCE_MID:-12.0}"
+  PER_LAYER_MID="${PER_LAYER_MID:-${PER_LAYER}}"
+  OBSTACLE_MIN_MID="${OBSTACLE_MIN_MID:-5.0}"
+  OBSTACLE_MAX_MID="${OBSTACLE_MAX_MID:-25.0}"
+
+  ARGS=(
+    experiments/aerial/scripts/v4_p45_collect.py
+    --config configs/aerial_rl.yaml
+    --host 127.0.0.1
+    --port 41451
+    --per-layer "$PER_LAYER_MID"
+    --only-layer "${ONLY_LAYER:-blocked}"
+    --approach-dist-m "$APPROACH_DIST_MID"
+    --goal-dist-m "$GOAL_DIST_M"
+    --probe-near-m "$PROBE_MID_M"
+    --start-clearance-m "$START_CLEARANCE_MID"
+    --obstacle-min-m "$OBSTACLE_MIN_MID"
+    --obstacle-max-m "$OBSTACLE_MAX_MID"
+    --blocked-seed "${BLOCKED_SEED:-200}"
+    --rollout-dataset "$ROLLOUT_DATASET"
+    --step-hz 5.0
+    --max-steps "$MAX_STEPS"
+    --out "$MID_REL"
+  )
+  say "cmd: $AERIAL_PY ${ARGS[*]}"
+  "$AERIAL_PY" "${ARGS[@]}" 2>&1 | tee -a "$COLLECT_LOG"
+
+  test -f "${MID_REL}/manifest.json"
+  say "collect_mid done: ${MID_REL}"
+}
+
 phase_merge_near() {
   say "=== Phase A2b: merge prior + supplement near corpora ==="
   # shellcheck disable=SC1091
@@ -254,6 +297,7 @@ phase_eval() {
 case "$MODE" in
   collect)      phase_collect ;;
   collect_near) phase_collect_near ;;
+  collect_mid)  phase_collect_mid ;;
   merge_near)   phase_merge_near ;;
   merge_full)   phase_merge_full ;;
   sync)         phase_sync ;;
@@ -278,8 +322,12 @@ case "$MODE" in
     phase_sync
     phase_eval
     ;;
+  topup_mid)
+    # S5F-3: mid-range topup only (collect); merge into p45 later after QC.
+    phase_collect_mid
+    ;;
   *)
-    echo "unknown MODE=$MODE (use collect|collect_near|merge_near|merge_full|sync|eval|all|all_near|topup_near)" >&2
+    echo "unknown MODE=$MODE (use collect|collect_near|collect_mid|merge_near|merge_full|sync|eval|all|all_near|topup_near|topup_mid)" >&2
     exit 1
     ;;
 esac

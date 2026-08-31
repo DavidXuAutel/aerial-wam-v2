@@ -1,7 +1,20 @@
 # 活文档阅读清单（2026-08-18）
 
 > **用途**：回答「现在该读哪些活文档」。只列**仍在维护 / 决定现状**的入口；历史备忘与已闭合细节按需下钻。  
-> **防误读**：`RUNBOOK_v0.md` §8 晚¹⁹–²² / 任何「merge 从未 exit 0」叙述 = **2026-08-12 快照**，不是现状（V0 已于 08-14 merge PASS）。
+> **防误读**：`RUNBOOK_v0.md` §8 晚¹⁹–²² / 任何「merge 从未 exit 0」叙述 = **2026-08-12 快照**，不是现状（V0 已于 08-14 merge PASS）。  
+> **2026-08-28**：本仓若在跑 **室内 0.xm** 轨，优先读下方 **A0**，勿把 GT-PD demo 成绩写进 V4/WAM 主线完成态。
+
+---
+
+## A0. 室内 WAM（主航道尺度特化 · Stick）
+
+| 顺序 | 文档 | 读什么 |
+|---|---|---|
+| **1** | [`../../experiments/aerial/RUNBOOK_indoor_0xm.md`](../../experiments/aerial/RUNBOOK_indoor_0xm.md) | **铁律**：所有方案 Stick 主航道；传感=RGB+IMU+高度→\(\hat p\)；A0 阻塞 |
+| 2 | [`INDOOR_0XM_STATUS.md`](INDOOR_0XM_STATUS.md) | 下一步 = **A0**；未合同基线作废 |
+| 3 | [`INDOOR_MAINLINE_125_PROMPT_20260828.md`](INDOOR_MAINLINE_125_PROMPT_20260828.md) | 125：先 A0 再 B |
+
+**禁止**：另立室内夹具方案；GT `goal_rel` 假基线；单失败补洞；A0 前 H100 FT。
 
 ---
 

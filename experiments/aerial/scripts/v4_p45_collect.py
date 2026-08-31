@@ -187,6 +187,7 @@ def build_episode_pool(args: argparse.Namespace) -> Tuple[List[Dict[str, Any]], 
             seed=int(args.blocked_seed),
             candidate_yaws=cand_yaw,
             goal_dist_m=float(args.goal_dist_m),
+            obstacle_min_m=float(args.obstacle_min_m),
             obstacle_max_m=float(args.obstacle_max_m),
             center_frac=float(args.center_frac),
             max_scans=int(args.blocked_scan_max),
@@ -400,6 +401,7 @@ def main() -> int:
     )
     p.add_argument("--goal-dist-m", type=float, default=30.0)
     p.add_argument("--approach-dist-m", type=float, default=20.0, help="shorter goals for near-band")
+    p.add_argument("--obstacle-min-m", type=float, default=5.0)
     p.add_argument("--obstacle-max-m", type=float, default=25.0)
     p.add_argument("--start-clearance-m", type=float, default=3.0)
     p.add_argument("--center-frac", type=float, default=0.3)

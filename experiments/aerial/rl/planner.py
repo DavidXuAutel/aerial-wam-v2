@@ -78,9 +78,22 @@ class ImaginationPlanner:
         if callable(set_goal):
             set_goal(goal)
 
-    def plan(self, obs: Observation, base_action: np.ndarray) -> np.ndarray:
-        """Return the candidate first action with highest imagined return."""
-        z0 = np.asarray(self.dynamics.encode(obs), dtype=np.float64)
+    def plan(
+        self,
+        obs: Observation,
+        base_action: np.ndarray,
+        *,
+        latent: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """Return the candidate first action with highest imagined return.
+
+        When ``latent`` is provided (deploy streaming posterior), imagination
+        scores from that state instead of resetting via ``encode(obs)``.
+        """
+        if latent is not None:
+            z0 = np.asarray(latent, dtype=np.float64).reshape(-1)
+        else:
+            z0 = np.asarray(self.dynamics.encode(obs), dtype=np.float64)
         candidates = list(self.candidate_fn(np.asarray(base_action, dtype=np.float64)))
         if not candidates:
             return np.asarray(base_action, dtype=np.float64).reshape(4)

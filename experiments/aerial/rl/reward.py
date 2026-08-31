@@ -47,6 +47,9 @@ class RewardConfig:
     w_progress: float = 1.0
     w_collision: float = 10.0
     w_maneuver: float = 0.01               # curriculum START weight
+    w_curiosity: float = 0.0              # Near-obstacle lateral clearance curiosity
+    curiosity_fwd_thresh_m: float = 3.5   # Trigger exploration when forward depth <= thresh
+    curiosity_max_bonus: float = 2.0      # Max curiosity bonus per step
     success_dist_m: float = DEFAULT_ONLINE_SUCCESS_DIST_M
     success_bonus: float = 10.0
     # Maneuver-penalty curriculum (design doc §2.4): keep the aggressive-maneuver
@@ -89,32 +92,37 @@ def reward_terms(
     collision_risk: float,
     maneuver_cost: float,
     cfg: RewardConfig = RewardConfig(),
+    curiosity_gain: float = 0.0,
 ) -> Dict[str, float]:
     """Pure term breakdown + scalar reward. Used by both real and imagined paths."""
     r = (
         cfg.w_progress * float(progress)
         - cfg.w_collision * float(collision_risk)
         - cfg.w_maneuver * float(maneuver_cost)
+        + cfg.w_curiosity * float(np.clip(curiosity_gain, 0.0, cfg.curiosity_max_bonus))
     )
     return {
         "reward": float(r),
         "progress": float(progress),
         "collision_risk": float(collision_risk),
         "maneuver_cost": float(maneuver_cost),
+        "curiosity_gain": float(curiosity_gain),
     }
 
 
 class NavigationReward:
-    """Stateful per-episode reward: progress toward ``goal`` − risk − maneuver."""
+    """Stateful per-episode reward: progress toward ``goal`` − risk − maneuver + curiosity."""
 
     def __init__(self, goal: Optional[np.ndarray], cfg: Optional[RewardConfig] = None) -> None:
         self.cfg = cfg or RewardConfig()
         self._goal = None if goal is None else np.asarray(goal, dtype=np.float64).reshape(3)
         self._prev_dist: Optional[float] = None
+        self._cum_curiosity: float = 0.0
 
     def reset(self, goal: Optional[np.ndarray], start_pos: np.ndarray) -> None:
         self._goal = None if goal is None else np.asarray(goal, dtype=np.float64).reshape(3)
         self._prev_dist = self._dist(np.asarray(start_pos, dtype=np.float64).reshape(3))
+        self._cum_curiosity = 0.0
 
     def _dist(self, pos: np.ndarray) -> Optional[float]:
         if self._goal is None:
@@ -135,9 +143,36 @@ class NavigationReward:
             progress = self._prev_dist - dist
         self._prev_dist = dist
 
+        # Near-obstacle lateral clearance curiosity (spec 20260828):
+        curiosity_gain = 0.0
+        if self.cfg.w_curiosity > 0:
+            cones = obs.info.get("depth_cones_pred") if isinstance(obs.info, dict) else None
+            fwd_d = None
+            left_d = None
+            right_d = None
+            if isinstance(cones, dict):
+                fwd_d = cones.get("forward")
+                left_d = cones.get("left")
+                right_d = cones.get("right")
+            if fwd_d is None and isinstance(obs.info, dict):
+                fwd_d = obs.info.get("depth_min_pred")
+
+            if fwd_d is not None and np.isfinite(float(fwd_d)):
+                if float(fwd_d) <= float(self.cfg.curiosity_fwd_thresh_m) and progress <= 0.1:
+                    l_val = float(left_d) if (left_d is not None and np.isfinite(float(left_d))) else 5.0
+                    r_val = float(right_d) if (right_d is not None and np.isfinite(float(right_d))) else 5.0
+                    lat_adv = max(0.0, max(l_val, r_val) - float(fwd_d))
+                    dyaw = abs(float(action[3])) if len(action) > 3 else 0.0
+                    raw_gain = lat_adv * dyaw
+                    avail = max(0.0, 3.0 - self._cum_curiosity)
+                    curiosity_gain = min(raw_gain, avail)
+                    self._cum_curiosity += curiosity_gain
+
         collision_risk = 1.0 if obs.collided else float(p_coll or 0.0)
         maneuver_cost = float(np.linalg.norm(np.asarray(action, dtype=np.float64)))
-        terms = reward_terms(progress, collision_risk, maneuver_cost, self.cfg)
+        terms = reward_terms(
+            progress, collision_risk, maneuver_cost, self.cfg, curiosity_gain=curiosity_gain
+        )
 
         arrived = dist is not None and dist < self.cfg.success_dist_m
         if arrived:

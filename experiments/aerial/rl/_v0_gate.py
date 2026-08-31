@@ -409,7 +409,7 @@ def _score_1d_holdout(
 
     dh_cfg = _load_depth_cfg(config_path)
     all_eps = _usable_episodes(root, int(window))
-    _train_eps, holdout_eps = _split_train_holdout(
+    _train_eps, holdout_eps, _split_meta = _split_train_holdout(
         all_eps, holdout_frac=float(holdout_frac), seed=int(split_seed)
     )
     if not holdout_eps:

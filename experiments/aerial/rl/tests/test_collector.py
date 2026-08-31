@@ -62,3 +62,21 @@ def test_guard_can_be_disabled():
     trans, stats = col.collect_episode(_SPAWN_COLLISION)
     assert len(trans) > 0              # collected despite reset collision
     assert stats.skipped == 0
+
+
+def test_takeoff_scan_steps_executes_in_place_yaw():
+    env = MockAirSimDroneEnv(MockEnvConfig(bounds_m=100.0))
+    far_goal_ep = {"pos": [[0.0, 0.0, 0.0], [50.0, 0.0, 0.0]], "yaw": [0.0, 0.0]}
+    col = RolloutCollector(env, _FwdPolicy(), ReplayBuffer(), max_steps=10, takeoff_scan_steps=4)
+    trans, stats = col.collect_episode(far_goal_ep)
+    assert len(trans) == 10
+    # First 4 steps should be pure yaw rotation (dx=dy=dz=0, dyaw > 0)
+    for i in range(4):
+        a = trans[i].action
+        assert a[0] == 0.0
+        assert a[1] == 0.0
+        assert a[2] == 0.0
+        assert a[3] > 0.0
+    # Step 4 onward should follow policy (forward > 0)
+    assert trans[4].action[0] > 0.0
+

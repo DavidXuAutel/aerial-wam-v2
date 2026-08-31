@@ -5,9 +5,15 @@ import numpy as np
 
 from experiments.aerial.rl.v4_zero_eval import (
     ZeroThresholds,
+    _NEAR_C_PRIMARY_HI,
+    _NEAR_C_PRIMARY_LO,
+    _NEAR_L23_LO,
+    aggregate_verdict,
     build_tau_miss_diag,
     check_0a,
     check_0c,
+    check_0c_l23,
+    check_0c_wall,
     check_0d,
     check_0d_from_triggered,
     check_0h,
@@ -319,3 +325,64 @@ def test_build_tau_miss_diag_contract_fields():
     assert diag["center_frac"] == 0.5
     assert diag["B_b_min_depth"]["yaml_min_depth_m"] == 1.5
     assert diag["dt_hist"]["p50"] == 0.2
+
+
+def test_check_0c_primary_domain_6cr():
+    thr = ZeroThresholds()
+    wall_stats = {"n": 20_000, "p90_absrel": 2.0, "median_absrel": 0.2}
+    mid_stats = {"n": 20_000, "p90_absrel": 0.4, "median_absrel": 0.2}
+    r_wall = check_0c(wall_stats, thr=thr, gt_lo=0.0, gt_hi=1.5)
+    r_mid = check_0c(mid_stats, thr=thr)
+    assert r_wall["ok"] is False
+    assert r_mid["ok"] is True
+    assert r_mid["domain_lo"] == _NEAR_C_PRIMARY_LO
+    assert r_mid["domain_hi"] == _NEAR_C_PRIMARY_HI
+    assert r_mid["refreeze"]
+
+
+def test_0c_l23_fail_does_not_block_primary():
+    sub = {
+        "0a": {"ok": True},
+        "0b": {"ok": True},
+        "0c": {"ok": True, "domain_lo": _NEAR_C_PRIMARY_LO},
+        "0c_wall": {"ok": False, "report_only": True},
+        "0c_l23": {"ok": False, "report_only": True, "p90_absrel": 0.7},
+        "0h": {"ok": True},
+        "0e": {"ok": True},
+        "0d_legacy": {"ok": False},
+        "0f": {"ok": True},
+    }
+    v = aggregate_verdict(sub)
+    assert v["ok"] is True
+
+
+def test_0c_wall_fail_does_not_block_primary():
+    sub = {
+        "0a": {"ok": True},
+        "0b": {"ok": True},
+        "0c": {"ok": True, "domain_lo": _NEAR_C_PRIMARY_LO},
+        "0c_wall": {"ok": False, "report_only": True, "p90_absrel": 2.0},
+        "0h": {"ok": True},
+        "0e": {"ok": True},
+        "0d_legacy": {"ok": False},
+        "0f": {"ok": True},
+    }
+    v = aggregate_verdict(sub)
+    assert v["ok"] is True
+
+
+def test_check_0c_wall_report_only():
+    thr = ZeroThresholds()
+    wall_stats = {"n": 20_000, "p90_absrel": 2.0}
+    r = check_0c_wall(wall_stats, thr=thr)
+    assert r["report_only"] is True
+    assert r["ok"] is False
+    assert r["domain_hi"] == _NEAR_L23_LO
+
+
+def test_check_0c_l23_report_only():
+    thr = ZeroThresholds()
+    l23_stats = {"n": 20_000, "p90_absrel": 0.7}
+    r = check_0c_l23(l23_stats, thr=thr)
+    assert r["report_only"] is True
+    assert r["domain_lo"] == _NEAR_L23_LO

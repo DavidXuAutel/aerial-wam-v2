@@ -52,6 +52,9 @@ class ImaginedRollout:
     #: How many (b, t, axis) entries the deployed-action clip actually changed.
     #: 0 under the C2 bounded policy; > 0 means imagined != deployed action set.
     n_action_clipped: int = 0
+    #: Body-frame goal relative features at each latent before the action
+    #: ``[B, H+1, GOAL_REL_DIM]``. ``None`` when imagination ran without goals.
+    goal_rel: Optional[np.ndarray] = None
 
     @property
     def returns(self) -> np.ndarray:
@@ -59,11 +62,17 @@ class ImaginedRollout:
         return self.rewards.sum(axis=1)
 
 
-def _act_latent(policy: Any, z: np.ndarray) -> np.ndarray:
+def _act_latent(
+    policy: Any, z: np.ndarray, goal_rel: Optional[np.ndarray] = None
+) -> np.ndarray:
     fn = getattr(policy, "act_latent", None) or getattr(policy, "act", None)
     if not callable(fn):
         raise TypeError("imagination policy must implement act_latent(z) or act(z)")
-    return np.asarray(fn(z), dtype=np.float64).reshape(4)
+    try:
+        out = fn(z, goal_rel=goal_rel)
+    except TypeError:
+        out = fn(z)
+    return np.asarray(out, dtype=np.float64).reshape(4)
 
 
 def imagine(
@@ -128,8 +137,11 @@ def imagine(
             body_vel0 = np.asarray(body_vel0, dtype=np.float32).reshape(batch, BODY_VEL_DIM)
         goal_rel_t = goal_rel0.copy()
         body_vel_t = body_vel0.copy()
+        goals_hist = np.zeros((batch, horizon + 1, GOAL_REL_DIM), dtype=np.float32)
+        goals_hist[:, 0] = goal_rel_t
     else:
         goal_rel_t = body_vel_t = None
+        goals_hist = None
 
     alive = np.ones(batch, dtype=bool)
     for t in range(horizon):
@@ -138,7 +150,10 @@ def imagine(
                 zs[b, t + 1] = zs[b, t]
                 dones[b, t] = True
                 continue
-            a = _act_latent(policy, zs[b, t])
+            a = _act_latent(
+                policy, zs[b, t],
+                None if goal_rel_t is None else goal_rel_t[b],
+            )
             if lim is not None:
                 a_clipped = np.clip(a, -lim, lim)
                 n_clipped += int(np.count_nonzero(a_clipped != a))
@@ -168,8 +183,11 @@ def imagine(
                 dones[b, t] = True
             if use_aux and propagate_goal_rel and alive[b]:
                 goal_rel_t[b] = advance_goal_rel_body(goal_rel_t[b], a)
+            if goal_rel_t is not None:
+                goals_hist[b, t + 1] = goal_rel_t[b]
 
     return ImaginedRollout(
         z=zs, actions=acts, rewards=rews, p_coll=pcs, progress=progs, done=dones,
         n_action_clipped=int(n_clipped),
+        goal_rel=(goals_hist if use_aux else None),
     )

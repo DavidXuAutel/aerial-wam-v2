@@ -38,6 +38,21 @@ def load_annotation(path: Path) -> list[dict[str, Any]]:
     return data
 
 
+def normalize_episode_poses(
+    episode: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(positions [N,3], yaws [N])`` from an OpenFly-style episode."""
+    positions = np.asarray(episode["pos"], dtype=np.float64).reshape(-1, 3)
+    yaws = np.asarray(episode["yaw"], dtype=np.float64).reshape(-1)
+    if positions.shape[0] != yaws.shape[0]:
+        raise ValueError(
+            f"pos/yaw length mismatch: {positions.shape[0]} vs {yaws.shape[0]}"
+        )
+    if positions.shape[0] < 1:
+        raise ValueError("episode must contain at least one pose")
+    return positions, yaws
+
+
 def apply_body_delta(
     pos: np.ndarray,
     yaw: float,

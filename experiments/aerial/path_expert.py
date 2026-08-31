@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 
 from experiments.aerial.eval.run_closed_loop import normalize_episode_poses
-from experiments.aerial.openfly_actions import clip_body_delta, pos_yaw_to_body_delta
+from experiments.aerial.openfly_actions import pos_yaw_to_body_delta
+from experiments.aerial.rl.env.action import MACRO_PRIMITIVE_SPAN, clip_body_delta
+from experiments.aerial.rl.env.obs import PolicyObservation
 
 _LOOKAHEAD_M = 6.0
 
@@ -48,7 +50,8 @@ class PathExpert:
         lookahead_progress = min(progress + _LOOKAHEAD_M, float(self._cumulative[-1]))
         lookahead_pos, lookahead_yaw = self._pose_at_progress(lookahead_progress)
         action = clip_body_delta(
-            pos_yaw_to_body_delta(current_pos, yaw, lookahead_pos, lookahead_yaw)
+            pos_yaw_to_body_delta(current_pos, yaw, lookahead_pos, lookahead_yaw),
+            MACRO_PRIMITIVE_SPAN,
         )
         return ExpertLabel(
             action=action,
@@ -113,3 +116,31 @@ class PathExpert:
         yaw_delta = _wrap_angle(float(self._yaws[index + 1] - self._yaws[index]))
         yaw = _wrap_angle(float(self._yaws[index]) + t * yaw_delta)
         return position, yaw
+
+
+class PathExpertPolicy:
+    """RL-collector policy: chase an OpenFly polyline via :class:`PathExpert`.
+
+    Privileged (uses proprio + annotated path, not RGB). Intended for densifying
+    sparse OpenFly waypoints into ~``step_hz`` closed-loop rollouts with real
+    renders — not for deploy.
+    """
+
+    def __init__(self) -> None:
+        self._expert = PathExpert()
+        self._episode: Optional[dict[str, Any]] = None
+        self.last_label: Optional[ExpertLabel] = None
+
+    def bind_episode(self, episode: Optional[dict[str, Any]]) -> None:
+        self._episode = episode
+
+    def reset(self) -> None:
+        if self._episode is None:
+            raise RuntimeError("PathExpertPolicy.bind_episode must precede reset")
+        self._expert.reset(self._episode)
+        self.last_label = None
+
+    def act(self, obs: PolicyObservation) -> np.ndarray:
+        label = self._expert.label(obs.position, float(obs.yaw))
+        self.last_label = label
+        return np.asarray(label.action, dtype=np.float64).reshape(4)

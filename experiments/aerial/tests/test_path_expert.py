@@ -47,15 +47,16 @@ def test_lookahead_shortens_near_goal():
     np.testing.assert_allclose(label.action, [3.0, 0.0, 0.0, 0.0])
 
 
-def test_returned_action_is_clipped_to_training_ranges():
+def test_returned_action_is_clipped_to_macro_spans():
     expert = PathExpert()
     expert.reset(_line_episode(yaw=2.0))
 
     label = expert.label(np.array([0.0, -100.0, -100.0]), 0.0)
 
+    # Clipped to MACRO_PRIMITIVE_SPAN [9, 3, 3, π/6] (collector re-clips to step_hz).
     np.testing.assert_allclose(
         label.action,
-        [6.0, 7.794228553771973, 3.0, 0.5235987901687622],
+        [6.0, 3.0, 3.0, 0.5235987755982988],
     )
 
 
