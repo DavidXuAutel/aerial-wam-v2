@@ -320,11 +320,17 @@ def main() -> int:
                 if d_min_pred is not None:
                     obs.info["depth_min_pred"] = float(d_min_pred)
                 if isinstance(cones, dict):
+                    obs.info["depth_cones_pred"] = {
+                        k: (float(v) if v is not None else None)
+                        for k, v in cones.items()
+                    }
                     cf = cones.get("forward")
                     if cf is not None and np.isfinite(float(cf)):
                         d_fwd = float(cf)
             else:
                 d_fwd = depth_pred.predict_min(obs)
+                if d_fwd is not None:
+                    obs.info["depth_min_pred"] = float(d_fwd)
 
         g_rel_body, s_info = subgoal_gen.compute_subgoal(
             curr_pos=p_curr,

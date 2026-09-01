@@ -315,9 +315,10 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py \
 
 ## 7. 当前下一步（默认）
 
-1. ~~假 `p_coll` 紧急回退~~（已修 + R01 短探沿路为正）。  
-2. **立刻（125）**：修后 **16 路 re-eval + forensics**（逐路 XY/CTE/tag）。只问一件事：飞迹是否贴折线。禁止只报 mean Prog。  
-3. 若仍系统 `F_OFFTRACK`：**零重训**修 Subgoal——CTE 用真正交投影；CTE>门限冻结/回退单调锁（禁虚涨 Prog）；胡萝卜从真投影点发出。  
-4. `g_norm` / R1/R2：**非默认**。Step M 先不开。
+1. ~~假 `p_coll` / Subgoal freeze / 16 路法医 / H1–H3 探针 / shield cones 假阳性~~（已清：见 STATUS）。  
+2. ~~cones 后贴线法医 R01/R03/R05~~（全 `F_OFFTRACK`，IR≈0.02）。  
+3. ~~R01/R03 g_align 步级探针~~（H1=input_geometry_suspect）。  
+4. **在跑（.110）**：R01/R03/R05 × `wam` / `wam_nofreeze` / **`tangent_subgoal`** / `rejoin` H1 ablation。  
+5. **禁止**未归因就 16 路 / g_norm。
 
 **纪律**：改训程 / 罩表 / 门限 / goal 特征语义须 **先声明再动手**。未看场景不下刀。

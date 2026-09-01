@@ -130,6 +130,11 @@ def main() -> int:
     )
     p.add_argument("--annotation", default="artifacts/seen_airsim16_long_routes.json")
     p.add_argument("--episodes", type=int, default=16)
+    p.add_argument(
+        "--route-indices",
+        default="",
+        help="Comma-separated 0-based route indices (overrides --episodes when set).",
+    )
     p.add_argument("--cruise-speed", type=float, default=10.0)
     p.add_argument("--max-steps", type=int, default=1000)
     p.add_argument("--step-hz", type=float, default=5.0)
@@ -169,7 +174,13 @@ def main() -> int:
     with open(root / args.annotation, "r", encoding="utf-8") as f:
         anno = json.load(f)
     routes = anno.get("routes", anno) if isinstance(anno, dict) else anno
-    n_routes = min(int(args.episodes), len(routes))
+    if str(args.route_indices).strip():
+        route_indices = [int(x) for x in str(args.route_indices).split(",") if str(x).strip() != ""]
+        for i in route_indices:
+            if i < 0 or i >= len(routes):
+                raise SystemExit(f"--route-indices out of range: {i} (n_routes={len(routes)})")
+    else:
+        route_indices = list(range(min(int(args.episodes), len(routes))))
 
     env_cfg = dict(cfg.get("env") or {})
     env_cfg["backend"] = "airsim"
@@ -225,7 +236,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     rows: List[Dict[str, Any]] = []
 
-    for ep_idx in range(n_routes):
+    for ep_idx in route_indices:
         r_info = routes[ep_idx]
         pts = np.array(r_info.get("pos", r_info.get("positions")), dtype=np.float64)
         yaws = np.array(r_info.get("yaw", [0.0] * len(pts)), dtype=np.float64)
@@ -304,11 +315,20 @@ def main() -> int:
                     if d_min_pred is not None:
                         obs.info["depth_min_pred"] = float(d_min_pred)
                     if isinstance(cones, dict):
+                        # Must match collector / long_eval: shield reads cones via
+                        # _forward_d_hat; without this it falls back to full-frame
+                        # min and L3-brakes every step in open air.
+                        obs.info["depth_cones_pred"] = {
+                            k: (float(v) if v is not None else None)
+                            for k, v in cones.items()
+                        }
                         cf = cones.get("forward")
                         if cf is not None and np.isfinite(float(cf)):
                             d_fwd = float(cf)
                 else:
                     d_fwd = depth_pred.predict_min(obs)
+                    if d_fwd is not None:
+                        obs.info["depth_min_pred"] = float(d_fwd)
 
             # unlocked projection for forensics
             _proj, _seg, s_true, rem_true = project_to_polyline(
