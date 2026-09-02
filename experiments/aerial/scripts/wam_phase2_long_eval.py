@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Phase 2 mainline long-horizon evaluator (design v1.0).
+"""Phase 2 long-horizon evaluator (goal+scene E0/E1).
 
-Stack only:
-  AdaptiveSubgoalGenerator → LatentActorDeployPolicy → ImaginationPlanner
-  → ThreeZoneSpeedShield → env.step
+Stack:
+  subgoal_source ∈ {polyline, toward_g, direct_g, scene}
+    → LatentActorDeployPolicy → optional ImaginationPlanner
+    → ThreeZoneSpeedShield → env.step
 
-No docking P-controller, no anti-stagnation escape, no spawn altitude hacks,
-no roundtrip-specific metrics.
+Main product path: toward_g / scene (no GT polyline carrot).
+polyline / --rolling-global remain waterline对照 (default polyline until E0 DECLARE).
 """
 
 from __future__ import annotations
@@ -126,6 +127,16 @@ def main() -> int:
         default=1.0,
         help="GlobalRefPlanner replan period (s); 0 = every step",
     )
+    parser.add_argument(
+        "--subgoal-source",
+        type=str,
+        default="polyline",
+        choices=("polyline", "toward_g", "direct_g", "scene"),
+        help=(
+            "E0/E1: polyline=waterline; toward_g=main E0; "
+            "direct_g=ablation A; scene=E1 fan intent"
+        ),
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[3]
@@ -144,6 +155,7 @@ def main() -> int:
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.global_ref_planner import GlobalRefConfig, GlobalRefPlanner
+    from experiments.aerial.rl.scene_intent import SceneIntentPlanner, TowardGoalIntent
     from experiments.aerial.rl.subgoal_generator import (
         AdaptiveSubgoalGenerator,
         nearest_on_polyline,
@@ -282,6 +294,27 @@ def main() -> int:
     if args.lookahead_feedback:
         logger.info("L1 lookahead_feedback=ON (opt-in; mainline default remains OFF)")
 
+    subgoal_source = str(args.subgoal_source)
+    intent: Any = None
+    r_intent = 25.0 if float(args.cruise_speed) >= 8.0 else 20.0
+    if subgoal_source in ("toward_g", "direct_g"):
+        intent = TowardGoalIntent(
+            r_m=r_intent,
+            mode=subgoal_source,
+            cruise_speed=float(args.cruise_speed),
+        )
+    elif subgoal_source == "scene":
+        intent = SceneIntentPlanner(
+            r_m=r_intent,
+            cruise_speed=float(args.cruise_speed),
+            step_hz=float(args.step_hz),
+        )
+    if intent is not None and bool(args.rolling_global):
+        raise SystemExit(
+            "refuse: --rolling-global incompatible with non-polyline --subgoal-source"
+        )
+    logger.info("subgoal_source=%s", subgoal_source)
+
     global_planner: Any = None
     if bool(args.rolling_global):
         global_planner = GlobalRefPlanner(
@@ -314,6 +347,8 @@ def main() -> int:
         ref_len = float(np.sum(np.linalg.norm(pts[1:] - pts[:-1], axis=1)))
 
         subgoal_gen.reset()
+        if intent is not None:
+            intent.reset()
         if global_planner is not None:
             global_planner.reset(pts, goal=goal_pos)
         if shield is not None:
@@ -414,38 +449,54 @@ def main() -> int:
             path_for_carrot = pts
             rem_full = None
             true_s_full = None
-            if global_planner is not None:
-                true_proj, _seg, true_s_full, rem_full = nearest_on_polyline(
-                    p_curr, pts
+            if intent is not None:
+                g_rel_body, s_info = intent.compute(
+                    curr_pos=p_curr,
+                    curr_yaw=curr_yaw,
+                    goal=goal_pos,
+                    d_fwd_hat=d_fwd,
                 )
-                cte_full = float(np.linalg.norm(p_curr - true_proj))
-                if last_true_s is None:
-                    progressed = float("inf")
-                else:
-                    progressed = float(true_s_full) - float(last_true_s)
-                last_true_s = float(true_s_full)
-                path_for_carrot = global_planner.step(
-                    p_curr,
-                    curr_yaw,
-                    cte_m=cte_full,
-                    progressed_m=progressed,
-                )
-
-            g_rel_body, s_info = subgoal_gen.compute_subgoal(
-                curr_pos=p_curr,
-                curr_yaw=curr_yaw,
-                global_path=path_for_carrot,
-                d_fwd_hat=d_fwd,
-            )
-            target_world = np.array(s_info["target_world"], dtype=np.float64)
-            if global_planner is not None and true_s_full is not None and rem_full is not None:
-                # Metrics / stop use full corridor + Euclidean G, not short P_ref rem.
-                s_prog = float(true_s_full)
-                rem_dist = float(rem_full)
-            else:
-                s_prog = float(s_info["s_progress"])
+                target_world = np.array(s_info["target_world"], dtype=np.float64)
                 rem_dist = float(s_info["rem_dist"])
-            safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
+                s_prog = 0.0
+                safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
+            else:
+                if global_planner is not None:
+                    true_proj, _seg, true_s_full, rem_full = nearest_on_polyline(
+                        p_curr, pts
+                    )
+                    cte_full = float(np.linalg.norm(p_curr - true_proj))
+                    if last_true_s is None:
+                        progressed = float("inf")
+                    else:
+                        progressed = float(true_s_full) - float(last_true_s)
+                    last_true_s = float(true_s_full)
+                    path_for_carrot = global_planner.step(
+                        p_curr,
+                        curr_yaw,
+                        cte_m=cte_full,
+                        progressed_m=progressed,
+                    )
+
+                g_rel_body, s_info = subgoal_gen.compute_subgoal(
+                    curr_pos=p_curr,
+                    curr_yaw=curr_yaw,
+                    global_path=path_for_carrot,
+                    d_fwd_hat=d_fwd,
+                )
+                target_world = np.array(s_info["target_world"], dtype=np.float64)
+                if (
+                    global_planner is not None
+                    and true_s_full is not None
+                    and rem_full is not None
+                ):
+                    # Metrics / stop use full corridor + Euclidean G, not short P_ref rem.
+                    s_prog = float(true_s_full)
+                    rem_dist = float(rem_full)
+                else:
+                    s_prog = float(s_info["s_progress"])
+                    rem_dist = float(s_info["rem_dist"])
+                safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
 
             # Align step box with physics body_delta_limits and v_safe (F3/planner)
             phys = body_delta_limits(1.0 / float(args.step_hz))
@@ -462,8 +513,9 @@ def main() -> int:
             if d_to_goal < min_d:
                 min_d = d_to_goal
 
-            # Terminal arrival: Euclidean G; rem gate uses full-corridor rem when rolling.
-            if bool(args.rolling_global):
+            # Terminal arrival: Euclidean G for intent / rolling; else rem∧euclid.
+            euclid_only = intent is not None or bool(args.rolling_global)
+            if euclid_only:
                 if d_to_goal <= float(args.success_dist):
                     arrived = True
                     break
@@ -482,13 +534,13 @@ def main() -> int:
                 action = planner.plan(obs, action, latent=policy._latent)
 
             action = clip_body_delta(action, cur_limits)
-            if bool(args.heading_assist):
+            if bool(args.heading_assist) and intent is None:
                 action, _ha, _ = apply_path_heading_assist(
                     action,
                     yaw=curr_yaw,
                     path=pts,
                     seg_idx=int(s_info.get("seg_idx", 0)),
-                    cte_m=float(s_info.get("cte_m", 0.0)),
+                    cte_m=float(s_info.get("cte_m", 0.0) or 0.0),
                     limits=cur_limits,
                 )
                 if _ha:
@@ -528,7 +580,7 @@ def main() -> int:
             traj.append(p_curr.copy())
 
             seg_d = _segment_min_dist(p_prev, p_curr, goal_pos)
-            if bool(args.rolling_global):
+            if euclid_only:
                 if seg_d <= float(args.success_dist):
                     arrived = True
                     min_d = min(min_d, seg_d)
@@ -579,6 +631,7 @@ def main() -> int:
             "n_global_replans": (
                 int(global_planner.replan_count) if global_planner is not None else 0
             ),
+            "subgoal_source": subgoal_source,
         }
         results.append(ep_result)
         logger.info(
@@ -601,10 +654,11 @@ def main() -> int:
     # L0: PASS gates on Euclidean arrival (SR) + safety/SPL only.
     # progress_ratio is diagnostic; must not cosplay as near-success.
     summary = {
-        "protocol_version": "wam_phase2_mainline_l0_honest_goal_20260902",
+        "protocol_version": "wam_phase2_goal_scene_e0_20260903",
         "goal_feat_mode": str(args.goal_feat_mode),
         "actor_ckpt": str(actor_path),
         "cruise_speed_m_s": args.cruise_speed,
+        "subgoal_source": subgoal_source,
         "rolling_global": bool(args.rolling_global),
         "global_horizon_m": float(args.global_horizon_m),
         "global_replan_period_s": float(args.global_replan_period_s),

@@ -339,17 +339,30 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py \
 
 ## 7. 当前下一步（默认）
 
-**主航道完整计划**：[`docs/superpowers/plans/2026-09-02-phase2-receding-global-full.md`](../../docs/superpowers/plans/2026-09-02-phase2-receding-global-full.md)  
-**方案**：[`WAM_PHASE2_HIER_MPC_LOCAL_P1_DESIGN_20260902.md`](../../docs/handover/WAM_PHASE2_HIER_MPC_LOCAL_P1_DESIGN_20260902.md)
+**主方案（2026-09-03 重置）**：[`docs/superpowers/specs/2026-09-03-phase2-goal-scene-nav-design.md`](../../docs/superpowers/specs/2026-09-03-phase2-goal-scene-nav-design.md)  
+**实现计划**：[`docs/superpowers/plans/2026-09-03-phase2-goal-scene-nav.md`](../../docs/superpowers/plans/2026-09-03-phase2-goal-scene-nav.md)
 
 ```text
-滚动全局 P_ref → 预瞄胡萝卜（不到点） → Phase-1 WAM → 罩
-停机：仅最终 G（‖p−G‖）
+G + 场景 → WAM 外环生成近距意图 c* → Phase-1 执行 → 罩
+停机：‖p−G‖≤3　｜　无预置航迹　｜　主尺度 200–500 m
 ```
 
-**下一刀**：**`.110` P0 评测**（`--rolling-global`，见 [`WAM_PHASE2_HIER_P0_ROLLING_GLOBAL_DECLARE_20260902.md`](../../docs/handover/WAM_PHASE2_HIER_P0_ROLLING_GLOBAL_DECLARE_20260902.md)）。  
-Mac 已完成：`GlobalRefPlanner` + long_eval 接线（默认 OFF）。
+1. **D0 已确认** → 代码已接 `--subgoal-source`；**下一刀**：在 `.110`/`125` 跑 E0 探针并填 [`WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md)。  
+2. 标注折线 / `--rolling-global` 仅作水位对照，不进主控默认。  
+3. 禁止：古典跟线当北星；F15/assist 刷指标；把 Prog/CTE 当准出；用短距宣称 200–500 已过门。
 
-**搁置（不挡主航道）**：单路局部坑探针、L1 `--lookahead-feedback` 过门、F15/assist、静段钉点默认开。
+**E0/E1 CLI（默认仍 `polyline`，DECLARE 前不改默认）**：
 
-**纪律**：局部冻结；全局才滚动。勿用 Prog 冒充到点。
+```bash
+# E0 main
+python -m experiments.aerial.scripts.wam_phase2_long_eval \
+  --subgoal-source toward_g --planner --episodes 2 --max-steps 400 \
+  --out artifacts/wam_phase2_e0_toward_g_probe.json
+
+# ablation A / waterline / E1
+  --subgoal-source direct_g
+  --subgoal-source polyline
+  --subgoal-source scene
+```
+
+**纪律**：输入只有 G+场景；「线」只是想象副产品；过门尺 **200–500 m**。
