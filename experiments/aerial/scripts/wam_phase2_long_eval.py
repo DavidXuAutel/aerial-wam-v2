@@ -35,6 +35,17 @@ def _goal_dist(pos: np.ndarray, goal: np.ndarray) -> float:
     )
 
 
+def _goal_closure(d_start_m: float, d_min_m: float) -> float:
+    """Honest Euclidean closure toward G: 1 - d_min/d_start, clipped to [0, 1]."""
+    d0 = float(max(1e-3, d_start_m))
+    return float(np.clip(1.0 - float(d_min_m) / d0, 0.0, 1.0))
+
+
+def _monotone_inflate(progress_ratio: float, d_min_m: float, *, prog_min: float = 0.9, d_min_floor_m: float = 30.0) -> bool:
+    """True when arc-s Prog looks near-done but Euclidean d_min stays far from G."""
+    return bool(float(progress_ratio) >= float(prog_min) and float(d_min_m) >= float(d_min_floor_m))
+
+
 def _segment_min_dist(p0: np.ndarray, p1: np.ndarray, goal: np.ndarray) -> float:
     p0_arr = np.asarray(p0, dtype=np.float64).reshape(3)
     p1_arr = np.asarray(p1, dtype=np.float64).reshape(3)
@@ -85,6 +96,36 @@ def main() -> int:
         default=12.0,
         help="F1: max ||p_reset - start_pos||; beyond → spawn_fail skip (no SCR inflate)",
     )
+    parser.add_argument(
+        "--heading-assist",
+        action="store_true",
+        default=False,
+        help="F7 fuse: path-tangent dyaw (OFF by default; mainline SR must not rely on this)",
+    )
+    parser.add_argument(
+        "--lookahead-feedback",
+        action="store_true",
+        default=False,
+        help="L1 DECLARE: no-progress / CTE feedback on carrot (OFF by default)",
+    )
+    parser.add_argument(
+        "--rolling-global",
+        action="store_true",
+        default=False,
+        help="P0 receding GlobalRefPlanner: carrot on short P_ref (OFF by default)",
+    )
+    parser.add_argument(
+        "--global-horizon-m",
+        type=float,
+        default=60.0,
+        help="GlobalRefPlanner forward horizon (m)",
+    )
+    parser.add_argument(
+        "--global-replan-period-s",
+        type=float,
+        default=1.0,
+        help="GlobalRefPlanner replan period (s); 0 = every step",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[3]
@@ -98,10 +139,15 @@ def main() -> int:
     )
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.env.action import body_delta_limits, clip_body_delta
+    from experiments.aerial.rl.path_heading_assist import apply_path_heading_assist
     from experiments.aerial.rl.goal_features import body_vel_from_obs
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
-    from experiments.aerial.rl.subgoal_generator import AdaptiveSubgoalGenerator
+    from experiments.aerial.rl.global_ref_planner import GlobalRefConfig, GlobalRefPlanner
+    from experiments.aerial.rl.subgoal_generator import (
+        AdaptiveSubgoalGenerator,
+        nearest_on_polyline,
+    )
     from experiments.aerial.rl.train_rl import (
         _build_env,
         _build_safety,
@@ -222,13 +268,34 @@ def main() -> int:
             float(shield.zone.schedule_margin_l2_m),
         )
 
+    # Local carrot for step_e π (H1 + P1 sweep 2026-09-01): r_base=25 /
+    # cte_reentry=2 passed R01 ds>=25 & cte_end<=15; long routes still slide.
     subgoal_gen = AdaptiveSubgoalGenerator(
-        r_base=55.0 if args.cruise_speed >= 8.0 else 35.0,
-        r_min=20.0 if args.cruise_speed >= 8.0 else 15.0,
+        r_base=25.0 if args.cruise_speed >= 8.0 else 20.0,
+        r_min=15.0 if args.cruise_speed >= 8.0 else 12.0,
         d_clear=22.0 if args.cruise_speed >= 8.0 else 12.0,
         d_danger=3.0,
         cruise_speed=args.cruise_speed,
+        cte_reentry_m=2.0,
+        lookahead_feedback=bool(args.lookahead_feedback),
     )
+    if args.lookahead_feedback:
+        logger.info("L1 lookahead_feedback=ON (opt-in; mainline default remains OFF)")
+
+    global_planner: Any = None
+    if bool(args.rolling_global):
+        global_planner = GlobalRefPlanner(
+            GlobalRefConfig(
+                horizon_m=float(args.global_horizon_m),
+                replan_period_s=float(args.global_replan_period_s),
+                step_hz=float(args.step_hz),
+            )
+        )
+        logger.info(
+            "P0 rolling_global=ON horizon=%.1fm replan=%.2fs (default remains OFF)",
+            float(args.global_horizon_m),
+            float(args.global_replan_period_s),
+        )
 
     logger.info(
         f"Starting Phase 2 mainline eval on {n_routes} native routes "
@@ -247,6 +314,8 @@ def main() -> int:
         ref_len = float(np.sum(np.linalg.norm(pts[1:] - pts[:-1], axis=1)))
 
         subgoal_gen.reset()
+        if global_planner is not None:
+            global_planner.reset(pts, goal=goal_pos)
         if shield is not None:
             shield.reset()
         if depth_pred is not None:
@@ -311,12 +380,14 @@ def main() -> int:
 
         d0 = _goal_dist(p_curr, goal_pos)
         min_d = d0
+        d_final = d0
         traj = [p_curr.copy()]
         arrived = False
         collided = False
         severe_coll = False
         interventions = 0
         s_prog = 0.0
+        last_true_s: float | None = None
 
         for step in range(args.max_steps):
             d_fwd = None
@@ -340,15 +411,40 @@ def main() -> int:
                     if d_fwd is not None:
                         obs.info["depth_min_pred"] = float(d_fwd)
 
+            path_for_carrot = pts
+            rem_full = None
+            true_s_full = None
+            if global_planner is not None:
+                true_proj, _seg, true_s_full, rem_full = nearest_on_polyline(
+                    p_curr, pts
+                )
+                cte_full = float(np.linalg.norm(p_curr - true_proj))
+                if last_true_s is None:
+                    progressed = float("inf")
+                else:
+                    progressed = float(true_s_full) - float(last_true_s)
+                last_true_s = float(true_s_full)
+                path_for_carrot = global_planner.step(
+                    p_curr,
+                    curr_yaw,
+                    cte_m=cte_full,
+                    progressed_m=progressed,
+                )
+
             g_rel_body, s_info = subgoal_gen.compute_subgoal(
                 curr_pos=p_curr,
                 curr_yaw=curr_yaw,
-                global_path=pts,
+                global_path=path_for_carrot,
                 d_fwd_hat=d_fwd,
             )
             target_world = np.array(s_info["target_world"], dtype=np.float64)
-            s_prog = float(s_info["s_progress"])
-            rem_dist = float(s_info["rem_dist"])
+            if global_planner is not None and true_s_full is not None and rem_full is not None:
+                # Metrics / stop use full corridor + Euclidean G, not short P_ref rem.
+                s_prog = float(true_s_full)
+                rem_dist = float(rem_full)
+            else:
+                s_prog = float(s_info["s_progress"])
+                rem_dist = float(s_info["rem_dist"])
             safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
 
             # Align step box with physics body_delta_limits and v_safe (F3/planner)
@@ -362,11 +458,16 @@ def main() -> int:
                 planner.action_limits = cur_limits
 
             d_to_goal = _goal_dist(p_curr, goal_pos)
+            d_final = float(d_to_goal)
             if d_to_goal < min_d:
                 min_d = d_to_goal
 
-            # Design §3.3.3 terminal arrival
-            if rem_dist <= float(args.success_dist) and d_to_goal <= float(args.success_dist):
+            # Terminal arrival: Euclidean G; rem gate uses full-corridor rem when rolling.
+            if bool(args.rolling_global):
+                if d_to_goal <= float(args.success_dist):
+                    arrived = True
+                    break
+            elif rem_dist <= float(args.success_dist) and d_to_goal <= float(args.success_dist):
                 arrived = True
                 break
 
@@ -381,6 +482,17 @@ def main() -> int:
                 action = planner.plan(obs, action, latent=policy._latent)
 
             action = clip_body_delta(action, cur_limits)
+            if bool(args.heading_assist):
+                action, _ha, _ = apply_path_heading_assist(
+                    action,
+                    yaw=curr_yaw,
+                    path=pts,
+                    seg_idx=int(s_info.get("seg_idx", 0)),
+                    cte_m=float(s_info.get("cte_m", 0.0)),
+                    limits=cur_limits,
+                )
+                if _ha:
+                    action = clip_body_delta(action, cur_limits)
 
             # Probe p_coll for shield without consuming deploy latent stream
             wm_out = None
@@ -416,9 +528,16 @@ def main() -> int:
             traj.append(p_curr.copy())
 
             seg_d = _segment_min_dist(p_prev, p_curr, goal_pos)
-            if rem_dist <= float(args.success_dist) and seg_d <= float(args.success_dist):
+            if bool(args.rolling_global):
+                if seg_d <= float(args.success_dist):
+                    arrived = True
+                    min_d = min(min_d, seg_d)
+                    d_final = float(seg_d)
+                    break
+            elif rem_dist <= float(args.success_dist) and seg_d <= float(args.success_dist):
                 arrived = True
                 min_d = min(min_d, seg_d)
+                d_final = float(seg_d)
                 break
 
             if done:
@@ -437,6 +556,8 @@ def main() -> int:
         prog_ratio = float(np.clip(s_prog / max(1e-3, ref_len), 0.0, 1.0))
         # Design SPL; shortcuts (L_act < L_ref) do not inflate above 1.0
         ep_spl = (ref_len / max(ref_len, actual_len)) if arrived else 0.0
+        goal_closure = _goal_closure(d0, min_d)
+        inflate = _monotone_inflate(prog_ratio, min_d)
 
         ep_result = {
             "route_idx": ep_idx,
@@ -446,17 +567,24 @@ def main() -> int:
             "steps": len(traj),
             "d_start_m": round(d0, 2),
             "d_min_m": round(min_d, 2),
+            "d_final_m": round(float(d_final), 2),
+            "goal_closure": round(goal_closure, 4),
+            "monotone_inflate": bool(inflate),
             "arrived": arrived,
             "collided": collided,
             "severe_collision": severe_coll,
             "progress_ratio": round(prog_ratio, 4),
             "spl": round(ep_spl, 4),
             "intervention_rate": round(interventions / max(1, len(traj)), 4),
+            "n_global_replans": (
+                int(global_planner.replan_count) if global_planner is not None else 0
+            ),
         }
         results.append(ep_result)
         logger.info(
             f"Route {ep_idx+1:02d}/{n_routes:02d} | L_ref={ref_len:.1f}m | L_act={actual_len:.1f}m | "
-            f"min_d={min_d:.2f}m | arrived={arrived} | prog={prog_ratio*100:.1f}% | "
+            f"min_d={min_d:.2f}m | d_final={d_final:.2f}m | closure={goal_closure:.2f} | "
+            f"arrived={arrived} | prog={prog_ratio*100:.1f}% | inflate={inflate} | "
             f"spl={ep_spl:.3f} | IR={ep_result['intervention_rate']:.3f}"
         )
 
@@ -467,36 +595,48 @@ def main() -> int:
     mean_prog = float(np.mean([r["progress_ratio"] for r in scored])) if scored else 0.0
     mean_spl = float(np.mean([r["spl"] for r in scored])) if scored else 0.0
     mean_ir = float(np.mean([r["intervention_rate"] for r in scored])) if scored else 0.0
+    mean_closure = float(np.mean([r["goal_closure"] for r in scored])) if scored else 0.0
+    n_inflate = int(sum(1 for r in scored if r.get("monotone_inflate")))
 
+    # L0: PASS gates on Euclidean arrival (SR) + safety/SPL only.
+    # progress_ratio is diagnostic; must not cosplay as near-success.
     summary = {
-        "protocol_version": "wam_phase2_mainline_reanchor_step_e_meter_20260830",
+        "protocol_version": "wam_phase2_mainline_l0_honest_goal_20260902",
         "goal_feat_mode": str(args.goal_feat_mode),
         "actor_ckpt": str(actor_path),
         "cruise_speed_m_s": args.cruise_speed,
+        "rolling_global": bool(args.rolling_global),
+        "global_horizon_m": float(args.global_horizon_m),
+        "global_replan_period_s": float(args.global_replan_period_s),
         "n_scored": len(scored),
         "n_spawn_fail_f1": len(spawn_fails),
         "metrics": {
             "arrival_rate": round(sr, 4),
             "spl": round(mean_spl, 4),
             "severe_collision_rate": round(scr, 4),
+            "mean_goal_closure": round(mean_closure, 4),
+            "n_monotone_inflate": n_inflate,
             "mean_progress_ratio": round(mean_prog, 4),
             "mean_intervention_rate": round(mean_ir, 4),
+            "mean_global_replans": (
+                round(
+                    float(np.mean([r.get("n_global_replans", 0) for r in scored])),
+                    2,
+                )
+                if scored
+                else 0.0
+            ),
         },
         "thresholds": {
             "arrival_rate_min": 0.80,
             "spl_min": 0.70,
             "severe_collision_rate_max": 0.10,
-            "mean_progress_ratio_min": 0.90,
             "mean_intervention_rate_max": 0.25,
+            "mean_progress_ratio_diagnostic_only": 0.90,
         },
         "verdict": (
             "PASS"
-            if (
-                sr >= 0.80
-                and scr <= 0.10
-                and mean_prog >= 0.90
-                and mean_spl >= 0.70
-            )
+            if (sr >= 0.80 and scr <= 0.10 and mean_spl >= 0.70)
             else "FAIL"
         ),
         "episodes": results,
@@ -510,7 +650,8 @@ def main() -> int:
     logger.info(
         f"Phase 2 mainline complete. Verdict={summary['verdict']} | "
         f"SR={sr*100:.1f}% SPL={mean_spl*100:.1f}% SCR={scr*100:.1f}% "
-        f"Prog={mean_prog*100:.1f}% IR={mean_ir*100:.1f}%"
+        f"closure={mean_closure*100:.1f}% inflate={n_inflate}/{len(scored)} "
+        f"Prog={mean_prog*100:.1f}% (diag) IR={mean_ir*100:.1f}%"
     )
     return 0 if summary["verdict"] == "PASS" else 1
 

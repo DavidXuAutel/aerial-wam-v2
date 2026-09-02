@@ -139,3 +139,65 @@ def test_curriculum_w_start_override_prevents_feedback():
     )
     # metric=5 -> halfway; anchored to the true start 0.01, not the mutated 0.03
     assert maneuver_weight_at(5.0, cfg, w_start=0.01) == pytest.approx(0.03)
+
+
+# --- F15 efficiency ----------------------------------------------------------
+
+def test_efficiency_default_weights_are_noop():
+    from experiments.aerial.rl.reward import efficiency_cost
+
+    out = efficiency_cost(
+        np.array([1.0, 10.0, 0.0, 0.0]),
+        yaw_err_rad=1.0,
+        ds_true_m=0.0,
+    )
+    assert out["efficiency_cost"] == pytest.approx(0.0)
+    assert out["strafe_ratio"] > 1.0
+    assert out["idle"] == 1.0
+
+
+def test_efficiency_strafe_and_idle_penalize_when_weighted():
+    from experiments.aerial.rl.reward import efficiency_cost
+
+    cfg = RewardConfig(w_eff_strafe=1.0, w_eff_idle=2.0, eff_strafe_thr=0.5)
+    # |dy|/|dx| = 2 → excess 1.5; ds≈0 → idle 1
+    out = efficiency_cost(
+        np.array([1.0, 2.0, 0.0, 0.0]),
+        yaw_err_rad=0.0,
+        ds_true_m=0.0,
+        cfg=cfg,
+    )
+    assert out["strafe_excess"] == pytest.approx(1.5)
+    assert out["efficiency_cost"] == pytest.approx(1.5 + 2.0)
+
+
+def test_reward_terms_subtract_efficiency():
+    cfg = RewardConfig(w_progress=0.0, w_collision=0.0, w_maneuver=0.0)
+    t = reward_terms(0.0, 0.0, 0.0, cfg=cfg, efficiency_cost_val=3.0)
+    assert t["reward"] == pytest.approx(-3.0)
+    assert t["efficiency_cost"] == pytest.approx(3.0)
+
+
+def test_efficiency_heading_penalizes_yaw_err_while_maneuvering():
+    """F15: |yaw_err| × 1{|dx|+|dy|>ε} — not gated on strafe ratio alone."""
+    from experiments.aerial.rl.reward import efficiency_cost
+
+    cfg = RewardConfig(w_eff_heading=1.0, w_eff_strafe=0.0, w_eff_idle=0.0)
+    # Forward thrust, no side slip, large yaw error → must still cost.
+    thrust = efficiency_cost(
+        np.array([1.0, 0.0, 0.0, 0.0]),
+        yaw_err_rad=0.5,
+        ds_true_m=1.0,
+        cfg=cfg,
+    )
+    assert thrust["heading_term"] == pytest.approx(0.5)
+    assert thrust["efficiency_cost"] == pytest.approx(0.5)
+    # Idle (no planar motion) → heading term off.
+    idle = efficiency_cost(
+        np.array([0.0, 0.0, 0.0, 0.1]),
+        yaw_err_rad=0.5,
+        ds_true_m=0.0,
+        cfg=cfg,
+    )
+    assert idle["heading_term"] == pytest.approx(0.0)
+    assert idle["efficiency_cost"] == pytest.approx(0.0)

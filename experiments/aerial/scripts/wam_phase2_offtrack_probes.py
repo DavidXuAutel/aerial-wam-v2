@@ -237,6 +237,31 @@ def main() -> int:
         help="comma list: wam | wam_nofreeze | tangent_subgoal | rejoin",
     )
     p.add_argument("--cruise-speed", type=float, default=10.0)
+    p.add_argument("--r-base", type=float, default=None, help="AdaptiveSubgoal r_base (default: class default)")
+    p.add_argument("--r-min", type=float, default=None, help="AdaptiveSubgoal r_min (default: class default)")
+    p.add_argument(
+        "--cte-reentry-m",
+        type=float,
+        default=None,
+        help="AdaptiveSubgoal cte_reentry_m (default: class default)",
+    )
+    p.add_argument(
+        "--lookahead-feedback",
+        action="store_true",
+        default=False,
+        help="L1 DECLARE: no-progress carrot shrink (OFF by default)",
+    )
+    p.add_argument(
+        "--heading-assist",
+        action="store_true",
+        default=False,
+        help="F7 fuse: path-tangent dyaw when CTE small but heading peeled (OFF by default)",
+    )
+    p.add_argument(
+        "--no-heading-assist",
+        action="store_true",
+        help="Disable path-tangent heading assist (default is already off)",
+    )
     p.add_argument("--max-steps", type=int, default=300)
     p.add_argument("--step-hz", type=float, default=5.0)
     p.add_argument("--success-dist", type=float, default=3.0)
@@ -258,6 +283,7 @@ def main() -> int:
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.env.action import body_delta_limits, clip_body_delta
     from experiments.aerial.rl.goal_features import body_vel_from_obs
+    from experiments.aerial.rl.path_heading_assist import apply_path_heading_assist
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.subgoal_generator import (
@@ -269,6 +295,7 @@ def main() -> int:
 
     route_ids = [int(x) for x in str(args.routes).split(",") if x.strip() != ""]
     arms = [a.strip() for a in str(args.arms).split(",") if a.strip()]
+    use_heading_assist = bool(args.heading_assist) and not bool(args.no_heading_assist)
 
     cfg = yaml.safe_load((root / args.config).read_text())
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -335,10 +362,19 @@ def main() -> int:
             ref_tang0 = _unit2(pts[min(5, len(pts) - 1), :2] - pts[0, :2])
 
             freeze_m = 5.0 if arm == "wam" else 1.0e9
-            subgoal_gen = AdaptiveSubgoalGenerator(
-                cruise_speed=float(args.cruise_speed),
-                cte_lock_freeze_m=float(freeze_m),
-            )
+            sg_kw: Dict[str, Any] = {
+                "cruise_speed": float(args.cruise_speed),
+                "cte_lock_freeze_m": float(freeze_m),
+            }
+            if args.r_base is not None:
+                sg_kw["r_base"] = float(args.r_base)
+            if args.r_min is not None:
+                sg_kw["r_min"] = float(args.r_min)
+            if args.cte_reentry_m is not None:
+                sg_kw["cte_reentry_m"] = float(args.cte_reentry_m)
+            if bool(args.lookahead_feedback):
+                sg_kw["lookahead_feedback"] = True
+            subgoal_gen = AdaptiveSubgoalGenerator(**sg_kw)
             if shield is not None and hasattr(shield, "reset"):
                 shield.reset()
             if depth_pred is not None and hasattr(depth_pred, "reset"):
@@ -478,6 +514,22 @@ def main() -> int:
                     action = clip_body_delta(action, cur_limits)
                     v_cmd = float(np.linalg.norm(action[:3]) * float(args.step_hz))
 
+                heading_assist_hit = False
+                cos_heading_tang = float("nan")
+                if arm != "rejoin" and use_heading_assist:
+                    action, heading_assist_hit, hinfo = apply_path_heading_assist(
+                        action,
+                        yaw=curr_yaw,
+                        path=pts,
+                        seg_idx=int(true_seg),
+                        cte_m=cte,
+                        limits=cur_limits,
+                    )
+                    cos_heading_tang = float(hinfo.get("cos_heading_tang", float("nan")))
+                    if heading_assist_hit:
+                        action = clip_body_delta(action, cur_limits)
+                        v_cmd = float(np.linalg.norm(action[:3]) * float(args.step_hz))
+
                 wm_out = None
                 if arm != "rejoin" and policy._latent is not None and hasattr(dynamics, "step"):
                     try:
@@ -545,6 +597,9 @@ def main() -> int:
                         ),
                         "g_align_to_proj": g_align,
                         "cos_heading_ref": cos_heading_ref,
+                        "cos_heading_tang": cos_heading_tang,
+                        "heading_assist": heading_assist_hit,
+                        "action": [float(x) for x in np.asarray(action, dtype=np.float64).reshape(-1)[:4]],
                         "g_rel": [float(x) for x in np.asarray(g_rel_body).tolist()],
                     }
                 )
@@ -561,6 +616,9 @@ def main() -> int:
                 "route_idx": ep_idx,
                 "arm": arm,
                 "cte_lock_freeze_m": freeze_m,
+                "r_base": float(getattr(subgoal_gen, "r_base")),
+                "r_min": float(getattr(subgoal_gen, "r_min")),
+                "cte_reentry_m": float(getattr(subgoal_gen, "cte_reentry_m")),
                 "max_steps": int(args.max_steps),
                 "summary": summary,
                 "hypotheses": hyp,
@@ -597,6 +655,9 @@ def main() -> int:
                 "routes": route_ids,
                 "arms": arms,
                 "max_steps": int(args.max_steps),
+                "r_base": args.r_base,
+                "r_min": args.r_min,
+                "cte_reentry_m": args.cte_reentry_m,
                 "rows": report_rows,
             },
             indent=2,

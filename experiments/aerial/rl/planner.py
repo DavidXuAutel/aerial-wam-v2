@@ -14,8 +14,12 @@ import numpy as np
 
 from experiments.aerial.rl.dynamics import LatentDynamics
 from experiments.aerial.rl.env.obs import Observation
+from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
 from experiments.aerial.rl.imagination import MAX_IMAGINATION_HORIZON, imagine
 from experiments.aerial.rl.reward import RewardConfig
+
+# Body-frame fwd above this → subgoal is ahead; drop pure-backward planner atom.
+_SUBGOAL_AHEAD_FWD_M = 0.05
 
 
 class ConstantLatentPolicy:
@@ -26,6 +30,23 @@ class ConstantLatentPolicy:
 
     def act_latent(self, z: np.ndarray) -> np.ndarray:
         return self._action.copy()
+
+
+def drop_backward_if_subgoal_ahead(
+    candidates: Sequence[np.ndarray],
+    goal_rel: np.ndarray,
+) -> List[np.ndarray]:
+    """Remove the hardcoded pure-backward candidate when carrot is ahead in body frame."""
+    if float(goal_rel[0]) <= _SUBGOAL_AHEAD_FWD_M:
+        return list(candidates)
+    kept: List[np.ndarray] = []
+    for cand in candidates:
+        c = np.asarray(cand, dtype=np.float64).reshape(4)
+        pure_back = c[0] < -0.01 and np.all(np.abs(c[1:]) < 1e-6)
+        if pure_back:
+            continue
+        kept.append(c)
+    return kept if kept else list(candidates)
 
 
 def default_candidates(base_action: np.ndarray) -> List[np.ndarray]:
@@ -94,7 +115,10 @@ class ImaginationPlanner:
             z0 = np.asarray(latent, dtype=np.float64).reshape(-1)
         else:
             z0 = np.asarray(self.dynamics.encode(obs), dtype=np.float64)
+        goal_rel = goal_rel_from_obs(obs)
+        body_vel = body_vel_from_obs(obs)
         candidates = list(self.candidate_fn(np.asarray(base_action, dtype=np.float64)))
+        candidates = drop_backward_if_subgoal_ahead(candidates, goal_rel)
         if not candidates:
             return np.asarray(base_action, dtype=np.float64).reshape(4)
         if self.action_limits is not None:
@@ -103,6 +127,8 @@ class ImaginationPlanner:
 
         best_a = candidates[0]
         best_score = -np.inf
+        gr0 = np.asarray(goal_rel, dtype=np.float32).reshape(1, -1)
+        bv0 = np.asarray(body_vel, dtype=np.float32).reshape(1, -1)
         for cand in candidates:
             roll = imagine(
                 self.dynamics,
@@ -110,6 +136,9 @@ class ImaginationPlanner:
                 z0[None, :],
                 self.horizon,
                 reward_cfg=self.reward_cfg,
+                goal_rel0=gr0,
+                body_vel0=bv0,
+                propagate_goal_rel=True,
                 action_limits=self.action_limits,
             )
             score = float(roll.returns[0])

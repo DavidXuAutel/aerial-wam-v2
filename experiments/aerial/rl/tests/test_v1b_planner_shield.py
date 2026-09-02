@@ -7,7 +7,11 @@ from experiments.aerial.rl.buffer import ReplayBuffer
 from experiments.aerial.rl.collector import RolloutCollector
 from experiments.aerial.rl.dynamics import StubLatentDynamics
 from experiments.aerial.rl.env.obs import Observation
-from experiments.aerial.rl.planner import ImaginationPlanner, default_candidates
+from experiments.aerial.rl.planner import (
+    ImaginationPlanner,
+    default_candidates,
+    drop_backward_if_subgoal_ahead,
+)
 from experiments.aerial.rl.reward import RewardConfig
 from experiments.aerial.rl.safety import DepthTauShield
 from experiments.aerial.rl import v1_metrics
@@ -23,10 +27,38 @@ def _obs(pos, depth_val=10.0, info=None):
 def test_planner_prefers_forward_toward_goal():
     dyn = StubLatentDynamics(goal=np.array([50.0, 0.0, 0.0]), latent_dim=8)
     planner = ImaginationPlanner(dyn, horizon=3, reward_cfg=RewardConfig())
-    obs = _obs([0.0, 0.0, 0.0])
+    obs = _obs([0.0, 0.0, 0.0], info={"goal": np.array([50.0, 0.0, 0.0])})
     hover = np.zeros(4)
     planned = planner.plan(obs, hover)
     assert planned[0] > 0.0
+
+
+def test_drop_backward_when_subgoal_ahead():
+    cands = default_candidates(np.zeros(4))
+    assert any(c[0] < -0.01 for c in cands)
+    gr = np.array([15.0, 0.0, 0.0, 15.0], dtype=np.float32)
+    filtered = drop_backward_if_subgoal_ahead(cands, gr)
+    assert not any(c[0] < -0.01 and np.all(np.abs(c[1:]) < 1e-6) for c in filtered)
+
+
+def test_planner_passes_goal_rel_into_imagine(monkeypatch):
+    captured: dict = {}
+
+    def _spy_imagine(*args, **kwargs):
+        captured.update(kwargs)
+        from experiments.aerial.rl.imagination import imagine as real_imagine
+
+        return real_imagine(*args, **kwargs)
+
+    monkeypatch.setattr("experiments.aerial.rl.planner.imagine", _spy_imagine)
+    dyn = StubLatentDynamics(goal=np.array([20.0, 0.0, 0.0]), latent_dim=8)
+    planner = ImaginationPlanner(dyn, horizon=2, reward_cfg=RewardConfig())
+    obs = _obs([0.0, 0.0, 0.0], info={"goal": np.array([20.0, 0.0, 0.0])})
+    planner.plan(obs, np.zeros(4))
+    assert captured.get("goal_rel0") is not None
+    assert float(captured["goal_rel0"][0, 0]) > 0.0
+    assert captured.get("body_vel0") is not None
+    assert captured.get("propagate_goal_rel") is True
 
 
 def test_depth_tau_shield_records_independent_channel():

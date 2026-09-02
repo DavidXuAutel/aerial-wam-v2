@@ -36,7 +36,7 @@ from experiments.aerial.rl.goal_features import (
     advance_goal_rel_body,
     analytic_progress,
 )
-from experiments.aerial.rl.reward import RewardConfig, reward_terms
+from experiments.aerial.rl.reward import RewardConfig, efficiency_cost, reward_terms
 
 MAX_IMAGINATION_HORIZON = 15  # §9 safety cap until WM error shown non-divergent
 
@@ -172,7 +172,19 @@ def imagine(
                 prog = out.progress
             progs[b, t] = prog
             maneuver = float(np.linalg.norm(a))
-            r = reward_terms(prog, out.p_coll, maneuver, cfg)["reward"]
+            # F15: body yaw-to-carrot + analytic progress as along-track proxy.
+            yaw_err = 0.0
+            if goal_rel_t is not None:
+                gxy = np.asarray(goal_rel_t[b][:2], dtype=np.float64)
+                if float(np.linalg.norm(gxy)) > 1e-6:
+                    yaw_err = float(np.arctan2(gxy[1], gxy[0]))
+            eff = efficiency_cost(
+                a, yaw_err_rad=yaw_err, ds_true_m=float(prog), cfg=cfg,
+            )
+            r = reward_terms(
+                prog, out.p_coll, maneuver, cfg,
+                efficiency_cost_val=float(eff["efficiency_cost"]),
+            )["reward"]
             # Mirror NavigationReward.step: arrival earns the same success bonus,
             # so imagined and real returns are on one scale (spec reward §4.5).
             if getattr(out, "arrived", False):

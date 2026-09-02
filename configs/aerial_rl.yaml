@@ -32,6 +32,14 @@ reward:
   w_collision: 10.0
   w_maneuver: 0.01         # maneuver-penalty curriculum START weight
   success_bonus: 10.0
+  # F15 (Runbook): efficiency weights default 0 (= no-op). Short-train overrides
+  # via train_v4_ac --w-eff-* (see WAM_PHASE2_F15_EFFICIENCY_DECLARE). Do not
+  # raise yaml defaults without DECLARE — deploy/collect must stay no-op.
+  w_eff_strafe: 0.0
+  w_eff_heading: 0.0
+  w_eff_idle: 0.0
+  eff_strafe_thr: 0.5
+  eff_idle_ds_thr_m: 0.05
   # Online arrival/termination radius (m). Deliberately TIGHTER than the eval
   # success metric (metrics.OPENFLY_SUCCESS_DIST_M = 20 m): the eval radius is a
   # loose "did it get to the region" score, not a per-step termination gate.

@@ -1,27 +1,23 @@
-"""Composite navigation reward (spec §4.5).
+"""Composite navigation reward (spec §4.5) + Phase-2 F15 efficiency terms.
 
-The spec gives the *shape*, not a scalar:
+Base shape:
 
     reward = w_prog * progress
            - w_coll * collision_risk
            - w_man  * maneuver_cost
+           - w_eff  * efficiency_cost   # F15; weights default 0 = no-op
 
-  * ``progress``       = decrease in distance-to-goal since the last step (m).
-  * ``collision_risk`` = 1.0 on real contact (``obs.collided``); otherwise the
-    world-model's predicted ``p_coll`` in ∈[0,1] (imagined rollouts).
-  * ``maneuver_cost``  = L2 norm of the executed body delta (aggressive-maneuver
-    penalty; keeps motions smooth).
+  * ``progress`` / ``collision_risk`` / ``maneuver_cost`` — as before.
+  * ``efficiency_cost`` (F15) — invalid corridor motion: lateral chase, heading
+    misalignment while strafing, along-track idle. Soft ``L_act/L_ref`` is
+    episode-level (not per-step here).
 
-``NavigationReward`` is stateful: it remembers the previous distance so the
-collector can call ``.step(obs, action)`` once per env step. ``reward_terms``
-is a pure function for the imagination side (given explicit distances / p_coll).
+Product goal is obstacle-aware corridor progress — not only ``Δd_goal − crash``.
+Raising ``w_eff_*`` is a training-contract change: declare before use.
 
-Arrival radius: ``RewardConfig.success_dist_m`` is the *online* arrival /
-termination gate. It defaults to ``DEFAULT_ONLINE_SUCCESS_DIST_M`` (the tight 3 m
-online radius) so that even a bare ``NavigationReward()`` — one built without going
-through the YAML / ``build_from_config`` path — uses the correct threshold. The
-20 m ``OPENFLY_SUCCESS_DIST_M`` (re-exported as ``EVAL_SUCCESS_DIST_M``) is the
-loose *eval SR metric* radius and is intentionally NOT the per-step termination gate.
+``NavigationReward`` is stateful; ``reward_terms`` / ``efficiency_cost`` are pure.
+Arrival radius defaults to ``DEFAULT_ONLINE_SUCCESS_DIST_M`` (3 m online), not the
+loose 20 m eval SR radius.
 """
 from __future__ import annotations
 
@@ -48,6 +44,12 @@ class RewardConfig:
     w_collision: float = 10.0
     w_maneuver: float = 0.01               # curriculum START weight
     w_curiosity: float = 0.0              # Near-obstacle lateral clearance curiosity
+    # F15 efficiency (default 0 = no-op until declared + retrain)
+    w_eff_strafe: float = 0.0             # |dy|/max(|dx|,eps) excess above thr
+    w_eff_heading: float = 0.0            # |yaw_err| while strafing
+    w_eff_idle: float = 0.0               # step with along-track |Δs| ≈ 0
+    eff_strafe_thr: float = 0.5
+    eff_idle_ds_thr_m: float = 0.05
     curiosity_fwd_thresh_m: float = 3.5   # Trigger exploration when forward depth <= thresh
     curiosity_max_bonus: float = 2.0      # Max curiosity bonus per step
     success_dist_m: float = DEFAULT_ONLINE_SUCCESS_DIST_M
@@ -87,12 +89,49 @@ def maneuver_weight_at(metric: float, cfg: RewardConfig, w_start: Optional[float
     return start + frac * (final - start)
 
 
+def efficiency_cost(
+    action: np.ndarray,
+    *,
+    yaw_err_rad: float = 0.0,
+    ds_true_m: float = 1.0,
+    cfg: RewardConfig = RewardConfig(),
+) -> Dict[str, float]:
+    """F15 per-step invalid-motion cost (pure). Soft L_act/L_ref is episode-level.
+
+    With default ``w_eff_*=0``, scalar ``efficiency_cost`` is 0 (no behavior change).
+    """
+    a = np.asarray(action, dtype=np.float64).reshape(-1)
+    dx = float(a[0]) if a.size > 0 else 0.0
+    dy = float(a[1]) if a.size > 1 else 0.0
+    eps = 1e-3
+    strafe_ratio = abs(dy) / max(abs(dx), eps)
+    strafe = max(0.0, strafe_ratio - float(cfg.eff_strafe_thr))
+    # DECLARE: |yaw_err| × 1{planar maneuver} — forward thrust with peel must cost,
+    # not only crab (|dy|/|dx| excess).
+    maneuvering = (abs(dx) + abs(dy)) > eps
+    heading = abs(float(yaw_err_rad)) if maneuvering else 0.0
+    idle = 1.0 if abs(float(ds_true_m)) < float(cfg.eff_idle_ds_thr_m) else 0.0
+    cost = (
+        float(cfg.w_eff_strafe) * strafe
+        + float(cfg.w_eff_heading) * heading
+        + float(cfg.w_eff_idle) * idle
+    )
+    return {
+        "efficiency_cost": float(cost),
+        "strafe_ratio": float(strafe_ratio),
+        "strafe_excess": float(strafe),
+        "heading_term": float(heading),
+        "idle": float(idle),
+    }
+
+
 def reward_terms(
     progress: float,
     collision_risk: float,
     maneuver_cost: float,
     cfg: RewardConfig = RewardConfig(),
     curiosity_gain: float = 0.0,
+    efficiency_cost_val: float = 0.0,
 ) -> Dict[str, float]:
     """Pure term breakdown + scalar reward. Used by both real and imagined paths."""
     r = (
@@ -100,6 +139,7 @@ def reward_terms(
         - cfg.w_collision * float(collision_risk)
         - cfg.w_maneuver * float(maneuver_cost)
         + cfg.w_curiosity * float(np.clip(curiosity_gain, 0.0, cfg.curiosity_max_bonus))
+        - float(efficiency_cost_val)
     )
     return {
         "reward": float(r),
@@ -107,6 +147,7 @@ def reward_terms(
         "collision_risk": float(collision_risk),
         "maneuver_cost": float(maneuver_cost),
         "curiosity_gain": float(curiosity_gain),
+        "efficiency_cost": float(efficiency_cost_val),
     }
 
 
@@ -170,9 +211,22 @@ class NavigationReward:
 
         collision_risk = 1.0 if obs.collided else float(p_coll or 0.0)
         maneuver_cost = float(np.linalg.norm(np.asarray(action, dtype=np.float64)))
-        terms = reward_terms(
-            progress, collision_risk, maneuver_cost, self.cfg, curiosity_gain=curiosity_gain
+        # F15: optional geometry from caller via obs.info (default weights 0 → no-op)
+        info = obs.info if isinstance(obs.info, dict) else {}
+        yaw_err = float(info.get("yaw_err_rad", 0.0) or 0.0)
+        ds_true = float(info.get("ds_true_m", 1.0) if "ds_true_m" in info else 1.0)
+        eff = efficiency_cost(
+            action, yaw_err_rad=yaw_err, ds_true_m=ds_true, cfg=self.cfg
         )
+        terms = reward_terms(
+            progress,
+            collision_risk,
+            maneuver_cost,
+            self.cfg,
+            curiosity_gain=curiosity_gain,
+            efficiency_cost_val=float(eff["efficiency_cost"]),
+        )
+        terms.update({k: eff[k] for k in ("strafe_ratio", "strafe_excess", "heading_term", "idle")})
 
         arrived = dist is not None and dist < self.cfg.success_dist_m
         if arrived:

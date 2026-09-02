@@ -85,6 +85,29 @@ def main() -> int:
         default=None,
         help="override reward.w_collision for imagination AC (default: yaml)",
     )
+    p.add_argument(
+        "--w-eff-strafe",
+        type=float,
+        default=None,
+        help="F15 override reward.w_eff_strafe (default: yaml / 0)",
+    )
+    p.add_argument(
+        "--w-eff-heading",
+        type=float,
+        default=None,
+        help="F15 override reward.w_eff_heading (default: yaml / 0)",
+    )
+    p.add_argument(
+        "--w-eff-idle",
+        type=float,
+        default=None,
+        help="F15 override reward.w_eff_idle (default: yaml / 0)",
+    )
+    p.add_argument(
+        "--init-actor-ckpt",
+        default=None,
+        help="warm-start actor/critic from an existing v4_ac_*.pt (F15 short FT)",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -98,6 +121,19 @@ def main() -> int:
     cfg.setdefault("reward", {})
     if args.w_collision is not None:
         cfg["reward"]["w_collision"] = float(args.w_collision)
+    if args.w_eff_strafe is not None:
+        cfg["reward"]["w_eff_strafe"] = float(args.w_eff_strafe)
+    if args.w_eff_heading is not None:
+        cfg["reward"]["w_eff_heading"] = float(args.w_eff_heading)
+    if args.w_eff_idle is not None:
+        cfg["reward"]["w_eff_idle"] = float(args.w_eff_idle)
+    logger.info(
+        "F15 reward weights: w_eff_strafe=%s w_eff_heading=%s w_eff_idle=%s w_collision=%s",
+        cfg["reward"].get("w_eff_strafe", 0.0),
+        cfg["reward"].get("w_eff_heading", 0.0),
+        cfg["reward"].get("w_eff_idle", 0.0),
+        cfg["reward"].get("w_collision"),
+    )
     cfg["corrector"]["iterations"] = int(args.iters)
     cfg["corrector"]["episodes_per_iter"] = int(args.episodes_per_iter)
     cfg["corrector"]["enable_policy_update"] = True
@@ -195,6 +231,29 @@ def main() -> int:
     if loop.actor_critic is None:
         logger.error("actor_critic not built — install torch")
         return 1
+    if args.init_actor_ckpt:
+        from experiments.aerial.rl.actor_critic import LatentActorCritic
+
+        init_path = Path(args.init_actor_ckpt)
+        if not init_path.is_file():
+            logger.error("--init-actor-ckpt missing: %s", init_path)
+            return 1
+        warmed = LatentActorCritic.load_from_checkpoint(
+            init_path, device=str(args.device),
+        )
+        if not warmed.bounded:
+            logger.error(
+                "refusing warm-start from unbounded policy_class=%s",
+                warmed.config.policy_class,
+            )
+            return 1
+        loop.actor_critic = warmed
+        logger.info(
+            "warm-started actor from %s (goal_feat_mode=%s condition_on_goal=%s)",
+            init_path,
+            warmed.config.goal_feat_mode,
+            warmed.config.condition_on_goal,
+        )
     ac_cfg = loop.actor_critic.config
     if not loop.actor_critic.bounded:
         # Red line (C2, 2026-08-18): the pre-C2 unbounded policy class is

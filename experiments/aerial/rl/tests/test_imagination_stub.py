@@ -75,6 +75,39 @@ def test_imagine_horizon_cap():
         imagine(dyn, _ForwardPolicy(), z0, horizon=MAX_IMAGINATION_HORIZON + 1)
 
 
+def test_imagine_applies_f15_efficiency_when_weighted():
+    """Imagination must subtract F15 efficiency (else H100 short-train is a no-op)."""
+    from experiments.aerial.rl.reward import RewardConfig
+
+    class _Fixed:
+        def __init__(self, a):
+            self._a = np.asarray(a, dtype=np.float64)
+
+        def act_latent(self, z, goal_rel=None):
+            return self._a.copy()
+
+    dyn = StubLatentDynamics(latent_dim=8)
+    z0 = dyn.encode(_obs([0.0, 0.0, 0.0]))[None, :]
+    # Carrot 90° left → large body yaw error while thrusting forward.
+    g_left = np.array([[0.0, 8.0, 0.0, 8.0]], dtype=np.float32)
+    v = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
+    a = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    cfg0 = RewardConfig(w_progress=0.0, w_collision=0.0, w_maneuver=0.0)
+    cfg1 = RewardConfig(
+        w_progress=0.0, w_collision=0.0, w_maneuver=0.0, w_eff_heading=1.0,
+    )
+    r0 = imagine(
+        dyn, _Fixed(a), z0, horizon=1,
+        reward_cfg=cfg0, goal_rel0=g_left, body_vel0=v,
+    ).rewards[0, 0]
+    r1 = imagine(
+        dyn, _Fixed(a), z0, horizon=1,
+        reward_cfg=cfg1, goal_rel0=g_left, body_vel0=v,
+    ).rewards[0, 0]
+    assert r0 == pytest.approx(0.0, abs=1e-5)
+    assert r1 < -0.5  # ≈ −π/2 heading cost
+
+
 def test_dynamics_update_is_v1_gated():
     dyn = StubLatentDynamics(latent_dim=8)
     result = dyn.update(windows=[])

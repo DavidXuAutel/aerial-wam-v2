@@ -145,24 +145,56 @@ def sample_point_along_polyline(
 
 @dataclass
 class AdaptiveSubgoalGenerator:
-    """Mainline adaptive carrot + clearance/curvature governor (design defaults)."""
+    """Mainline adaptive carrot + clearance/curvature governor.
 
-    r_base: float = 55.0
-    r_min: float = 20.0
+    Carrot length is the **local** goal fed to step_e π each step; long horizon
+    still comes from sliding along the polyline. 2026-09-01 H1 ablation: default
+    ``r_base=55`` left on-track early CTE (3–6 m) with a 55 m ``g_rel`` outside
+    the local training regime (PathExpert ~6 m) → R01/R03 offtrack; fixed
+    ~20–25 m polyline carrot improved ds/CTE. Defaults below keep cruise carrot
+    near that local band; CTE recovery starts earlier soft-drift.
+    """
+
+    r_base: float = 25.0
+    r_min: float = 15.0
     d_clear: float = 22.0
     d_danger: float = 3.0
     cruise_speed: float = 10.0
-    cte_reentry_m: float = 5.0  # design §3.3.2
+    cte_reentry_m: float = 2.0  # P1 sweep winner 2026-09-01 (was 3; R01 ds/cte gate)
     #: When CTE exceeds this, roll progress lock back to true arc-s (anti Prog inflate).
     cte_lock_freeze_m: float = 5.0
+    #: F15/F4: shrink carrot when body heading peels from path tangent *before* CTE grows.
+    #: Baseline 20260901: R05 cos_heading collapses by step ~5 while CTE>5 only at ~67.
+    heading_reentry_cos: float = 0.7
+    heading_reentry_r_m: float = 15.0
     a_lat_max: float = 2.5  # lateral accel budget for curvature speed limit
     min_creep_speed: float = 0.2  # align with ThreeZone v_stop (not a 4 m/s floor)
     #: When rem_dist falls below this, force terminal creep (F12; ~2 steps @ 5 Hz × 10 m/s)
     terminal_creep_rem_m: float = 8.0
+    #: Phase-1 chunk length along arc (m). 0 = OFF until F12 forensics validates.
+    #: When >0: carrot must not look past segment end; near end, pin to segment endpoint.
+    segment_length_m: float = 0.0
+    #: When rem_dist ≤ this, pin target to route goal. 0 = OFF until validated.
+    terminal_pin_rem_m: float = 0.0
+    #: L1 lookahead feedback (DECLARE 20260902). Default OFF — must opt in via CLI.
+    lookahead_feedback: bool = False
+    #: Steps with |Δtrue_s| < eps before shrinking R (≈5 s @ 5 Hz default).
+    no_progress_steps: int = 25
+    no_progress_ds_m: float = 0.5
+    #: Multiply r_nominal when stalled; floor still r_min.
+    no_progress_r_scale: float = 0.6
+    #: When feedback on, treat CTE reentry threshold as this factor × cte_reentry_m.
+    cte_feedback_factor: float = 0.75
     _prev_s_max: float = field(default=0.0, init=False, repr=False)
+    _fb_stall_count: int = field(default=0, init=False, repr=False)
+    _fb_last_true_s: float = field(default=0.0, init=False, repr=False)
+    _fb_r_mul: float = field(default=1.0, init=False, repr=False)
 
     def reset(self) -> None:
         self._prev_s_max = 0.0
+        self._fb_stall_count = 0
+        self._fb_last_true_s = 0.0
+        self._fb_r_mul = 1.0
 
     def compute_subgoal(
         self,
@@ -218,16 +250,88 @@ class AdaptiveSubgoalGenerator:
                 theta_turn = float(np.arccos(cos_theta))
                 beta = float(np.cos(np.clip(theta_turn, 0.0, np.pi / 2.0) / 2.0))
 
-        # 3. Lookahead R (design); CTE recovery shrinks R when off-track
+        # 3. Lookahead R; CTE recovery + heading-peel recovery (F4/F15)
+        cte_reentry = float(self.cte_reentry_m)
+        no_progress_shrink = False
+        if bool(self.lookahead_feedback):
+            # L1: stall on true arc-s → shrink carrot; optional earlier CTE reentry.
+            ds_true = float(true_s) - float(self._fb_last_true_s)
+            if abs(ds_true) < float(self.no_progress_ds_m):
+                self._fb_stall_count += 1
+            else:
+                self._fb_stall_count = 0
+                # Recover toward full lookahead after motion resumes.
+                self._fb_r_mul = float(
+                    min(1.0, self._fb_r_mul + 0.5 * (1.0 - self._fb_r_mul))
+                )
+            self._fb_last_true_s = float(true_s)
+            if self._fb_stall_count >= int(self.no_progress_steps):
+                no_progress_shrink = True
+                self._fb_r_mul = float(
+                    min(self._fb_r_mul, float(self.no_progress_r_scale))
+                )
+            cte_reentry = float(self.cte_reentry_m) * float(self.cte_feedback_factor)
+
         r_nominal = max(self.r_min, self.r_base * alpha * beta)
-        if cte > self.cte_reentry_m:
-            # Pull carrot closer for ~30–45° re-entry (design §3.3.2)
-            r_nominal = min(r_nominal, max(self.r_min, cte / np.tan(np.deg2rad(35.0))))
+        if cte > cte_reentry:
+            # ~35–45° re-entry chord; use 40° so soft CTE (3–8 m) pulls below r_base
+            r_nominal = min(r_nominal, max(self.r_min, cte / np.tan(np.deg2rad(40.0))))
+        if bool(self.lookahead_feedback):
+            r_nominal = max(float(self.r_min), float(r_nominal) * float(self._fb_r_mul))
+
+        # Path tangent at true projection; peel heading → short carrot (汇入角) before CTE blows.
+        i_tang = int(np.clip(seg_idx, 0, max(0, len(global_path) - 2)))
+        d_tang = global_path[i_tang + 1, :2] - global_path[i_tang, :2]
+        tang_yaw = float(np.arctan2(float(d_tang[1]), float(d_tang[0])))
+        yaw_err = (tang_yaw - float(curr_yaw) + np.pi) % (2.0 * np.pi) - np.pi
+        cos_heading_tang = float(np.cos(yaw_err))
+        heading_reentry = False
+        if cos_heading_tang < float(self.heading_reentry_cos):
+            heading_reentry = True
+            r_nominal = min(
+                r_nominal,
+                max(float(self.r_min), float(self.heading_reentry_r_m)),
+            )
+
         r_lookahead = min(rem_dist, r_nominal)
 
-        target_world = sample_point_along_polyline(
-            global_path, segment_idx=seg_idx, proj_point=proj_pt, r_lookahead=r_lookahead
-        )
+        terminal_pin = False
+        segment_pin = False
+        segment_end_s = None
+        cum_lengths, total_len = compute_polyline_cum_lengths(global_path)
+
+        # F12 / Phase-1 endgame: pin route goal so ‖g_rel‖ can shrink to the ball.
+        if rem_dist <= float(self.terminal_pin_rem_m) + 1e-9:
+            terminal_pin = True
+            target_world = global_path[-1].copy()
+            r_lookahead = float(rem_dist)
+        else:
+            # Mid-route: do not look past the active Phase-1-scale segment end.
+            L_seg = float(self.segment_length_m)
+            if L_seg > 1e-3 and total_len > 1e-6:
+                k = int(np.floor(float(true_s) / L_seg)) + 1
+                segment_end_s = float(min(total_len, k * L_seg))
+                rem_to_seg = max(0.0, segment_end_s - float(true_s))
+                r_lookahead = min(r_lookahead, rem_to_seg)
+                if rem_to_seg <= r_lookahead + 1e-9:
+                    segment_pin = True
+                    target_world = point_at_arc_length(
+                        global_path, segment_end_s, cum_lengths
+                    )
+                else:
+                    target_world = sample_point_along_polyline(
+                        global_path,
+                        segment_idx=seg_idx,
+                        proj_point=proj_pt,
+                        r_lookahead=r_lookahead,
+                    )
+            else:
+                target_world = sample_point_along_polyline(
+                    global_path,
+                    segment_idx=seg_idx,
+                    proj_point=proj_pt,
+                    r_lookahead=r_lookahead,
+                )
 
         # 4. Speed governor: clearance × curvature; κ from turn over chord ~R
         # v_lat = sqrt(a_lat / κ), κ ≈ θ / ds with ds ≈ max(r_lookahead, 1)
@@ -274,6 +378,7 @@ class AdaptiveSubgoalGenerator:
         info = {
             "s_progress": float(s_progress),
             "s_true": float(true_s),
+            "seg_idx": int(seg_idx),
             "rem_dist": rem_dist,
             "r_lookahead": r_lookahead,
             "alpha_clearance": alpha,
@@ -282,5 +387,16 @@ class AdaptiveSubgoalGenerator:
             "s_lock_frozen": bool(freeze),
             "safe_speed_limit": v_safe,
             "target_world": target_world.tolist(),
+            "cos_heading_tang": cos_heading_tang,
+            "yaw_err_rad": float(yaw_err),
+            "heading_reentry": bool(heading_reentry),
+            "terminal_pin": bool(terminal_pin),
+            "segment_pin": bool(segment_pin),
+            "lookahead_feedback": bool(self.lookahead_feedback),
+            "no_progress_shrink": bool(no_progress_shrink),
+            "fb_r_mul": float(self._fb_r_mul),
+            "segment_end_s": (
+                None if segment_end_s is None else float(segment_end_s)
+            ),
         }
         return g_rel_body, info

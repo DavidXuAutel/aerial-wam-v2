@@ -316,6 +316,12 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         w_progress=float(_get(rc, "w_progress", 1.0)),
         w_collision=float(_get(rc, "w_collision", 10.0)),
         w_maneuver=w_maneuver,
+        # F15 efficiency (default 0 = no-op until DECLARE short-train overrides).
+        w_eff_strafe=float(_get(rc, "w_eff_strafe", 0.0)),
+        w_eff_heading=float(_get(rc, "w_eff_heading", 0.0)),
+        w_eff_idle=float(_get(rc, "w_eff_idle", 0.0)),
+        eff_strafe_thr=float(_get(rc, "eff_strafe_thr", 0.5)),
+        eff_idle_ds_thr_m=float(_get(rc, "eff_idle_ds_thr_m", 0.05)),
         # Online arrival/termination radius — tighter than the eval SR metric
         # (EVAL_SUCCESS_DIST_M=20 m); falls back to the tight online default.
         success_dist_m=float(_get(rc, "success_dist_m", DEFAULT_ONLINE_SUCCESS_DIST_M)),

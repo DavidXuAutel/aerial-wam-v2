@@ -146,6 +146,12 @@ def main() -> int:
     p.add_argument("--early-cte-thr", type=float, default=15.0)
     p.add_argument("--offtrack-cte-thr", type=float, default=25.0)
     p.add_argument(
+        "--heading-assist",
+        action="store_true",
+        default=False,
+        help="F7 fuse: path-tangent dyaw (OFF by default; mainline forensics must not rely on this)",
+    )
+    p.add_argument(
         "--out-dir",
         default="artifacts/videos/wam_phase2_reanchor_forensics_20260830",
     )
@@ -159,6 +165,7 @@ def main() -> int:
     from experiments.aerial.rl.actor_critic import LatentActorCritic, LatentActorDeployPolicy
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.env.action import body_delta_limits, clip_body_delta
+    from experiments.aerial.rl.path_heading_assist import apply_path_heading_assist
     from experiments.aerial.rl.goal_features import body_vel_from_obs
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
@@ -376,6 +383,17 @@ def main() -> int:
             action = policy.act(obs)
             action = planner.plan(obs, action, latent=policy._latent)
             action = clip_body_delta(action, cur_limits)
+            if bool(args.heading_assist):
+                action, _ha, _ = apply_path_heading_assist(
+                    action,
+                    yaw=curr_yaw,
+                    path=pts,
+                    seg_idx=int(s_info.get("seg_idx", 0)),
+                    cte_m=float(cte),
+                    limits=cur_limits,
+                )
+                if _ha:
+                    action = clip_body_delta(action, cur_limits)
 
             wm_out = None
             if policy._latent is not None and hasattr(dynamics, "step"):

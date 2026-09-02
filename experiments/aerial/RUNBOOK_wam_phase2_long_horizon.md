@@ -182,6 +182,24 @@ F1–F7 是**最早方案层**缺陷；F8–F14 是审查后发现、**原 runbo
 * **机理**：导航脑（想象）与安全底线（深度）两套几何；深度虚警→IR/紧急锁，漏检→SCR。  
 * **主航道解法**：罩必开且可诊断；深度/coll 质量单独门禁；长期用 depth-aux / coll-geom 把几何压进 \(z\)，减少「两套真相」。
 
+### F15 — 奖励合同 =「靠近目标 − 碰撞」，鼓励侧移蹭点（训练）
+
+* **现象**：机头拧偏后 π 用侧向 `dy` 追胡萝卜，航向与折线切线夹角持续变大；沿轨 `s` 不动却仍「在靠近目标」。  
+* **机理**：现行 `reward ≈ w_progress·Δd_goal − w_collision·risk − ε·‖a‖`（`w_maneuver≈0.01`）。产品目标是 **避障 + 沿合法走廊有效前进**，不是最短直线蹭终点。多旋翼物理允许侧飞，但跟廊任务不应把侧移当主追点手段。  
+* **主航道解法（效率合同）** — 在保留避障绕行余量的前提下，惩罚**无效机动**，不是盲目罚路径变长：  
+  1. **侧移比**：\|dy\|/max(\|dx\|,ε) 或侧向位移占比过高 → 罚；  
+  2. **航向误差**：机头与胡萝卜/`path` 切线夹角大且仍大侧移 → 罚；  
+  3. **空耗**：\(\Delta s_{\mathrm{true}}\approx 0\) 却耗步/耗能量 → 罚；  
+  4. **相对参考线过长**：\(L_{\mathrm{act}}/L_{\mathrm{ref}}\) 超软上限才罚（允许合理绕障，禁止无意义盘旋）。  
+* **验收**：主指标在 **无 heading-assist** 下报；效率项 on/off 对照进 DECLARE。改奖励权重 = 改训程，须先声明再动手。
+
+### F7 补充 — path heading assist（工程保险丝，非主航道胜利）
+
+* **是什么**：CTE 仍小但 `cos(heading, tang)` 差时，在 π→planner 之后注入 `dyaw`（可衰减侧向）。  
+* **可以**：部署层兜底 / ablation（类比限速罩）；必须可关、有 on/off 对照。  
+* **不可以**：默认开着刷 SR，或写成「WAM 已学会跟线」。主航道 SR/CTE **默认 assist=OFF**。  
+* **正道仍归 F4/F15**：CTE 自愈（缩短 \(R\)）+ 效率奖励；assist 不替代二者。
+
 ---
 
 ## 3. 解决方案总表（按优先级）
@@ -195,9 +213,11 @@ F1–F7 是**最早方案层**缺陷；F8–F14 是审查后发现、**原 runbo
 | **P0** | F9 | Actor/Critic `g_norm` 对齐回报头 | 单测 + 必要时重训/声明 ckpt 风险 |
 | **P0** | F10 | Planner 使用流式 \(z\)，禁评分路径失忆 encode | 部署与想象 \(z\) 同源可审计 |
 | **P1** | F3 / F4 / F12 | 曲率·净空 \(v_{safe}\) + CTE + 终末蠕行 | `subgoal_generator` 单测；门廊不再系统性超时 |
+| **P1** | **F15** | 效率合同：罚侧移主追 / 偏航空耗 / 空耗；保留绕障余量 | 奖励单测 + 声明后的补训/蒸馏；主指标 assist=OFF |
 | **P1** | F11 | 合法回退或无死胡同折线 | 死角失败可归类，禁止随机 escape |
 | **P1** | F1-远 | 全局 A\*/拓扑规划器 | 合法 200–500 m+ 折线数据集 + 评测门 |
 | **P1** | F8 | 传感合同 RGB+IMU+高度计；GT=估计 stub；实机接 VIO/\(z\) | 口径一致；高度通道进高度跟踪 |
+| **P2** | F7-assist | heading assist 仅 ablation/部署保险丝 | `long_eval`/`forensics` **默认 OFF**；on 只报工程增益 |
 | **P2** | F13 / 视觉目标 | 域探针；Method B 另线 | 不得占用默认「坐标到点」验收叙述 |
 
 ---
@@ -252,9 +272,10 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py --mock --episodes 2
 
 准出：栈为 Subgoal → π → Planner → Shield → step；日志可见局部 `goal` 与 `v_safe`。
 
-### Step K — 125 实测
+### Step K — `.110` 实测
 
 ```bash
+ssh a26125-110-public   # 或公司网 a26125-110
 cd ~/aerial-wam-v2
 source experiments/aerial/scripts/env_4090.sh
 python experiments/aerial/scripts/wam_phase2_long_eval.py \
@@ -265,10 +286,10 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py \
   --planner --planner-horizon 5 \
   --max-steps 1000 \
   --out artifacts/wam_phase2_accept_result.json
+# 主航道默认：heading assist OFF（若 CLI 有开关，勿默认打开）
 ```
 
-机器纪律：长评测只在 **cursor-125**；Mac 只做文档/同步/单测；H100 仅经 125。  
-**Agent workspace**：Phase-2 用 `/home/yao/workspaces/aerial-wam-v2-phase2`；Indoor 用 `/home/yao/aerial-indoor-wam`；二者不得共用（见 [`docs/handover/WAM_PHASE2_125_WORKSPACE.md`](../../docs/handover/WAM_PHASE2_125_WORKSPACE.md)）。
+机器纪律：长评测 / 采集只在 **`.110`**（`ssh a26125-110-public`）；Mac 只做文档/同步/单测；**禁止碰 125 进程**；H100 仅经 125 跳板。
 
 **逐场景硬门（2026-08-30）**：汇总 SR/Prog/IR **不得**单独当根因结论。每轮正式评测必须同时交付：
 
@@ -282,14 +303,16 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py \
 
 | 指标 | 门限 | 说明 |
 |------|------|------|
-| 到达率 SR | ≥ 80% | 设计合同到点 |
+| 到达率 SR | ≥ 80% | `arrived := rem≤3 ∧ ‖p−G‖≤3`；**唯一到点主指标** |
 | 严重碰撞 SCR | ≤ 10% | 安全 |
 | SPL | ≥ 70% | 无灌水短路 |
-| 进度 \(\bar\rho\) | ≥ 90% | \(s_{max}/L_{ref}\) |
+| `mean_goal_closure` | 诊断 | \(1-d_{min}/d_0\)；看欧氏闭合 |
+| `n_monotone_inflate` | 诊断 | Prog≥0.9 且 \(d_{min}≥30\) |
+| 进度 \(\bar\rho\) | **诊断 only** | **不得**单独过门或冒充接近成功 |
 | 干预率 IR | ≤ 25% | 罩是底线不是大脑 |
 
-每条失败必须标 **F1–F14** 之一；禁止用「再加启发式」关闭该条。  
-**DECLARE 模板**：先逐路表（tag / CTE / d_min），再写汇总；禁止只贴 mean Prog。
+每条失败必须标 **F1–F15** 之一；禁止用「再加启发式」关闭该条。  
+**DECLARE 模板**：先逐路表（tag / CTE / d_min），再写汇总；禁止只贴 mean Prog。主指标须注明 **heading_assist=on/off**。
 
 ### Step M — 跨区长程（未完成则不得宣称 200–500 m 已验收）
 
@@ -302,23 +325,31 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py \
 ## 6. 偏离清单（出现即停）
 
 * 往返 / U 转 / 自由空间 bridge 充当「长程」  
-* Docking、anti-stagnation、Pure Pursuit 替 π  
+* Docking、anti-stagnation、Pure Pursuit 替 π；**默认打开 heading assist 刷主指标**  
 * 关罩或 `safety.kind=null`  
 * 放宽到达合同或起终点重合刷 SR  
+* 只加「靠近+少撞」、把侧移蹭点当成功；或用「最短路径」效率罚扼杀合法绕障  
 * 把坐标目标结果写成「单目认出目标」；或把 GT 位姿写成「RGB+IMU+高度计定位已闭环」；或暗示「不要 IMU/高度计」  
 * 宣称仅靠 IMU+高度计（无视觉融合）即可无漂完成 100 m+ 水平到点   
 * 无全局规划却宣称跨街区 200–500 m 已过门  
-* 忽略 F9/F10 代码债却宣称「阶段 1 已证明故 Phase 2 必过」  
+* 忽略 F9/F10/F15 却宣称「阶段 1 已证明故 Phase 2 必过」  
 * 只报汇总指标、不看每路场景几何/航迹就下刀修根因
 
 ---
 
 ## 7. 当前下一步（默认）
 
-1. ~~假 `p_coll` / Subgoal freeze / 16 路法医 / H1–H3 探针 / shield cones 假阳性~~（已清：见 STATUS）。  
-2. ~~cones 后贴线法医 R01/R03/R05~~（全 `F_OFFTRACK`，IR≈0.02）。  
-3. ~~R01/R03 g_align 步级探针~~（H1=input_geometry_suspect）。  
-4. **在跑（.110）**：R01/R03/R05 × `wam` / `wam_nofreeze` / **`tangent_subgoal`** / `rejoin` H1 ablation。  
-5. **禁止**未归因就 16 路 / g_norm。
+**主航道完整计划**：[`docs/superpowers/plans/2026-09-02-phase2-receding-global-full.md`](../../docs/superpowers/plans/2026-09-02-phase2-receding-global-full.md)  
+**方案**：[`WAM_PHASE2_HIER_MPC_LOCAL_P1_DESIGN_20260902.md`](../../docs/handover/WAM_PHASE2_HIER_MPC_LOCAL_P1_DESIGN_20260902.md)
 
-**纪律**：改训程 / 罩表 / 门限 / goal 特征语义须 **先声明再动手**。未看场景不下刀。
+```text
+滚动全局 P_ref → 预瞄胡萝卜（不到点） → Phase-1 WAM → 罩
+停机：仅最终 G（‖p−G‖）
+```
+
+**下一刀**：**`.110` P0 评测**（`--rolling-global`，见 [`WAM_PHASE2_HIER_P0_ROLLING_GLOBAL_DECLARE_20260902.md`](../../docs/handover/WAM_PHASE2_HIER_P0_ROLLING_GLOBAL_DECLARE_20260902.md)）。  
+Mac 已完成：`GlobalRefPlanner` + long_eval 接线（默认 OFF）。
+
+**搁置（不挡主航道）**：单路局部坑探针、L1 `--lookahead-feedback` 过门、F15/assist、静段钉点默认开。
+
+**纪律**：局部冻结；全局才滚动。勿用 Prog 冒充到点。

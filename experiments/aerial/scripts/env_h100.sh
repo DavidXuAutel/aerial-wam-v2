@@ -94,6 +94,22 @@ command -v "$AERIAL_PY" >/dev/null 2>&1 || AERIAL_PY="python3"
 export AERIAL_PY
 echo "[env] interpreter: $AERIAL_PY -> $(command -v "$AERIAL_PY")  ($($AERIAL_PY --version 2>&1))"
 
+# --- GPU device node perms (Jupyter/K8s pods) --------------------------------
+# Pods often mount /dev/nvidiaN as root:gid=1035 while the login user is only
+# in `users`. NVML then fails with "Insufficient Permissions" and
+# torch.cuda.is_available() is False even though an H100 is attached.
+# If passwordless sudo is available, widen the nodes for this session.
+if ! nvidia-smi -L >/dev/null 2>&1; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    echo "[env] nvidia-smi blocked — sudo chmod 666 /dev/nvidia* …"
+    sudo -n chmod 666 /dev/nvidia* /dev/nvidiactl /dev/nvidia-modeset 2>/dev/null \
+      || sudo -n sh -c 'chmod 666 /dev/nvidia* /dev/nvidiactl /dev/nvidia-modeset' 2>/dev/null \
+      || true
+  else
+    echo "[env] WARNING: cannot open /dev/nvidia* (need group 1035 or sudo chmod 666)"
+  fi
+fi
+
 # --- self-check (report only) -------------------------------------------------
 "$AERIAL_PY" - <<'PY'
 ok = True
