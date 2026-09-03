@@ -239,7 +239,7 @@ def main() -> int:
         logger.error("actor_critic not built — install torch")
         return 1
     if args.init_actor_ckpt:
-        from experiments.aerial.rl.actor_critic import LatentActorCritic
+        from experiments.aerial.rl.actor_critic import ImaginationActorPolicy, LatentActorCritic
 
         init_path = Path(args.init_actor_ckpt)
         if not init_path.is_file():
@@ -255,6 +255,7 @@ def main() -> int:
             )
             return 1
         loop.actor_critic = warmed
+        loop.imagination_policy = ImaginationActorPolicy(warmed)
         logger.info(
             "warm-started actor from %s (goal_feat_mode=%s condition_on_goal=%s)",
             init_path,
