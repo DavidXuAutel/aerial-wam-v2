@@ -47,6 +47,17 @@ IDENTITY_KEYS = (
     "rolling_global",
 )
 
+# Path-valued identity keys: compare only the project-relative suffix so that
+# /home/yao/aerial-wam-v2/... and /home/a26125/aerial-wam-v2/... compare equal.
+_PATH_IDENTITY_KEYS = {"actor_ckpt", "wm_ckpt"}
+_REPO_ANCHOR = "aerial-wam-v2/"
+
+
+def _norm_identity(key: str, val: Any) -> Any:
+    if key in _PATH_IDENTITY_KEYS and isinstance(val, str) and _REPO_ANCHOR in val:
+        return val.split(_REPO_ANCHOR, 1)[1]
+    return val
+
 
 def _episode_key(ep: Dict[str, Any]) -> Any:
     """Route identity that survives a split: annotation index, else base index."""
@@ -62,7 +73,9 @@ def merge_summaries(summaries: List[Dict[str, Any]], sources: List[str]) -> Dict
     head = summaries[0]
     for src, s in zip(sources[1:], summaries[1:]):
         mismatch = {
-            k: (head.get(k), s.get(k)) for k in IDENTITY_KEYS if head.get(k) != s.get(k)
+            k: (head.get(k), s.get(k))
+            for k in IDENTITY_KEYS
+            if _norm_identity(k, head.get(k)) != _norm_identity(k, s.get(k))
         }
         if mismatch:
             raise SystemExit(

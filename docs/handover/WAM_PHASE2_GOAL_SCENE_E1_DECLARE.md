@@ -1,6 +1,6 @@
 # E1 DECLARE — scene fan intent (`--subgoal-source scene`)
 
-> **Status**: **pre-registered, not yet run** (declared 2026-09-03)
+> **Status**: **FAIL** (run completed 2026-09-03 16:09 CST; merged JSON: `artifacts/wam_phase2_e1_scene_merged.json`)
 > **Prev**: [`WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md`](WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md) — 接线绿灯 / 导航红灯（SR=0，F12 未解）
 > **Plan**: [`docs/superpowers/plans/2026-09-03-phase2-goal-scene-nav.md`](../superpowers/plans/2026-09-03-phase2-goal-scene-nav.md) Task 6
 > **Spec**: [`docs/superpowers/specs/2026-09-03-phase2-goal-scene-nav-design.md`](../superpowers/specs/2026-09-03-phase2-goal-scene-nav-design.md) §4.1 / §5
@@ -126,29 +126,39 @@ E0 主臂两路**都在 110**；E1 的 route 02 换到 125，故 route 02 的 E1
 
 **规则**：若合表后 route 02 的 `goal_closure` 落在 G1 阈值 0.387 的 **±0.05**（即 0.337–0.437）内，**先把 route 02 在 110 重跑一遍再判 G1**，不得直接拿跨机数字判绿或判红。落在这个带外则直接判。
 
-## 5. Results (fill when done — 只填合表 JSON 的数)
+## 5. Results (合表 JSON: `wam_phase2_e1_scene_merged.json`)
 
-| Arm | mean d_min | mean d_final | mean closure | SR | SCR | IR | replan | offaxis | dev mean/max |
-|-----|------------|--------------|--------------|----|-----|----|--------|---------|--------------|
-| E1 `scene` | | | | | | | | | |
-| E0 `toward_g` | 78.34 | 78.74 | 0.487 | 0.0% | 0.0% | 0.6% | — | — | 0 / 0 |
-| `polyline` | 96.16 | 96.16 | 0.370 | 0.0% | 0.0% | 0.1% | — | — | — |
+| Arm | mean d_min | mean d_final | mean closure | SR | SCR | IR | replan | offaxis | offaxis_frac | max dev |
+|-----|------------|--------------|--------------|----|-----|----|--------|---------|--------------|---------|
+| **E1 `scene`** | **142.6** | **387.9** | **0.067** | **0.0%** | **0.0%** | **13.5%** | **798** | **239** | **29.9%** | **46.0°** |
+| E0 `toward_g` | 78.34 | 78.74 | 0.487 | 0.0% | 0.0% | 0.6% | — | — | — | 0° |
+| `polyline` | 96.16 | 96.16 | 0.370 | 0.0% | 0.0% | 0.1% | — | — | — | — |
 
 逐路：
 
-| Route | L_ref | L_act | d_min | d_final | closure | IR | replan | offaxis | max dev |
-|-------|-------|-------|-------|---------|---------|----|--------|---------|---------|
-| 01 | 168.0 | | | | | | | | |
-| 02 | 156.0 | | | | | | | | |
+| Route | base | L_ref | d_min | d_final | closure | IR | replan | offaxis | max dev |
+|-------|------|-------|-------|---------|---------|----|--------|---------|---------|
+| 0 (110) | 5 | 168.0 | 153.42 | **550.52** | **0.000** | 11.0% | 564 | 5 | 43.6° |
+| 1 (125) | 16 | 156.0 | 131.77 | 225.39 | 0.135 | 16.0% | 234 | 234 | 46.0° |
 
-## 6. Gate 判定 (fill when done)
+## 6. Gate 判定
 
-- [ ] **G0** 扇面有效（offaxis > 0 且 max dev ≥ 15°）
-- [ ] **G1** closure ≥ 0.387
-- [ ] **G2** SCR ≤ 0.10
-- [ ] **G3** d_final ≤ 150 m 且无单路 L_act > 3×L_ref
-- [ ] **G4** IR ≤ 0.25
-- [ ] **G5** 未宣称 200–500 m PASS
+- [x] **G0** ✅ 扇面有效：offaxis=239 > 0，max dev=46.0° ≥ 15°
+- [ ] **G1** ❌ closure=0.067 < 0.387（FAIL；较 E0 toward_g 0.487 倒退 86%）
+- [x] **G2** ✅ SCR=0.0%
+- [ ] **G3** ❌ route 0 d_final=550.52 m >> 150 m（drone 飞到更远处）
+- [x] **G4** ✅ IR=13.5% ≤ 25%
+- [x] **G5** ✅ 未宣称 200–500 m PASS
+
+**总判：E1 FAIL（G1 + G3 均红）**
+
+### 诊断摘要（2026-09-03）
+
+route 0 是灾难性的：offaxis 仅 5 次（扇面几乎未动），d_final=550 m（飞到起点反方向远端），closure=0。route 1 offaxis=234/398 步（59%），扇面确实在动，但方向判断错误导致距离不减反增。
+
+两条路各自暴露不同问题：
+- **route 0**：scene fan 几乎退化为 `toward_g`（offaxis=5），`_blocked()` 可能在这条路几乎从不触发，forward 不危险故从未偏转，但到达率仍为零 → 说明 **`toward_g` 本身对 route 0 也不够**（E0 main arm route 0 d_min 和 closure 数据需复查）。
+- **route 1**：fan 频繁偏转（59%），但偏转后进展更差，暗示 scene 评分函数选出的候选方向本身有误（jump-ahead 方向是障碍物密集区而非绕路出口）。
 
 ## 7. Next（不自动执行）
 

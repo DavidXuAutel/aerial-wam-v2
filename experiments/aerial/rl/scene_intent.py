@@ -129,8 +129,7 @@ class SceneIntentPlanner:
 
     r_m: float = 25.0
     cruise_speed: float = 10.0
-    # Must reach past the forward danger cone (up to ±60°), else _blocked()
-    # discards the whole fan and there is no lateral escape to pick.
+    # Fan must include lateral candidates for escape when forward is imminent (<d_danger).
     yaw_offsets_deg: Sequence[float] = field(
         default_factory=lambda: (
             0.0, -15.0, 15.0, -30.0, 30.0, -45.0, 45.0, -60.0, 60.0, -75.0, 75.0
@@ -217,30 +216,25 @@ class SceneIntentPlanner:
         yaw: float,
         d_fwd_hat: Optional[float],
     ) -> bool:
-        """Spec §4.1.2 — discard candidates inside the forward danger cone.
+        """Hard feasibility filter: only discard when imminent collision risk.
 
-        A hard feasibility filter, not a soft cost: a bounded penalty is swamped
-        by the progress term (all in-fan candidates take it, so it cancels and
-        `scene` silently collapses to `toward_g`).
+        Previous design blocked within a nose-centric cone whenever d_fwd < d_clear
+        (22 m), which is almost always true in forest. When the drone faces G, the
+        toward_g candidate (idx 0) aligns with the nose → gets blocked every step →
+        only lateral candidates survive → drone drifts perpendicular to G (E1 bug).
 
-        Cone half-angle grows as forward clearance shrinks: nothing blocked at
-        ``d_clear``, everything within ±60° of the nose blocked at ``d_danger``.
+        Fix: hard-block only when d_fwd < d_danger (< 3 m, truly imminent). The
+        [d_danger, d_clear] range is handled as a soft cost in _score() instead.
         """
         if d_fwd_hat is None or not np.isfinite(float(d_fwd_hat)):
             return False
         d_fwd = float(d_fwd_hat)
-        if d_fwd >= float(self.d_clear):
+        # Only hard-block in the imminent-danger zone (< d_danger).
+        if d_fwd >= float(self.d_danger):
             return False
-        tight = float(
-            np.clip(
-                (float(self.d_clear) - d_fwd)
-                / max(1e-6, float(self.d_clear) - float(self.d_danger)),
-                0.0,
-                1.0,
-            )
-        )
-        cos_gate = 1.0 - 0.5 * tight
-        return self._nose_alignment(p, cand, yaw) >= cos_gate
+        # Within d_danger: block all candidates pointing more than ±90° away from
+        # lateral (i.e. any candidate still pointing forward into the wall).
+        return self._nose_alignment(p, cand, yaw) > 0.0
 
     def _score(
         self,
@@ -256,7 +250,25 @@ class SceneIntentPlanner:
         jump = 0.0
         if self._c_prev is not None:
             jump = float(np.linalg.norm(cand - self._c_prev))
-        return float(-float(self.w_g) * progress + float(self.w_jump) * jump)
+        # Soft forward-depth penalty: penalise candidates that point into a
+        # shallow depth zone [d_danger, d_clear]. Scales with nose alignment so
+        # that purely lateral candidates are not penalised even when d_fwd is low.
+        fwd_penalty = 0.0
+        if d_fwd_hat is not None and np.isfinite(float(d_fwd_hat)):
+            d_fwd = float(d_fwd_hat)
+            if float(self.d_danger) <= d_fwd < float(self.d_clear):
+                tight = float(
+                    np.clip(
+                        (float(self.d_clear) - d_fwd)
+                        / max(1e-6, float(self.d_clear) - float(self.d_danger)),
+                        0.0,
+                        1.0,
+                    )
+                )
+                alignment = max(0.0, self._nose_alignment(p, cand, yaw))
+                # w_fwd scales from 0 (far) to ~1x the per-step progress magnitude
+                fwd_penalty = tight * alignment * float(self.r_m) * 0.5
+        return float(-float(self.w_g) * progress + float(self.w_jump) * jump + fwd_penalty)
 
     def compute(
         self,

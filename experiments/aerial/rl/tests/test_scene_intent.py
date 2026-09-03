@@ -91,12 +91,25 @@ def test_scene_clear_path_stays_on_goal_ray():
     assert info["offaxis_count"] == 0
 
 
-def test_scene_tight_depth_peels_off_goal_ray():
-    """Nose-in blocked ⇒ picks a fan candidate ⇒ offaxis counted, dev > 0."""
+def test_scene_tight_depth_toward_g_still_wins_in_soft_zone():
+    """In the soft-penalty zone (d_danger < d_fwd < d_clear), toward_g progress
+    dominates the soft forward penalty → candidate 0 should still win.
+    Hard-block only fires when d_fwd < d_danger (< 3 m)."""
     pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=22.0)
     pl.reset()
     _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 4.0)
-    assert info["chosen_idx"] != 0, "forward penalty should have rejected candidate 0"
+    assert info["chosen_idx"] == 0, "toward_g progress should dominate at d_fwd=4m"
+    assert info["offaxis_count"] == 0
+
+
+def test_scene_imminent_danger_hard_blocks_forward():
+    """When d_fwd < d_danger (< 3 m), forward candidates are hard-blocked
+    → fan must pick a lateral candidate → offaxis counted."""
+    pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=22.0)
+    pl.reset()
+    # d_fwd=2.0 < d_danger=3.0 → hard block nose-aligned candidates
+    _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 2.0)
+    assert info["chosen_idx"] != 0, "forward candidate must be hard-blocked at d_fwd=2m"
     assert info["dev_deg"] > 1.0
     assert info["offaxis_count"] == 1
 
