@@ -48,6 +48,10 @@ class CorrectorConfig:
     imagine_batch: int = 64
     imagine_horizon: int = 10
     smoke: bool = False
+    # MPC-rollout training: prepend one random-action WM step before actor
+    # imagination. Trains the actor on z states that arise from non-actor
+    # first actions — exactly the distribution seen during MPC at test time.
+    mpc_rollout: bool = False
 
 
 @dataclass
@@ -173,6 +177,29 @@ class SerialCorrectorLoop:
         goal_rel0 = np.stack([goal_rel_from_obs(t.obs) for t in transitions], axis=0)
         body_vel0 = np.stack([body_vel_from_obs(t.obs) for t in transitions], axis=0)
         z0 = np.stack([self.dynamics.encode(t.obs) for t in transitions], axis=0)
+
+        # MPC-rollout: advance z0 by one random step so the actor trains from
+        # states it will encounter in MPC (where step 0 is a non-actor candidate).
+        if self.config.mpc_rollout:
+            ac = getattr(self, "actor_critic", None)
+            _limits = getattr(ac, "action_limits", None) if ac is not None else None
+            if _limits is not None:
+                rng = np.random.default_rng()
+                a0_batch = rng.uniform(
+                    -np.asarray(_limits), np.asarray(_limits),
+                    size=(z0.shape[0], len(_limits)),
+                ).astype(np.float32)
+                from experiments.aerial.rl.goal_features import advance_goal_rel_body
+                z1_list, gr1_list = [], []
+                for i in range(z0.shape[0]):
+                    out = self.dynamics.step(z0[i], a0_batch[i],
+                                             goal_rel=goal_rel0[i],
+                                             body_vel=body_vel0[i])
+                    z1_list.append(np.asarray(out.z_next, dtype=np.float32))
+                    gr1_list.append(advance_goal_rel_body(goal_rel0[i], a0_batch[i]))
+                z0 = np.stack(z1_list, axis=0)
+                goal_rel0 = np.stack(gr1_list, axis=0).astype(np.float32)
+
         # Imagine inside the DEPLOYED action set (C2, 2026-08-18): the AC owns the
         # box (= ``body_delta_limits(1/step_hz)``) and its sampling law already
         # respects it, so this is a no-op guard whose ``n_action_clipped`` counter

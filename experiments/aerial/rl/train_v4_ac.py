@@ -108,6 +108,12 @@ def main() -> int:
         default=None,
         help="warm-start actor/critic from an existing v4_ac_*.pt (F15 short FT)",
     )
+    p.add_argument(
+        "--mpc-rollout",
+        action="store_true",
+        help="prepend one random-action WM step before actor imagination so the "
+             "actor trains from MPC-style z1 states (required for actor-rollout MPC)",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -138,6 +144,7 @@ def main() -> int:
     cfg["corrector"]["episodes_per_iter"] = int(args.episodes_per_iter)
     cfg["corrector"]["enable_policy_update"] = True
     cfg["corrector"]["enable_wm_update"] = False
+    cfg["corrector"]["mpc_rollout"] = bool(args.mpc_rollout)
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
