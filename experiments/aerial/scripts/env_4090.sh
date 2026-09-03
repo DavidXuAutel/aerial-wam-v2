@@ -1,23 +1,7 @@
 #!/usr/bin/env bash
-# Aerial WAM — eval / collect on **10.229.20.110 only** (4090 + AirSim).
-# SOURCE on .110 after: ssh cursor-125[-public] → ssh a26125-110
+# Aerial WAM — eval / collect env for 110 and 125 (both have 4090 + AirSim).
 #
 #   source experiments/aerial/scripts/env_4090.sh
-#
-# 125 is bridge-only — do NOT source this on cursor-125 / user yao.
-# See docs/handover/ACCESS.md and AIRSIM_MIGRATE_110_20260831.md.
-
-# Hard gate BEFORE set -e (so a refused `source` does not kill the parent shell mid-script).
-if [[ "${AERIAL_ALLOW_125:-0}" != "1" ]]; then
-  if [[ "$(whoami 2>/dev/null || true)" == "yao" ]] \
-    || [[ "${HOME:-}" == "/home/yao" ]] \
-    || [[ -d /home/yao/aerial-wam-v2 && "$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -c '^10\.229\.20\.125$' || true)" -ge 1 ]]; then
-    echo "[env_4090] REFUSED: aerial eval/collect runs on 10.229.20.110 only." >&2
-    echo "[env_4090] From Mac/125 bridge: ssh a26125-110   then source this script there." >&2
-    echo "[env_4090] (override for emergency only: AERIAL_ALLOW_125=1)" >&2
-    return 1 2>/dev/null || exit 1
-  fi
-fi
 
 set -euo pipefail
 
