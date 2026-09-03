@@ -88,7 +88,7 @@ def main() -> int:
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-    from experiments.aerial.rl.actor_critic import LatentActorCritic, LatentActorDeployPolicy
+    from experiments.aerial.rl.actor_critic import ImaginationActorPolicy, LatentActorCritic, LatentActorDeployPolicy
     from experiments.aerial.rl.buffer import ReplayBuffer
     from experiments.aerial.rl.collector import RolloutCollector
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
@@ -127,7 +127,8 @@ def main() -> int:
             horizon=int(args.planner_horizon),
             reward_cfg=reward_cfg,
             action_limits=limits,
-            policy=actor_ac,
+            actor=ImaginationActorPolicy(actor_ac, deterministic=True),
+            max_horizon=int(args.planner_horizon),
         )
         logger.info(f"ImaginationPlanner ACTIVE: horizon={args.planner_horizon}, limits={limits.tolist()}, hybrid_rollout=True")
 
