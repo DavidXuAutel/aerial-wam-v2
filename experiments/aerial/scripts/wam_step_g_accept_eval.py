@@ -74,6 +74,9 @@ def main() -> int:
     parser.add_argument("--depth-ckpt", default="experiments/aerial/rl/artifacts/depth_ckpt_p45mid_s8j_20260825/depth_best_holdout_da3_ft_head.pt")
     parser.add_argument("--annotation", default="artifacts/seen_airsim16_m1a20.json")
     parser.add_argument("--episodes", type=int, default=16)
+    parser.add_argument("--routes", default=None,
+                        help="Comma-separated 0-based route indices to run (overrides --episodes). "
+                             "Use for parallel splits, e.g. --routes 0,1,2,3,4,5,6,7")
     parser.add_argument("--step-hz", type=float, default=5.0)
     parser.add_argument("--takeoff-scan-steps", type=int, default=4)
     parser.add_argument("--max-steps", type=int, default=250)
@@ -136,8 +139,16 @@ def main() -> int:
     with ann_path.open("r", encoding="utf-8") as f:
         routes: List[Dict[str, Any]] = json.load(f)
 
-    n_eval = min(int(args.episodes), len(routes))
-    routes_to_eval = routes[:n_eval]
+    if args.routes is not None:
+        selected = [int(x) for x in args.routes.split(",")]
+        routes_to_eval = [routes[i] for i in selected if i < len(routes)]
+        n_eval = len(routes_to_eval)
+        if len(selected) < len(routes):
+            logger.warning(f"PARTIAL RUN: routes {selected} of {len(routes)} — "
+                           f"merge with other box before computing final verdict")
+    else:
+        n_eval = min(int(args.episodes), len(routes))
+        routes_to_eval = routes[:n_eval]
 
     buf = ReplayBuffer(capacity_episodes=4, seed=0)
     collector = RolloutCollector(
