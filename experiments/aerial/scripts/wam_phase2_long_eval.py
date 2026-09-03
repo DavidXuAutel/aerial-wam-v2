@@ -245,6 +245,12 @@ def main() -> int:
             "direct_g=ablation A; scene=E1 fan intent"
         ),
     )
+    parser.add_argument(
+        "--traj-out",
+        default=None,
+        help="If set, write per-step JSONL trace (pos, intent_target, d_fwd, "
+             "chosen_idx, dev_deg, yaw, replan) for trajectory forensics.",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[3]
@@ -526,6 +532,12 @@ def main() -> int:
         min_d = d0
         d_final = d0
         traj = [p_curr.copy()]
+        traj_writer = None
+        if args.traj_out:
+            _traj_path = Path(args.traj_out).with_suffix("") / f"route{ep_idx:02d}.jsonl"
+            _traj_path.parent.mkdir(parents=True, exist_ok=True)
+            traj_writer = _traj_path.open("w")
+            logger.info("traj-out: %s", _traj_path)
         arrived = False
         collided = False
         severe_coll = False
@@ -691,6 +703,22 @@ def main() -> int:
             curr_yaw = float(obs.yaw) if hasattr(obs, "yaw") else curr_yaw
             traj.append(p_curr.copy())
 
+            if traj_writer is not None:
+                _srec = s_info if intent is not None else {}
+                traj_writer.write(json.dumps({
+                    "step": step,
+                    "pos": p_curr.tolist(),
+                    "yaw_deg": round(float(np.degrees(curr_yaw)), 2),
+                    "d_to_g": round(float(np.linalg.norm(goal_pos - p_curr)), 2),
+                    "d_fwd": round(float(d_fwd), 3) if d_fwd is not None else None,
+                    "intent_target": _srec.get("target_world"),
+                    "chosen_idx": _srec.get("chosen_idx"),
+                    "dev_deg": round(float(_srec["dev_deg"]), 2) if _srec.get("dev_deg") is not None else None,
+                    "replan": _srec.get("replan"),
+                    "n_feasible": _srec.get("n_feasible"),
+                    "intervened": bool(step in getattr(traj_writer, "_intervened", set())),
+                }) + "\n")
+
             seg_d = _segment_min_dist(p_prev, p_curr, goal_pos)
             if euclid_only:
                 if seg_d <= float(args.success_dist):
@@ -751,6 +779,8 @@ def main() -> int:
             "mean_intent_dev_deg": round(float(np.mean(dev_degs)), 2) if dev_degs else 0.0,
             "max_intent_dev_deg": round(float(np.max(dev_degs)), 2) if dev_degs else 0.0,
         }
+        if traj_writer is not None:
+            traj_writer.close()
         results.append(ep_result)
         intent_tail = (
             f" | replan={ep_result['n_intent_replans']}"
