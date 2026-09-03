@@ -387,6 +387,7 @@ def main() -> int:
         collided = False
         severe_coll = False
         interventions = 0
+        intervened_steps: set[int] = set()
         s_prog = 0.0
         last_true_s: float | None = None
 
@@ -514,6 +515,7 @@ def main() -> int:
                 )
                 if overridden:
                     interventions += 1
+                    intervened_steps.add(step)
                 action = act_safe
 
             step_out = env.step(action)

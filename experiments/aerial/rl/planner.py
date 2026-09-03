@@ -118,9 +118,9 @@ class ImaginationPlanner:
             self.action_limits = lim
         if self.horizon < 1:
             raise ValueError("horizon must be >= 1")
-        if self.horizon > MAX_IMAGINATION_HORIZON:
+        if self.horizon > self.max_horizon:
             raise ValueError(
-                f"planner horizon {self.horizon} exceeds cap {MAX_IMAGINATION_HORIZON}"
+                f"planner horizon {self.horizon} exceeds max_horizon {self.max_horizon}"
             )
 
     def set_goal(self, goal: Optional[np.ndarray]) -> None:
