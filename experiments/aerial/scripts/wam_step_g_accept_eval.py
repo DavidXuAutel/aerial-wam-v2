@@ -152,7 +152,6 @@ def main() -> int:
         depth_predictor=depth_pred,
         planner=planner,
         dynamics=dynamics,
-        takeoff_scan_steps=int(args.takeoff_scan_steps),
     )
 
     logger.info(f"Starting Step G acceptance evaluation on {n_eval} routes from {ann_path.name}")
