@@ -80,6 +80,30 @@ def test_scene_planner_holds_between_replans():
     np.testing.assert_allclose(info1["target_world"], t0, atol=1e-6)
 
 
+def test_scene_no_replan_in_soft_zone():
+    """d_fwd < d_clear must NOT trigger replan (old bug: fired every step in
+    forest because d_clear=22 m is always exceeded there)."""
+    pl = SceneIntentPlanner(r_m=25.0, replan_period_s=2.0, step_hz=5.0)
+    pl.reset()
+    _, info0 = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 15.0)
+    assert info0.get("replan") is True  # first call always replans
+    _, info1 = pl.compute(
+        np.array([0.3, 0.0, 0.0]), 0.0, np.array([100.0, 0.0, 0.0]), 15.0
+    )
+    assert info1.get("replan") is False, "d_fwd=15 < d_clear=22 must not trigger replan"
+
+
+def test_scene_danger_triggers_emergency_replan():
+    """d_fwd < d_danger overrides the hold period → immediate emergency replan."""
+    pl = SceneIntentPlanner(r_m=25.0, replan_period_s=2.0, step_hz=5.0, d_danger=3.0)
+    pl.reset()
+    pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 40.0)
+    _, info = pl.compute(
+        np.array([0.3, 0.0, 0.0]), 0.0, np.array([100.0, 0.0, 0.0]), 2.0
+    )
+    assert info.get("replan") is True, "d_fwd < d_danger must trigger emergency replan"
+
+
 def test_scene_clear_path_stays_on_goal_ray():
     """E1 observability: clear forward depth ⇒ candidate 0 ⇒ dev 0 ⇒ ≡ toward_g."""
     pl = SceneIntentPlanner(r_m=25.0)
@@ -91,14 +115,22 @@ def test_scene_clear_path_stays_on_goal_ray():
     assert info["offaxis_count"] == 0
 
 
-def test_scene_tight_depth_toward_g_still_wins_in_soft_zone():
-    """In the soft-penalty zone (d_danger < d_fwd < d_clear), toward_g progress
-    dominates the soft forward penalty → candidate 0 should still win.
-    Hard-block only fires when d_fwd < d_danger (< 3 m)."""
-    pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=22.0)
+def test_scene_soft_zone_forces_offaxis():
+    """With w_fwd=2.0 the penalty at d_fwd=4m is tight≈0.95 × r_m × 2 ≈ 47 m,
+    which exceeds toward_g progress ≈ 25 m → offaxis candidate wins."""
+    pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=22.0, w_fwd=2.0)
     pl.reset()
     _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 4.0)
-    assert info["chosen_idx"] == 0, "toward_g progress should dominate at d_fwd=4m"
+    assert info["chosen_idx"] != 0, "offaxis should beat toward_g when penalty > progress"
+    assert info["offaxis_count"] == 1
+
+
+def test_scene_near_clear_toward_g_still_wins():
+    """Near d_clear tight→0 so penalty≈0 → toward_g wins on progress."""
+    pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=22.0, w_fwd=2.0)
+    pl.reset()
+    _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 21.0)
+    assert info["chosen_idx"] == 0, "toward_g should win when d_fwd is near d_clear"
     assert info["offaxis_count"] == 0
 
 

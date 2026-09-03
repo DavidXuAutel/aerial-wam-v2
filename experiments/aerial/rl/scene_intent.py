@@ -139,6 +139,11 @@ class SceneIntentPlanner:
     step_hz: float = 5.0
     w_g: float = 1.0
     w_jump: float = 0.05
+    # Forward-depth soft-penalty multiplier.  At 0.5 (old default) max penalty
+    # was ~12.5 m < toward_g progress ~25 m, so offaxis was never chosen.
+    # At 2.0 max penalty ~50 m > 25 m, so the fan genuinely steers away from
+    # obstacles once d_fwd drops well below d_clear.
+    w_fwd: float = 2.0
     d_danger: float = 3.0
     d_clear: float = 22.0
     min_creep_speed: float = 1.0
@@ -187,8 +192,11 @@ class SceneIntentPlanner:
             return True
         if self._steps_since_replan >= period_steps:
             return True
+        # Emergency: imminent collision → pick escape candidate immediately.
+        # Do NOT trigger on d_fwd < d_clear: that fired every step in forest
+        # (d_clear=22 m is almost always exceeded), destroying the hold period.
         if d_fwd_hat is not None and np.isfinite(float(d_fwd_hat)):
-            if float(d_fwd_hat) < float(self.d_clear):
+            if float(d_fwd_hat) < float(self.d_danger):
                 return True
         if self._last_d_to_g is not None:
             progressed = float(self._last_d_to_g) - float(d_to_g)
@@ -250,9 +258,16 @@ class SceneIntentPlanner:
         jump = 0.0
         if self._c_prev is not None:
             jump = float(np.linalg.norm(cand - self._c_prev))
-        # Soft forward-depth penalty: penalise candidates that point into a
-        # shallow depth zone [d_danger, d_clear]. Scales with nose alignment so
-        # that purely lateral candidates are not penalised even when d_fwd is low.
+        # Soft forward-depth penalty: penalise candidates pointing into a shallow
+        # depth zone [d_danger, d_clear].  Only applied to candidates that
+        # actually point forward (alignment > 0); purely lateral candidates are
+        # not penalised since we have no depth reading from their direction.
+        #
+        # With w_fwd=2.0 the max penalty is tight=1 × alignment=1 × r_m × 2.0
+        # ≈ 50 m, which exceeds toward_g's typical progress advantage (~25 m),
+        # so the fan genuinely steers away when d_fwd is well below d_clear.
+        # At w_fwd=0.5 (old default) the max was ~12.5 m — always dominated by
+        # progress, so scene was behaviourally identical to toward_g.
         fwd_penalty = 0.0
         if d_fwd_hat is not None and np.isfinite(float(d_fwd_hat)):
             d_fwd = float(d_fwd_hat)
@@ -266,8 +281,7 @@ class SceneIntentPlanner:
                     )
                 )
                 alignment = max(0.0, self._nose_alignment(p, cand, yaw))
-                # w_fwd scales from 0 (far) to ~1x the per-step progress magnitude
-                fwd_penalty = tight * alignment * float(self.r_m) * 0.5
+                fwd_penalty = tight * alignment * float(self.r_m) * float(self.w_fwd)
         return float(-float(self.w_g) * progress + float(self.w_jump) * jump + fwd_penalty)
 
     def compute(

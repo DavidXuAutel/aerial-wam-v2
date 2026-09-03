@@ -701,6 +701,19 @@ def main() -> int:
             p_prev = p_curr.copy()
             p_curr = np.array(obs.position, dtype=np.float64)
             curr_yaw = float(obs.yaw) if hasattr(obs, "yaw") else curr_yaw
+
+            # F-tele: detect AirSim teleportation (position jump > 20 m in one
+            # step is physically impossible; flag episode so it is not reported
+            # as a navigation result).
+            _step_jump = float(np.linalg.norm(p_curr - p_prev))
+            if _step_jump > 20.0:
+                logger.error(
+                    "Route %02d F-tele teleportation at step %d: jump=%.1fm — episode invalidated",
+                    ep_idx + 1, step, _step_jump,
+                )
+                severe_coll = True  # treat as episode failure, not SCR
+                break
+
             traj.append(p_curr.copy())
 
             if traj_writer is not None:
