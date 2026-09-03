@@ -134,6 +134,7 @@ def main() -> int:
 
     import torch
     from experiments.aerial.rl.actor_critic import (
+        ImaginationActorPolicy,
         LatentActorCritic,
         LatentActorDeployPolicy,
     )
@@ -225,13 +226,13 @@ def main() -> int:
 
     planner = None
     if args.planner:
-        # Note: hybrid one-step+π rollout (policy=) is NOT on ImaginationPlanner yet;
-        # candidates still score via ConstantLatentPolicy (Step-G P0 deferred).
         planner = ImaginationPlanner(
             dynamics=dynamics,
             horizon=int(args.planner_horizon),
             reward_cfg=reward_cfg,
             action_limits=action_limits,
+            actor=ImaginationActorPolicy(actor_ac, deterministic=True),
+            max_horizon=int(args.planner_horizon),
         )
 
     policy = LatentActorDeployPolicy(

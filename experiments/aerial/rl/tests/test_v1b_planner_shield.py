@@ -8,6 +8,7 @@ from experiments.aerial.rl.collector import RolloutCollector
 from experiments.aerial.rl.dynamics import StubLatentDynamics
 from experiments.aerial.rl.env.obs import Observation
 from experiments.aerial.rl.planner import (
+    ActorRolloutPolicy,
     ImaginationPlanner,
     default_candidates,
     drop_backward_if_subgoal_ahead,
@@ -75,6 +76,59 @@ def test_dual_channel_independence_metric():
     out = v1_metrics.check_dual_channel_independence(d, t, max_both_fail_frac=0.5)
     assert out["ok"] is True
     assert out["both_fail_frac"] == 0.0
+
+
+def test_actor_rollout_policy_step0_returns_candidate():
+    call_log = []
+
+    class _SpyActor:
+        def act_latent(self, z, goal_rel=None):
+            call_log.append(("actor", goal_rel))
+            return np.ones(4, dtype=np.float64) * 0.5
+
+    first = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
+    policy = ActorRolloutPolicy(first, _SpyActor())
+
+    a0 = policy.act_latent(np.zeros(8))
+    assert np.allclose(a0, first), "step 0 must return the candidate action"
+    assert len(call_log) == 0, "actor must not be called at step 0"
+
+    gr = np.array([10.0, 0.0, 0.0, 10.0], dtype=np.float32)
+    a1 = policy.act_latent(np.zeros(8), goal_rel=gr)
+    assert np.allclose(a1, 0.5), "step 1 must use actor"
+    assert len(call_log) == 1
+    assert call_log[0][1] is gr
+
+    a2 = policy.act_latent(np.zeros(8))
+    assert np.allclose(a2, 0.5), "step 2 must also use actor"
+    assert len(call_log) == 2
+
+
+def test_imagination_planner_uses_actor_after_step0():
+    """Actor is called (H-1) times per candidate; step 0 uses the candidate action."""
+    call_log = []
+
+    class _SpyActor:
+        def act_latent(self, z, goal_rel=None):
+            call_log.append(1)
+            return np.zeros(4, dtype=np.float64)
+
+    dyn = StubLatentDynamics(goal=np.array([20.0, 0.0, 0.0]), latent_dim=8)
+    planner = ImaginationPlanner(
+        dyn, horizon=3, reward_cfg=RewardConfig(), actor=_SpyActor()
+    )
+    obs = _obs([0.0, 0.0, 0.0], info={"goal": np.array([20.0, 0.0, 0.0])})
+    planner.plan(obs, np.zeros(4))
+
+    # drop_backward_if_subgoal_ahead filters the pure-backward candidate when goal is ahead;
+    # compute expected count from the actual surviving set.
+    from experiments.aerial.rl.goal_features import goal_rel_from_obs
+    from experiments.aerial.rl.planner import drop_backward_if_subgoal_ahead
+    surviving = drop_backward_if_subgoal_ahead(
+        default_candidates(np.zeros(4)), goal_rel_from_obs(obs)
+    )
+    # Each surviving candidate: 1 constant step + (H-1)=2 actor steps
+    assert len(call_log) == len(surviving) * (3 - 1)
 
 
 def test_collector_runs_with_planner():

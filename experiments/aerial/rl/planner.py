@@ -32,6 +32,28 @@ class ConstantLatentPolicy:
         return self._action.copy()
 
 
+class ActorRolloutPolicy:
+    """Step 0: emit candidate action; steps 1+: actor π(z, goal_rel).
+
+    A new instance is created per candidate in ImaginationPlanner.plan(),
+    so no explicit reset is needed between candidates.
+    """
+
+    def __init__(self, first_action: np.ndarray, actor: Any) -> None:
+        self._first = np.asarray(first_action, dtype=np.float64).reshape(4)
+        self._actor = actor
+        self._step = 0
+
+    def act_latent(
+        self, z: np.ndarray, goal_rel: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+        if self._step == 0:
+            self._step += 1
+            return self._first.copy()
+        self._step += 1
+        return self._actor.act_latent(z, goal_rel=goal_rel)
+
+
 def drop_backward_if_subgoal_ahead(
     candidates: Sequence[np.ndarray],
     goal_rel: np.ndarray,
@@ -77,6 +99,13 @@ class ImaginationPlanner:
     #: logged 2026-08-18 but deliberately NOT changed by default, since flipping
     #: it would alter the V1 deployed path and require a V1 re-gate.
     action_limits: Optional[np.ndarray] = None
+    #: When set, steps 1+ of each imagined candidate use actor π(z, goal_rel)
+    #: instead of repeating the candidate action (actor-rollout MPC).
+    #: Accepts any object with act_latent(z, goal_rel=None) -> np.ndarray[4].
+    actor: Optional[Any] = None
+    #: Overrides the MAX_IMAGINATION_HORIZON safety cap for longer-horizon runs.
+    #: Caller bears responsibility for WM fidelity at the chosen horizon.
+    max_horizon: int = MAX_IMAGINATION_HORIZON
 
     def __post_init__(self) -> None:
         self.horizon = int(self.horizon)
@@ -130,9 +159,14 @@ class ImaginationPlanner:
         gr0 = np.asarray(goal_rel, dtype=np.float32).reshape(1, -1)
         bv0 = np.asarray(body_vel, dtype=np.float32).reshape(1, -1)
         for cand in candidates:
+            img_policy = (
+                ActorRolloutPolicy(cand, self.actor)
+                if self.actor is not None
+                else ConstantLatentPolicy(cand)
+            )
             roll = imagine(
                 self.dynamics,
-                ConstantLatentPolicy(cand),
+                img_policy,
                 z0[None, :],
                 self.horizon,
                 reward_cfg=self.reward_cfg,
@@ -140,6 +174,7 @@ class ImaginationPlanner:
                 body_vel0=bv0,
                 propagate_goal_rel=True,
                 action_limits=self.action_limits,
+                max_horizon=self.max_horizon,
             )
             score = float(roll.returns[0])
             if score > best_score:
