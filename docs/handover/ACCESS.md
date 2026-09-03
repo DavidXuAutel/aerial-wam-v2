@@ -8,7 +8,7 @@
 | **`.110` 主环境**（评测 / 采集 / AirSim） | `ssh a26125-110` → `10.229.20.110` · `a26125` | **`ssh a26125-110-public`** → `ssh-110.david-x.com`（Access） |
 | **AirSim** | `10.229.20.110:41451`，**125 本机亦有**（E0 的 `direct_g` / `polyline` 两臂即在 125 跑通） | 同左（各自在本机跑 client，勿跨机连 41451） |
 | **125** | `ssh cursor-125` — 桥 / git bare / H100 跳板 **+ 第二台 eval 机**（并行用） | `ssh cursor-125-public` |
-| **H100** `.26` | 经 125：`ssh cursor-125[-public]` → `ssh h100-26` | 同左 |
+| **H100** `.23` | 经 125：`ssh cursor-125[-public]` → `ssh h100-23`（直连：`ssh a25689@10.239.121.23 -p 31126`） | 同左 |
 | **Git bare** | `cursor-125:~/repos/aerial-wam-v2.git` | `cursor-125-public:~/repos/…` |
 
 ## 强制工作流

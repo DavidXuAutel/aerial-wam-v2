@@ -47,7 +47,7 @@ EVAL_LOG="${LOG_DIR}/v4_three_zone_eval_${STAMP}.log"
 
 # H100 remote (override on 125 if host/key differs)
 H100_USER="${H100_USER:-a25689}"
-H100_HOST="${H100_HOST:-10.239.121.25}"
+H100_HOST="${H100_HOST:-10.239.121.23}"
 H100_PORT="${H100_PORT:-31126}"
 H100_REPO="${H100_REPO:-/home/a25689/aerial-wam-v2}"
 

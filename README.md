@@ -25,7 +25,7 @@ This repository is a **clean extraction** from the `aerial-rl-skeleton` worktree
 | Role | Host |
 |---|---|
 | Dev (Mac) | This repo |
-| Train + offline gate (①③) + rollout client (②④) | `a25689@10.239.121.25:31126` |
+| Train + offline gate (①③) + rollout client (②④) | `a25689@10.239.121.23:31126` |
 | AirSim renderer | `10.229.20.125:41451` |
 
 Artifacts (checkpoints, datasets) live on H100 under `~/aerial-rl-skeleton/experiments/aerial/rl/artifacts/` — **not in git**.

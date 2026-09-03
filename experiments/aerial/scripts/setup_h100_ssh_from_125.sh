@@ -9,7 +9,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/aerial-wam-v2")
 cd "$ROOT"
 
 H100_USER="${H100_USER:-a25689}"
-H100_HOST="${H100_HOST:-10.239.121.25}"
+H100_HOST="${H100_HOST:-10.239.121.23}"
 H100_PORT="${H100_PORT:-31126}"
 H100_REPO="${H100_REPO:-/home/a25689/aerial-wam-v2}"
 KEY="${H100_SSH_KEY:-$HOME/.ssh/id_ed25519_aerial_h100}"
