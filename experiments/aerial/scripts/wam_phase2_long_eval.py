@@ -423,6 +423,7 @@ def main() -> int:
         interventions = 0
         s_prog = 0.0
         last_true_s: float | None = None
+        dev_degs: List[float] = []
 
         for step in range(args.max_steps):
             d_fwd = None
@@ -460,6 +461,8 @@ def main() -> int:
                 rem_dist = float(s_info["rem_dist"])
                 s_prog = 0.0
                 safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
+                if s_info.get("dev_deg") is not None:
+                    dev_degs.append(float(s_info["dev_deg"]))
             else:
                 if global_planner is not None:
                     true_proj, _seg, true_s_full, rem_full = nearest_on_polyline(
@@ -632,13 +635,26 @@ def main() -> int:
                 int(global_planner.replan_count) if global_planner is not None else 0
             ),
             "subgoal_source": subgoal_source,
+            # E1: replans / how often the fan left the direct-to-G ray. offaxis 0
+            # means `scene` reduced to `toward_g` on this route.
+            "n_intent_replans": int(getattr(intent, "replan_count", 0)),
+            "n_intent_offaxis": int(getattr(intent, "offaxis_count", 0)),
+            "mean_intent_dev_deg": round(float(np.mean(dev_degs)), 2) if dev_degs else 0.0,
+            "max_intent_dev_deg": round(float(np.max(dev_degs)), 2) if dev_degs else 0.0,
         }
         results.append(ep_result)
+        intent_tail = (
+            f" | replan={ep_result['n_intent_replans']}"
+            f" offaxis={ep_result['n_intent_offaxis']}"
+            f" dev={ep_result['mean_intent_dev_deg']:.1f}/{ep_result['max_intent_dev_deg']:.1f}deg"
+            if ep_result["n_intent_replans"]
+            else ""
+        )
         logger.info(
             f"Route {ep_idx+1:02d}/{n_routes:02d} | L_ref={ref_len:.1f}m | L_act={actual_len:.1f}m | "
             f"min_d={min_d:.2f}m | d_final={d_final:.2f}m | closure={goal_closure:.2f} | "
             f"arrived={arrived} | prog={prog_ratio*100:.1f}% | inflate={inflate} | "
-            f"spl={ep_spl:.3f} | IR={ep_result['intervention_rate']:.3f}"
+            f"spl={ep_spl:.3f} | IR={ep_result['intervention_rate']:.3f}{intent_tail}"
         )
 
     scored = [r for r in results if not r.get("spawn_fail")]
@@ -650,6 +666,8 @@ def main() -> int:
     mean_ir = float(np.mean([r["intervention_rate"] for r in scored])) if scored else 0.0
     mean_closure = float(np.mean([r["goal_closure"] for r in scored])) if scored else 0.0
     n_inflate = int(sum(1 for r in scored if r.get("monotone_inflate")))
+    n_replans = int(sum(r.get("n_intent_replans", 0) for r in scored))
+    n_offaxis = int(sum(r.get("n_intent_offaxis", 0) for r in scored))
 
     # L0: PASS gates on Euclidean arrival (SR) + safety/SPL only.
     # progress_ratio is diagnostic; must not cosplay as near-success.
@@ -680,6 +698,17 @@ def main() -> int:
                 if scored
                 else 0.0
             ),
+            # E1 diagnostics only — never gate on these.
+            "n_intent_replans": n_replans,
+            "n_intent_offaxis": n_offaxis,
+            "intent_offaxis_frac": (
+                round(n_offaxis / n_replans, 4) if n_replans else 0.0
+            ),
+            "max_intent_dev_deg": (
+                round(max((r.get("max_intent_dev_deg", 0.0) for r in scored), default=0.0), 2)
+                if scored
+                else 0.0
+            ),
         },
         "thresholds": {
             "arrival_rate_min": 0.80,
@@ -706,6 +735,12 @@ def main() -> int:
         f"SR={sr*100:.1f}% SPL={mean_spl*100:.1f}% SCR={scr*100:.1f}% "
         f"closure={mean_closure*100:.1f}% inflate={n_inflate}/{len(scored)} "
         f"Prog={mean_prog*100:.1f}% (diag) IR={mean_ir*100:.1f}%"
+        + (
+            f" | replan={n_replans} offaxis={n_offaxis}"
+            f" ({n_offaxis / n_replans * 100:.1f}%)"
+            if n_replans
+            else ""
+        )
     )
     return 0 if summary["verdict"] == "PASS" else 1
 

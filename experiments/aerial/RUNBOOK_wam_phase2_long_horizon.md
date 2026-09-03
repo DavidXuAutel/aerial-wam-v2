@@ -347,7 +347,7 @@ G + 场景 → WAM 外环生成近距意图 c* → Phase-1 执行 → 罩
 停机：‖p−G‖≤3　｜　无预置航迹　｜　主尺度 200–500 m
 ```
 
-1. **D0 已确认** → 代码已接 `--subgoal-source`；**下一刀**：在 `.110`/`125` 跑 E0 探针并填 [`WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md)。  
+1. **E0 已判**（[`WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md)）：接线绿灯（`toward_g` closure 0.487 > `polyline` 0.370；`direct_g` 明确劣化），**导航红灯**（SR=0，F12 未解）。**下一刀**：在 `.110` 跑 E1 `scene` 并填 [`WAM_PHASE2_GOAL_SCENE_E1_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E1_DECLARE.md)（阈值已预注册）。  
 2. 标注折线 / `--rolling-global` 仅作水位对照，不进主控默认。  
 3. 禁止：古典跟线当北星；F15/assist 刷指标；把 Prog/CTE 当准出；用短距宣称 200–500 已过门。
 

@@ -129,8 +129,12 @@ class SceneIntentPlanner:
 
     r_m: float = 25.0
     cruise_speed: float = 10.0
+    # Must reach past the forward danger cone (up to ±60°), else _blocked()
+    # discards the whole fan and there is no lateral escape to pick.
     yaw_offsets_deg: Sequence[float] = field(
-        default_factory=lambda: (0.0, -15.0, 15.0, -30.0, 30.0)
+        default_factory=lambda: (
+            0.0, -15.0, 15.0, -30.0, 30.0, -45.0, 45.0, -60.0, 60.0, -75.0, 75.0
+        )
     )
     replan_period_s: float = 2.0
     step_hz: float = 5.0
@@ -145,12 +149,24 @@ class SceneIntentPlanner:
     _steps_since_replan: int = field(default=10**9, init=False, repr=False)
     _last_d_to_g: Optional[float] = field(default=None, init=False, repr=False)
     _stall_steps: int = field(default=0, init=False, repr=False)
+    # E1 observability: candidate 0 *is* the toward_g ray, so a scene arm with
+    # offaxis_count == 0 is behaviourally identical to E0 main. Counted, not inferred.
+    replan_count: int = field(default=0, init=False, repr=False)
+    offaxis_count: int = field(default=0, init=False, repr=False)
+    _last_choice_idx: int = field(default=0, init=False, repr=False)
+    _last_n_feasible: int = field(default=0, init=False, repr=False)
+    n_fan_starved: int = field(default=0, init=False, repr=False)
 
     def reset(self) -> None:
         self._c_prev = None
         self._steps_since_replan = 10**9
         self._last_d_to_g = None
         self._stall_steps = 0
+        self.replan_count = 0
+        self.offaxis_count = 0
+        self._last_choice_idx = 0
+        self._last_n_feasible = 0
+        self.n_fan_starved = 0
 
     def _candidates(
         self, p: np.ndarray, yaw: float, goal: np.ndarray
@@ -185,6 +201,47 @@ class SceneIntentPlanner:
                 return True
         return False
 
+    def _nose_alignment(self, p: np.ndarray, cand: np.ndarray, yaw: float) -> float:
+        """cos of the angle between c*-p and the body forward axis (horizontal)."""
+        delta = cand - p
+        cos_y, sin_y = np.cos(yaw), np.sin(yaw)
+        fwd = float(cos_y * delta[0] + sin_y * delta[1])
+        left = float(-sin_y * delta[0] + cos_y * delta[1])
+        horiz = max(1e-6, float(np.hypot(fwd, left)))
+        return fwd / horiz
+
+    def _blocked(
+        self,
+        p: np.ndarray,
+        cand: np.ndarray,
+        yaw: float,
+        d_fwd_hat: Optional[float],
+    ) -> bool:
+        """Spec §4.1.2 — discard candidates inside the forward danger cone.
+
+        A hard feasibility filter, not a soft cost: a bounded penalty is swamped
+        by the progress term (all in-fan candidates take it, so it cancels and
+        `scene` silently collapses to `toward_g`).
+
+        Cone half-angle grows as forward clearance shrinks: nothing blocked at
+        ``d_clear``, everything within ±60° of the nose blocked at ``d_danger``.
+        """
+        if d_fwd_hat is None or not np.isfinite(float(d_fwd_hat)):
+            return False
+        d_fwd = float(d_fwd_hat)
+        if d_fwd >= float(self.d_clear):
+            return False
+        tight = float(
+            np.clip(
+                (float(self.d_clear) - d_fwd)
+                / max(1e-6, float(self.d_clear) - float(self.d_danger)),
+                0.0,
+                1.0,
+            )
+        )
+        cos_gate = 1.0 - 0.5 * tight
+        return self._nose_alignment(p, cand, yaw) >= cos_gate
+
     def _score(
         self,
         p: np.ndarray,
@@ -199,18 +256,7 @@ class SceneIntentPlanner:
         jump = 0.0
         if self._c_prev is not None:
             jump = float(np.linalg.norm(cand - self._c_prev))
-        j = -float(self.w_g) * progress + float(self.w_jump) * jump
-        # Penalize nearly-forward candidates when depth is tight.
-        if d_fwd_hat is not None and np.isfinite(float(d_fwd_hat)):
-            if float(d_fwd_hat) < float(self.d_clear):
-                delta = cand - p
-                cos_y, sin_y = np.cos(yaw), np.sin(yaw)
-                fwd = float(cos_y * delta[0] + sin_y * delta[1])
-                left = float(-sin_y * delta[0] + cos_y * delta[1])
-                horiz = max(1e-6, float(np.hypot(fwd, left)))
-                if fwd / horiz > 0.85 and float(d_fwd_hat) < float(self.d_danger) * 2.0:
-                    j += 5.0
-        return float(j)
+        return float(-float(self.w_g) * progress + float(self.w_jump) * jump)
 
     def compute(
         self,
@@ -229,23 +275,55 @@ class SceneIntentPlanner:
         n_cands = len(cands)
 
         if replan:
-            best = cands[0]
+            feasible = [
+                (i, c)
+                for i, c in enumerate(cands)
+                if not self._blocked(p, c, yaw, d_fwd_hat)
+            ]
+            n_feasible = len(feasible)
+            if not feasible:
+                # Whole fan inside the danger cone: take the most lateral option
+                # and let creep speed + shield handle it. Never return nothing.
+                feasible = [
+                    min(
+                        enumerate(cands),
+                        key=lambda ic: self._nose_alignment(p, ic[1], yaw),
+                    )
+                ]
+            best_idx, best = feasible[0]
             best_j = self._score(p, g, best, d_fwd_hat, yaw)
-            for c in cands[1:]:
+            for i, c in feasible[1:]:
                 j = self._score(p, g, c, d_fwd_hat, yaw)
                 if j < best_j:
                     best_j = j
                     best = c
+                    best_idx = i
             target = best.copy()
             self._c_prev = target.copy()
             self._steps_since_replan = 0
             self._stall_steps = 0
+            self.replan_count += 1
+            if best_idx != 0:
+                self.offaxis_count += 1
+            if n_feasible == 0:
+                self.n_fan_starved += 1
+            self._last_choice_idx = best_idx
+            self._last_n_feasible = n_feasible
         else:
             assert self._c_prev is not None
             target = self._c_prev.copy()
             self._steps_since_replan += 1
 
         self._last_d_to_g = d_to_g
+        # Horizontal peel of c* off the direct-to-G ray (deg); 0 = pure toward_g.
+        v_c = (target - p)[:2]
+        v_g = (g - p)[:2]
+        n_c, n_g = float(np.linalg.norm(v_c)), float(np.linalg.norm(v_g))
+        if n_c < 1e-6 or n_g < 1e-6:
+            dev_deg = 0.0
+        else:
+            cos_dev = float(np.clip(np.dot(v_c, v_g) / (n_c * n_g), -1.0, 1.0))
+            dev_deg = float(np.rad2deg(np.arccos(cos_dev)))
         g_rel = goal_rel_body(p, yaw, target)
         v_safe = _safe_speed_from_depth(
             cruise_speed=self.cruise_speed,
@@ -266,5 +344,11 @@ class SceneIntentPlanner:
             "seg_idx": 0,
             "n_candidates": int(n_cands),
             "replan": bool(replan),
+            "n_feasible": int(self._last_n_feasible),
+            "chosen_idx": int(self._last_choice_idx),
+            "dev_deg": dev_deg,
+            "replan_count": int(self.replan_count),
+            "offaxis_count": int(self.offaxis_count),
+            "n_fan_starved": int(self.n_fan_starved),
         }
         return g_rel, info

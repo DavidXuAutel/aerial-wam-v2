@@ -78,3 +78,53 @@ def test_scene_planner_holds_between_replans():
     )
     assert info1.get("replan") is False
     np.testing.assert_allclose(info1["target_world"], t0, atol=1e-6)
+
+
+def test_scene_clear_path_stays_on_goal_ray():
+    """E1 observability: clear forward depth ⇒ candidate 0 ⇒ dev 0 ⇒ ≡ toward_g."""
+    pl = SceneIntentPlanner(r_m=25.0)
+    pl.reset()
+    _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 40.0)
+    assert info["chosen_idx"] == 0
+    assert info["dev_deg"] == pytest.approx(0.0, abs=1e-6)
+    assert info["replan_count"] == 1
+    assert info["offaxis_count"] == 0
+
+
+def test_scene_tight_depth_peels_off_goal_ray():
+    """Nose-in blocked ⇒ picks a fan candidate ⇒ offaxis counted, dev > 0."""
+    pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=22.0)
+    pl.reset()
+    _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 4.0)
+    assert info["chosen_idx"] != 0, "forward penalty should have rejected candidate 0"
+    assert info["dev_deg"] > 1.0
+    assert info["offaxis_count"] == 1
+
+
+def test_scene_fan_reaches_past_danger_cone():
+    """Regression: a fan narrower than the ±60° cone leaves nothing feasible,
+    so every candidate is discarded and `scene` degenerates into `toward_g`."""
+    pl = SceneIntentPlanner()
+    assert max(abs(float(d)) for d in pl.yaw_offsets_deg) >= 60.0
+    _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 3.0)
+    assert info["n_feasible"] > 0
+    assert info["n_fan_starved"] == 0
+
+
+def test_scene_fan_starved_still_returns_target():
+    pl = SceneIntentPlanner(r_m=25.0, yaw_offsets_deg=(0.0,))
+    pl.reset()
+    _, info = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 1.0)
+    assert info["n_feasible"] == 0
+    assert info["n_fan_starved"] == 1
+    assert np.all(np.isfinite(np.array(info["target_world"])))
+
+
+def test_scene_counters_reset_per_route():
+    pl = SceneIntentPlanner(r_m=25.0)
+    pl.reset()
+    pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 4.0)
+    assert pl.replan_count == 1
+    pl.reset()
+    assert pl.replan_count == 0
+    assert pl.offaxis_count == 0
