@@ -1,0 +1,4 @@
+{
+  "name": "Aerial WAM v2",
+  "install": "bash .cursor/install.sh"
+}
