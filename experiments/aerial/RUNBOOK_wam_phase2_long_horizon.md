@@ -347,7 +347,7 @@ G + 场景 → WAM 外环生成近距意图 c* → Phase-1 执行 → 罩
 停机：‖p−G‖≤3　｜　无预置航迹　｜　主尺度 200–500 m
 ```
 
-1. **E0 已判**（[`WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md)）：接线绿灯（`toward_g` closure 0.487 > `polyline` 0.370；`direct_g` 明确劣化），**导航红灯**（SR=0，F12 未解）。**下一刀**：在 `.110` 跑 E1 `scene` 并填 [`WAM_PHASE2_GOAL_SCENE_E1_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E1_DECLARE.md)（阈值已预注册）。  
+1. **E0 已判**（[`WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E0_DECLARE.md)）：接线绿灯（`toward_g` closure 0.487 > `polyline` 0.370；`direct_g` 明确劣化），**导航红灯**（SR=0，F12 未解）。**下一刀**：跑 E1 `scene`（110/125 并行，各一路）并填 [`WAM_PHASE2_GOAL_SCENE_E1_DECLARE.md`](../../docs/handover/WAM_PHASE2_GOAL_SCENE_E1_DECLARE.md)（阈值已预注册）。  
 2. 标注折线 / `--rolling-global` 仅作水位对照，不进主控默认。  
 3. 禁止：古典跟线当北星；F15/assist 刷指标；把 Prog/CTE 当准出；用短距宣称 200–500 已过门。
 
@@ -364,5 +364,30 @@ python -m experiments.aerial.scripts.wam_phase2_long_eval \
   --subgoal-source polyline
   --subgoal-source scene
 ```
+
+### 7.1 多机并行（`--routes` + 合表）
+
+两台 GPU 机都空闲时按路拆分，串行 ~1–1.5 h → 并行 ~20–40 min。**不拆标注文件**：`--routes` 收 0-based 标注下标并**覆盖 `--episodes`**，输出里的 `route_idx` / `base_route_idx` 仍是真下标。
+
+```bash
+# .110
+python -m experiments.aerial.scripts.wam_phase2_long_eval --subgoal-source scene \
+  --planner --routes 0 --max-steps 400 --out artifacts/wam_phase2_e1_scene_r01_110.json
+# .125（同时）
+python -m experiments.aerial.scripts.wam_phase2_long_eval --subgoal-source scene \
+  --planner --routes 1 --max-steps 400 --out artifacts/wam_phase2_e1_scene_r02_125.json
+# 合表（不需要 torch，Mac 也能跑）
+python -m experiments.aerial.scripts.merge_phase2_split_eval \
+  --out artifacts/wam_phase2_e1_scene_merged.json \
+  artifacts/wam_phase2_e1_scene_r01_110.json artifacts/wam_phase2_e1_scene_r02_125.json
+```
+
+纪律：
+
+- **单台 JSON 的 `Verdict` 是子集上的，无意义**；日志会打 `PARTIAL RUN: ...`。DECLARE 只准填合表 JSON 的数。
+- 合表用**与评测器同一个 `aggregate_metrics`**，禁止手工平均（`max_intent_dev_deg` 是 max 不是 mean）。
+- 臂身份不一致（`protocol_version` / `subgoal_source` / `goal_feat_mode` / `actor_ckpt` / `cruise_speed_m_s` / `rolling_global`）或两台 `--routes` 重叠 ⇒ 合表脚本 refuse 退出。
+- **同一臂内换机会引入机器差**：若某路指标落在该臂 gate 阈值 ±0.05 内，先在与对照同机重跑该路再判。旁证：E0 route 01 `d_min` 110 = 52.28 / 125 = 52.25。
+- ACCESS.md 中「125 不跑 eval」限制**已作废**（2026-09-03，原因是当时 125 在跑别的 project）。
 
 **纪律**：输入只有 G+场景；「线」只是想象副产品；过门尺 **200–500 m**。

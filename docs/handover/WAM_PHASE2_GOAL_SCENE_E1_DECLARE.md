@@ -48,7 +48,7 @@ E0 的 artifact 无法区分 `scene` 与 `toward_g`。本次为每路加：
 | 对照 · waterline | `polyline` | E0 DECLARE：closure **0.370** / `d_final` **96.16 m** / SCR 0.0% / IR 0.1% |
 | 对照 · 消融 A | `direct_g` | E0 DECLARE：closure 0.487 / `d_final` **300.72 m** / IR **29.9%** |
 
-设置与 E0 逐项一致：assist OFF · `step_e` · no `--rolling-global` · anno `seen_airsim16_long_routes.json` · cruise 10 · planner H=5 · `--episodes 2 --max-steps 400`。
+设置与 E0 逐项一致：assist OFF · `step_e` · no `--rolling-global` · anno `seen_airsim16_long_routes.json` · cruise 10 · planner H=5 · `--max-steps 400` · 同样那 2 路（E0 用 `--episodes 2`，E1 拆成 `--routes 0` + `--routes 1` 并行，选中的路完全相同）。
 
 CLI 默认**仍是 `polyline`**（E0 的默认翻转未做），故必须显式传 `--subgoal-source scene`。
 
@@ -68,33 +68,65 @@ CLI 默认**仍是 `polyline`**（E0 的默认翻转未做），故必须显式�
 - **Prog / CTE** —— 治理红线，永不参与主线判定。
 - `n_intent_replans` / `dev_deg` 的绝对大小 —— 只读，不设阈。
 
-## 4. Run（在 `.110`；125 按 ACCESS.md 只作桥接，不跑 eval）
+## 4. Run（**110 / 125 并行**，每台一路）
+
+ACCESS.md 里「125 不跑 eval」的限制**已作废**——那条只是因为当时 125 在跑别的 project；现两台空闲，按最大化利用并行。串行 ~1–1.5 h → 并行 **~20–40 min**。
+
+新增 `--routes`（0-based 标注下标，**覆盖 `--episodes`**）。不拆标注文件：一个标注源，输出里的 `route_idx` / `base_route_idx` 不失真，以后每次并行都能复用。
+
+两台都先：
 
 ```bash
-cd ~/aerial-wam-v2 && source experiments/aerial/scripts/env_4090.sh
+cd ~/aerial-wam-v2 && git pull && source experiments/aerial/scripts/env_4090.sh
 ```
 
-Step 0 · mock smoke（Mac 无 torch，只能在远端跑；先确认接线不炸）：
+Step 0 · mock smoke（Mac 无 torch，只能在远端跑；先确认接线不炸；任一台跑一次即可）：
 
 ```bash
-python -m experiments.aerial.scripts.wam_phase2_long_eval --mock --episodes 1 --max-steps 8 --subgoal-source scene --out /tmp/e1_smoke.json
+python -m experiments.aerial.scripts.wam_phase2_long_eval --mock --routes 0 --max-steps 8 --subgoal-source scene --out $TMPDIR/e1_smoke.json
 ```
 
-期望：exit 0；JSON `"subgoal_source": "scene"`；`metrics` 含 `n_intent_replans` / `n_intent_offaxis`。
+期望：exit 0；JSON `"subgoal_source": "scene"`、`"route_indices": [0]`；`metrics` 含 `n_intent_replans` / `n_intent_offaxis`。
 
-Step 1 · E1 main：
+Step 1a · 在 **110** 跑 route 01：
 
 ```bash
-python -m experiments.aerial.scripts.wam_phase2_long_eval --subgoal-source scene --planner --episodes 2 --max-steps 400 --out artifacts/wam_phase2_e1_scene_110.json 2>&1 | tee logs/wam_phase2_e1_scene_110_$(date +%Y%m%d_%H%M%S).log
+python -m experiments.aerial.scripts.wam_phase2_long_eval --subgoal-source scene --planner --routes 0 --max-steps 400 --out artifacts/wam_phase2_e1_scene_r01_110.json 2>&1 | tee logs/wam_phase2_e1_scene_r01_110_$(date +%Y%m%d_%H%M%S).log
 ```
 
-粗估 ~20–40 min/路 → **约 1–1.5 h**。`EXIT_CODE=1` 是 Verdict=FAIL 判定，**不是 crash**（SR=0 必然触发）。
+Step 1b · 在 **125** 跑 route 02（与 1a 同时开）：
 
-| Arm | Host | log | out |
-|-----|------|-----|-----|
-| E1 main | **110** | `logs/wam_phase2_e1_scene_110_<ts>.log` | `artifacts/wam_phase2_e1_scene_110.json` |
+```bash
+python -m experiments.aerial.scripts.wam_phase2_long_eval --subgoal-source scene --planner --routes 1 --max-steps 400 --out artifacts/wam_phase2_e1_scene_r02_125.json 2>&1 | tee logs/wam_phase2_e1_scene_r02_125_$(date +%Y%m%d_%H%M%S).log
+```
 
-## 5. Results (fill when done)
+两台的日志尾部都会打 `PARTIAL RUN: routes [...] of 16 — merge ... before filling any DECLARE row`。**单台的 `Verdict` 是子集上的，无意义，不得填进 §5/§6。**
+
+Step 2 · 合表（把 125 的 JSON 收到同一台，或都收到 Mac 上；合表不需要 torch）：
+
+```bash
+python -m experiments.aerial.scripts.merge_phase2_split_eval --out artifacts/wam_phase2_e1_scene_merged.json artifacts/wam_phase2_e1_scene_r01_110.json artifacts/wam_phase2_e1_scene_r02_125.json
+```
+
+合表脚本用**与评测器同一个 `aggregate_metrics`** 重算，不是手工平均——`max_intent_dev_deg` 是 max 不是 mean，手算必错。臂身份（`protocol_version` / `subgoal_source` / `goal_feat_mode` / `actor_ckpt` / `cruise_speed_m_s` / `rolling_global`）不一致，或两台 `--routes` 有重叠，**直接 refuse 退出**。
+
+**§5 / §6 只准填 `wam_phase2_e1_scene_merged.json` 的数。**
+
+`EXIT_CODE=1` 是 Verdict=FAIL 判定，**不是 crash**（SR=0 必然触发）。
+
+| Arm | Host | routes | log | out |
+|-----|------|--------|-----|-----|
+| E1 main · a | **110** | `--routes 0`（route 01） | `logs/wam_phase2_e1_scene_r01_110_<ts>.log` | `artifacts/wam_phase2_e1_scene_r01_110.json` |
+| E1 main · b | **125** | `--routes 1`（route 02） | `logs/wam_phase2_e1_scene_r02_125_<ts>.log` | `artifacts/wam_phase2_e1_scene_r02_125.json` |
+| E1 main（判定用） | 合表 | 0,1 | — | `artifacts/wam_phase2_e1_scene_merged.json` |
+
+### 4.1 跨机差的处置（开跑前写定）
+
+E0 主臂两路**都在 110**；E1 的 route 02 换到 125，故 route 02 的 E1−E0 差里混了一份机器差。两机一致性有旁证：E0 route 01 `d_min` 110 = **52.28**、125 = **52.25**（Δ 0.03 m）。
+
+**规则**：若合表后 route 02 的 `goal_closure` 落在 G1 阈值 0.387 的 **±0.05**（即 0.337–0.437）内，**先把 route 02 在 110 重跑一遍再判 G1**，不得直接拿跨机数字判绿或判红。落在这个带外则直接判。
+
+## 5. Results (fill when done — 只填合表 JSON 的数)
 
 | Arm | mean d_min | mean d_final | mean closure | SR | SCR | IR | replan | offaxis | dev mean/max |
 |-----|------------|--------------|--------------|----|-----|----|--------|---------|--------------|

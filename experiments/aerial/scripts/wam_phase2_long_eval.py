@@ -59,6 +59,104 @@ def _segment_min_dist(p0: np.ndarray, p1: np.ndarray, goal: np.ndarray) -> float
     return float(np.linalg.norm(p0_arr + t * v - g))
 
 
+# L0 PASS gates: Euclidean arrival (SR) + safety/SPL only. Frozen pre-run.
+PASS_THRESHOLDS: Dict[str, float] = {
+    "arrival_rate_min": 0.80,
+    "spl_min": 0.70,
+    "severe_collision_rate_max": 0.10,
+    "mean_intervention_rate_max": 0.25,
+    "mean_progress_ratio_diagnostic_only": 0.90,
+}
+
+
+def aggregate_metrics(
+    results: List[Dict[str, Any]],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any], str]:
+    """Episode dicts → (scored, spawn_fails, metrics, verdict).
+
+    Shared with the split-run merger (`merge_phase2_split_eval.py`) so a row
+    merged from two boxes can never drift from a single-box row.
+    progress_ratio stays diagnostic; it must not cosplay as near-success.
+    """
+    scored = [r for r in results if not r.get("spawn_fail")]
+    spawn_fails = [r for r in results if r.get("spawn_fail")]
+
+    def _mean(key: str) -> float:
+        return float(np.mean([r[key] for r in scored])) if scored else 0.0
+
+    sr = _mean("arrived")
+    scr = _mean("severe_collision")
+    mean_spl = _mean("spl")
+    n_replans = int(sum(r.get("n_intent_replans", 0) for r in scored))
+    n_offaxis = int(sum(r.get("n_intent_offaxis", 0) for r in scored))
+    metrics: Dict[str, Any] = {
+        "arrival_rate": round(sr, 4),
+        "spl": round(mean_spl, 4),
+        "severe_collision_rate": round(scr, 4),
+        "mean_goal_closure": round(_mean("goal_closure"), 4),
+        "n_monotone_inflate": int(sum(1 for r in scored if r.get("monotone_inflate"))),
+        "mean_progress_ratio": round(_mean("progress_ratio"), 4),
+        "mean_intervention_rate": round(_mean("intervention_rate"), 4),
+        "mean_global_replans": (
+            round(float(np.mean([r.get("n_global_replans", 0) for r in scored])), 2)
+            if scored
+            else 0.0
+        ),
+        # E1 diagnostics only — never gate on these.
+        "n_intent_replans": n_replans,
+        "n_intent_offaxis": n_offaxis,
+        "intent_offaxis_frac": round(n_offaxis / n_replans, 4) if n_replans else 0.0,
+        "max_intent_dev_deg": round(
+            max((r.get("max_intent_dev_deg", 0.0) for r in scored), default=0.0), 2
+        ),
+    }
+    verdict = (
+        "PASS"
+        if (
+            sr >= PASS_THRESHOLDS["arrival_rate_min"]
+            and scr <= PASS_THRESHOLDS["severe_collision_rate_max"]
+            and mean_spl >= PASS_THRESHOLDS["spl_min"]
+        )
+        else "FAIL"
+    )
+    return scored, spawn_fails, metrics, verdict
+
+
+def select_route_indices(n_available: int, episodes: int, routes_arg: str | None) -> List[int]:
+    """Which annotation rows this box owns. `--routes` overrides `--episodes`."""
+    if not routes_arg:
+        return list(range(min(int(episodes), int(n_available))))
+    idxs = [int(t) for t in str(routes_arg).split(",") if t.strip()]
+    out_of_range = [i for i in idxs if not 0 <= i < int(n_available)]
+    if out_of_range:
+        raise SystemExit(
+            f"refuse: --routes {out_of_range} out of range (annotation has {n_available})"
+        )
+    if len(set(idxs)) != len(idxs):
+        raise SystemExit(f"refuse: --routes has duplicates: {idxs}")
+    return idxs
+
+
+def format_summary_line(summary: Dict[str, Any], *, prefix: str) -> str:
+    m = summary["metrics"]
+    line = (
+        f"{prefix} Verdict={summary['verdict']} | "
+        f"SR={m['arrival_rate']*100:.1f}% SPL={m['spl']*100:.1f}% "
+        f"SCR={m['severe_collision_rate']*100:.1f}% "
+        f"closure={m['mean_goal_closure']*100:.1f}% "
+        f"inflate={m['n_monotone_inflate']}/{summary['n_scored']} "
+        f"Prog={m['mean_progress_ratio']*100:.1f}% (diag) "
+        f"IR={m['mean_intervention_rate']*100:.1f}%"
+    )
+    if m.get("n_intent_replans"):
+        line += (
+            f" | replan={m['n_intent_replans']} offaxis={m['n_intent_offaxis']}"
+            f" ({m['intent_offaxis_frac']*100:.1f}%)"
+            f" maxdev={m['max_intent_dev_deg']:.1f}deg"
+        )
+    return line
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Phase 2 mainline long-horizon eval")
     parser.add_argument("--config", default="configs/aerial_rl.yaml")
@@ -76,6 +174,16 @@ def main() -> int:
     )
     parser.add_argument("--annotation", default="artifacts/seen_airsim16_long_routes.json")
     parser.add_argument("--episodes", type=int, default=16)
+    parser.add_argument(
+        "--routes",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated 0-based route indices into the annotation, e.g. '0,1'. "
+            "Overrides --episodes so two boxes can split one arm; merge the JSONs "
+            "with merge_phase2_split_eval.py before filling a DECLARE row."
+        ),
+    )
     parser.add_argument("--step-hz", type=float, default=5.0)
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--cruise-speed", type=float, default=25.0)
@@ -181,7 +289,8 @@ def main() -> int:
     with open(anno_path, "r", encoding="utf-8") as f:
         anno_data = json.load(f)
     routes = anno_data.get("routes", anno_data) if isinstance(anno_data, dict) else anno_data
-    n_routes = min(args.episodes, len(routes))
+    route_idxs = select_route_indices(len(routes), args.episodes, args.routes)
+    n_routes = len(route_idxs)
 
     env_cfg = dict(cfg.get("env") or {})
     env_cfg["backend"] = "mock" if args.mock else "airsim"
@@ -332,12 +441,12 @@ def main() -> int:
 
     logger.info(
         f"Starting Phase 2 mainline eval on {n_routes} native routes "
-        f"(cruise={args.cruise_speed} m/s, limits={action_limits.tolist()})"
+        f"(idx={route_idxs}, cruise={args.cruise_speed} m/s, limits={action_limits.tolist()})"
     )
 
     results: List[Dict[str, Any]] = []
 
-    for ep_idx in range(n_routes):
+    for slot, ep_idx in enumerate(route_idxs):
         r_info = routes[ep_idx]
         pts = np.array(r_info.get("pos", r_info.get("positions")), dtype=np.float64)
         goal_pos = pts[-1].copy()
@@ -651,26 +760,13 @@ def main() -> int:
             else ""
         )
         logger.info(
-            f"Route {ep_idx+1:02d}/{n_routes:02d} | L_ref={ref_len:.1f}m | L_act={actual_len:.1f}m | "
+            f"Route {ep_idx+1:02d} ({slot+1}/{n_routes}) | L_ref={ref_len:.1f}m | L_act={actual_len:.1f}m | "
             f"min_d={min_d:.2f}m | d_final={d_final:.2f}m | closure={goal_closure:.2f} | "
             f"arrived={arrived} | prog={prog_ratio*100:.1f}% | inflate={inflate} | "
             f"spl={ep_spl:.3f} | IR={ep_result['intervention_rate']:.3f}{intent_tail}"
         )
 
-    scored = [r for r in results if not r.get("spawn_fail")]
-    spawn_fails = [r for r in results if r.get("spawn_fail")]
-    sr = float(np.mean([r["arrived"] for r in scored])) if scored else 0.0
-    scr = float(np.mean([r["severe_collision"] for r in scored])) if scored else 0.0
-    mean_prog = float(np.mean([r["progress_ratio"] for r in scored])) if scored else 0.0
-    mean_spl = float(np.mean([r["spl"] for r in scored])) if scored else 0.0
-    mean_ir = float(np.mean([r["intervention_rate"] for r in scored])) if scored else 0.0
-    mean_closure = float(np.mean([r["goal_closure"] for r in scored])) if scored else 0.0
-    n_inflate = int(sum(1 for r in scored if r.get("monotone_inflate")))
-    n_replans = int(sum(r.get("n_intent_replans", 0) for r in scored))
-    n_offaxis = int(sum(r.get("n_intent_offaxis", 0) for r in scored))
-
-    # L0: PASS gates on Euclidean arrival (SR) + safety/SPL only.
-    # progress_ratio is diagnostic; must not cosplay as near-success.
+    scored, spawn_fails, metrics, verdict = aggregate_metrics(results)
     summary = {
         "protocol_version": "wam_phase2_goal_scene_e0_20260903",
         "goal_feat_mode": str(args.goal_feat_mode),
@@ -680,48 +776,12 @@ def main() -> int:
         "rolling_global": bool(args.rolling_global),
         "global_horizon_m": float(args.global_horizon_m),
         "global_replan_period_s": float(args.global_replan_period_s),
+        "route_indices": list(route_idxs),
         "n_scored": len(scored),
         "n_spawn_fail_f1": len(spawn_fails),
-        "metrics": {
-            "arrival_rate": round(sr, 4),
-            "spl": round(mean_spl, 4),
-            "severe_collision_rate": round(scr, 4),
-            "mean_goal_closure": round(mean_closure, 4),
-            "n_monotone_inflate": n_inflate,
-            "mean_progress_ratio": round(mean_prog, 4),
-            "mean_intervention_rate": round(mean_ir, 4),
-            "mean_global_replans": (
-                round(
-                    float(np.mean([r.get("n_global_replans", 0) for r in scored])),
-                    2,
-                )
-                if scored
-                else 0.0
-            ),
-            # E1 diagnostics only — never gate on these.
-            "n_intent_replans": n_replans,
-            "n_intent_offaxis": n_offaxis,
-            "intent_offaxis_frac": (
-                round(n_offaxis / n_replans, 4) if n_replans else 0.0
-            ),
-            "max_intent_dev_deg": (
-                round(max((r.get("max_intent_dev_deg", 0.0) for r in scored), default=0.0), 2)
-                if scored
-                else 0.0
-            ),
-        },
-        "thresholds": {
-            "arrival_rate_min": 0.80,
-            "spl_min": 0.70,
-            "severe_collision_rate_max": 0.10,
-            "mean_intervention_rate_max": 0.25,
-            "mean_progress_ratio_diagnostic_only": 0.90,
-        },
-        "verdict": (
-            "PASS"
-            if (sr >= 0.80 and scr <= 0.10 and mean_spl >= 0.70)
-            else "FAIL"
-        ),
+        "metrics": metrics,
+        "thresholds": dict(PASS_THRESHOLDS),
+        "verdict": verdict,
         "episodes": results,
     }
 
@@ -730,18 +790,14 @@ def main() -> int:
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
-    logger.info(
-        f"Phase 2 mainline complete. Verdict={summary['verdict']} | "
-        f"SR={sr*100:.1f}% SPL={mean_spl*100:.1f}% SCR={scr*100:.1f}% "
-        f"closure={mean_closure*100:.1f}% inflate={n_inflate}/{len(scored)} "
-        f"Prog={mean_prog*100:.1f}% (diag) IR={mean_ir*100:.1f}%"
-        + (
-            f" | replan={n_replans} offaxis={n_offaxis}"
-            f" ({n_offaxis / n_replans * 100:.1f}%)"
-            if n_replans
-            else ""
+    logger.info(format_summary_line(summary, prefix="Phase 2 mainline complete."))
+    if len(route_idxs) < len(routes):
+        logger.warning(
+            "PARTIAL RUN: routes %s of %d — merge with the other box via "
+            "merge_phase2_split_eval.py before filling any DECLARE row",
+            route_idxs,
+            len(routes),
         )
-    )
     return 0 if summary["verdict"] == "PASS" else 1
 
 
