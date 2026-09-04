@@ -23,6 +23,8 @@ from typing import Any, Dict, List
 import numpy as np
 import yaml
 
+from experiments.aerial.rl.env.rate_gate import DEFAULT_DEPTH_BUDGET_S, assert_link_rate
+
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("wam_phase2_eval")
 
@@ -198,6 +200,19 @@ def main() -> int:
         help="Actor goal conditioning: metre goal_rel (Step E) or F9 g_norm",
     )
     parser.add_argument("--mock", action="store_true")
+    parser.add_argument(
+        "--depth-budget-s",
+        type=float,
+        default=None,
+        help="Refuse to start when one depth frame costs more than this many seconds "
+             "(median of --link-probe-n). 0 disables the gate.",
+    )
+    parser.add_argument(
+        "--link-probe-n",
+        type=int,
+        default=5,
+        help="Depth frames timed by the pre-run link-rate gate",
+    )
     parser.add_argument("--out", default="artifacts/wam_phase2_accept_result.json")
     parser.add_argument(
         "--spawn-tol-m",
@@ -304,6 +319,18 @@ def main() -> int:
     env_cfg["step_hz"] = float(args.step_hz)
     env_cfg["grab_depth"] = True
     env = _build_env(env_cfg)
+
+    depth_budget_s = DEFAULT_DEPTH_BUDGET_S if args.depth_budget_s is None else float(args.depth_budget_s)
+    link_probe: Any = None
+    if depth_budget_s > 0:
+        link_probe = assert_link_rate(
+            env,
+            budget_s=depth_budget_s,
+            n=int(args.link_probe_n),
+            step_hz=float(args.step_hz),
+        )
+    else:
+        logger.warning("link-rate gate DISABLED by --depth-budget-s 0")
 
     wm_cfg = cfg.get("world_model") or {}
     wm_path = (
@@ -643,6 +670,8 @@ def main() -> int:
             d_final = float(d_to_goal)
             if d_to_goal < min_d:
                 min_d = d_to_goal
+            if intent is not None:
+                s_prog = float(max(0.0, d0 - d_to_goal))
 
             # Terminal arrival: Euclidean G for intent / rolling; else rem∧euclid.
             euclid_only = intent is not None or bool(args.rolling_global)
@@ -823,6 +852,7 @@ def main() -> int:
         "goal_feat_mode": str(args.goal_feat_mode),
         "actor_ckpt": str(actor_path),
         "cruise_speed_m_s": args.cruise_speed,
+        "link_probe": link_probe,
         "subgoal_source": subgoal_source,
         "rolling_global": bool(args.rolling_global),
         "global_horizon_m": float(args.global_horizon_m),
