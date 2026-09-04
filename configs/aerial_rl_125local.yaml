@@ -5,13 +5,7 @@
 
 env:
   backend: mock            # mock | airsim
-  host: auto               # resolve this box's OWN renderer at connect time.
-                           # Was hardcoded 10.229.20.110, which made every box that
-                           # pulled the repo drive .110 — two boxes then shared one
-                           # drone and corrupted a phase-2 arm (2026-09-03; see
-                           # docs/handover/WAM_RENDERER_SHARING_INCIDENT_20260903.md).
-                           # Override with AIRSIM_HOST; non-local needs
-                           # AIRSIM_ALLOW_REMOTE_HOST=1. airsim backend only.
+  host: 127.0.0.1          # 125 本机渲染器（loopback；跨机抓 depth 会把闭环压到 0.3 Hz）
   port: 41451
   camera: front_custom
   vehicle: drone_1

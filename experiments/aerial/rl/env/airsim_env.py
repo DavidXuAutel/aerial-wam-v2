@@ -16,6 +16,7 @@ the mock env / unit tests never touch AirSim. For offline use see
 """
 from __future__ import annotations
 
+import logging
 import math
 import os
 import pathlib
@@ -32,6 +33,14 @@ from experiments.aerial.rl.env.action import (
     clip_body_delta,
 )
 from experiments.aerial.rl.env.obs import Observation, depth_sanity_detail
+from experiments.aerial.rl.env.renderer_host import (
+    AUTO as AUTO_HOST,
+    RendererClientLock,
+    is_local_host,
+    resolve_airsim_host,
+)
+
+logger = logging.getLogger(__name__)
 
 # Reuse the already-validated numerical gates rather than re-deriving them.
 _SIM_VERIFY = pathlib.Path(__file__).resolve().parents[2] / "sim_verify"
@@ -47,7 +56,10 @@ except Exception:  # noqa: BLE001
 class AirSimEnvConfig:
     """Mirrors the ``sim_verify/config.env`` schema (+ RL step rate)."""
 
-    host: str = "127.0.0.1"
+    # "auto" = detect this box's own renderer at connect time (loopback first);
+    # a literal host is honoured but a non-local one needs AIRSIM_ALLOW_REMOTE_HOST.
+    # Resolution order and rationale: env/renderer_host.py.
+    host: str = AUTO_HOST
     port: int = 41451
     camera: str = "front_custom"
     vehicle: str = "drone_1"
@@ -88,6 +100,7 @@ class AirSimDroneEnv:
         self.config = config or AirSimEnvConfig(**kwargs)
         self._client: Any = None
         self._airsim: Any = None
+        self._lock: Optional[RendererClientLock] = None
         self._goal: Optional[np.ndarray] = None
         self._t0 = time.perf_counter()
 
@@ -98,12 +111,35 @@ class AirSimDroneEnv:
         return {"vehicle_name": self.config.vehicle}
 
     def _connect(self) -> Any:
+        """Resolve the renderer host, take the single-consumer lock, connect.
+
+        Resolution + the local-host guard live in ``renderer_host`` (see that
+        module for the 2026-09-03 shared-renderer incident this enforces). Both
+        run *before* ``import airsim`` so a wrong host fails fast and loudly
+        instead of quietly stealing another box's drone.
+        """
         if self._client is not None:
             return self._client
+
+        host, provenance = resolve_airsim_host(self.config.host, self.config.port)
+        logger.info(
+            "AirSim client: host=%s port=%d (%s, from %s) cfg_host=%s pid=%d",
+            host,
+            self.config.port,
+            "local" if is_local_host(host) else "REMOTE",
+            provenance,
+            self.config.host,
+            os.getpid(),
+        )
+        self.config.host = host
+        if self._lock is None:
+            self._lock = RendererClientLock(host, self.config.port)
+            self._lock.acquire()
+
         import airsim  # type: ignore  # lazy: absent off the 4090
 
         self._airsim = airsim
-        client = airsim.MultirotorClient(ip=self.config.host, port=self.config.port)
+        client = airsim.MultirotorClient(ip=host, port=self.config.port)
         client.confirmConnection()
         self._client = client
         return client
@@ -253,6 +289,28 @@ class AirSimDroneEnv:
             info={"goal": None if self._goal is None else self._goal.tolist()},
         )
 
+    def probe_depth_latency(self, *, n: int = 5, warmup: int = 1) -> list[float]:
+        """Wall-clock seconds per DepthPlanar grab — the link-rate gate's input.
+
+        Depth alone, not a full ``observe()``: depth is the dominant and the
+        host-sensitive term (~0.1 s loopback vs ~0.7 s cross-net), while RGB+IMU+
+        state add a roughly host-independent ~40 ms that would blur the very
+        signal the gate discriminates on. ``warmup`` grabs are discarded because
+        the first one pays ``confirmConnection`` and the lazy ``import airsim``.
+
+        A failed grab (``_grab_depth`` returns None) contributes no sample, so a
+        depth-less renderer yields ``[]`` and the gate can say so plainly.
+        """
+        client = self._connect()
+        out: list[float] = []
+        for i in range(int(warmup) + int(n)):
+            t0 = time.perf_counter()
+            depth = self._grab_depth(client)
+            dt = time.perf_counter() - t0
+            if i >= int(warmup) and depth is not None:
+                out.append(dt)
+        return out
+
     def observe_state(self) -> np.ndarray:
         client = self._connect()
         k = client.getMultirotorState(**self._vk).kinematics_estimated
@@ -267,6 +325,7 @@ class AirSimDroneEnv:
 
     def close(self) -> None:
         if self._client is None:
+            self._release_lock()
             return
         try:  # best-effort disarm (t2_capability.py:312-313)
             self._client.armDisarm(False, **self._vk)
@@ -274,6 +333,13 @@ class AirSimDroneEnv:
         except Exception:  # noqa: BLE001
             pass
         self._client = None
+        # Free the renderer for the next client in the same breath as control.
+        self._release_lock()
+
+    def _release_lock(self) -> None:
+        if self._lock is not None:
+            self._lock.release()
+            self._lock = None
 
     def __enter__(self) -> "AirSimDroneEnv":
         return self

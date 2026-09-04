@@ -167,3 +167,22 @@ def test_context_manager_closes():
         pass
     assert client.control_enabled is False
     assert client.armed is False
+
+
+# -- link-rate probe (feeds env/rate_gate.py) ----------------------------
+def test_probe_depth_latency_discards_warmup():
+    """Warmup grabs are excluded: the first one pays connect + ``import airsim``."""
+    e, _ = _make_env(health_check=False)
+    grabs = []
+    e._grab_depth = lambda client: (grabs.append(1), np.zeros((4, 4), dtype=np.float32))[1]
+    out = e.probe_depth_latency(n=3, warmup=2)
+    assert len(grabs) == 5   # warmup + n grabs actually happen
+    assert len(out) == 3     # only the post-warmup ones are timed
+    assert all(s >= 0.0 for s in out)
+
+
+def test_probe_depth_latency_empty_when_renderer_has_no_depth():
+    """A CV-only/dead renderer yields no samples, so the gate can say exactly that."""
+    e, _ = _make_env(health_check=False)
+    e._grab_depth = lambda client: None
+    assert e.probe_depth_latency(n=3, warmup=1) == []

@@ -90,6 +90,11 @@ run_job() {
   export AIRSIM_HOST=10.229.20.125
   export AIRSIM_PORT=41451
   export AIRSIM_ALLOW_LOCAL_LAUNCH=0
+  # This worker runs off-box from the renderer on purpose (H100 client → 4090
+  # renderer), so declare it: clients refuse a non-local host by default since the
+  # 2026-09-03 shared-renderer incident (env/renderer_host.py). Off-box means the
+  # cross-net depth penalty applies — keep depth off this path.
+  export AIRSIM_ALLOW_REMOTE_HOST=1
 
   # Persist AirSim RGB frames beside metrics so closed-loop episodes can be
   # audited offline (synced back to the operator Mac after the queue drains).

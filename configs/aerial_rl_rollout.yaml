@@ -19,7 +19,10 @@
 
 env:
   backend: airsim          # REQUIRED for authoritative ②/④ (gate fails-closed on mock)
-  host: 10.229.20.110      # AirSim renderer (migrated 2026-08-31; client may be 125/H100)
+  host: auto               # this box's own renderer (see configs/aerial_rl.yaml and
+                           # experiments/aerial/rl/env/renderer_host.py). A client on a
+                           # different box than the renderer needs AIRSIM_HOST +
+                           # AIRSIM_ALLOW_REMOTE_HOST=1 and pays the cross-net depth cost.
   port: 41451
   camera: front_custom
   vehicle: drone_1

@@ -100,10 +100,22 @@ def _build_env(env_cfg: Any) -> Any:
         ))
     if backend == "airsim":
         from experiments.aerial.rl.env.airsim_env import AirSimDroneEnv, AirSimEnvConfig
+        from experiments.aerial.rl.env.renderer_host import AUTO, resolve_airsim_host
 
+        # Resolve here as well as in ``_connect`` so the host is on record before
+        # any RPC: every eval script funnels through this function, and they all
+        # call ``basicConfig`` first, so this line lands in their logs. Silence
+        # here is what let 125's eval drive 110's renderer unnoticed (2026-09-03).
+        cfg_host = str(_get(env_cfg, "host", AUTO))
+        cfg_port = int(_get(env_cfg, "port", 41451))
+        host, provenance = resolve_airsim_host(cfg_host, cfg_port)
+        logger.info(
+            "AirSim renderer: %s:%d (from %s; config host=%s)",
+            host, cfg_port, provenance, cfg_host,
+        )
         return AirSimDroneEnv(AirSimEnvConfig(
-            host=str(_get(env_cfg, "host", "127.0.0.1")),
-            port=int(_get(env_cfg, "port", 41451)),
+            host=host,
+            port=cfg_port,
             camera=str(_get(env_cfg, "camera", "front_custom")),
             vehicle=str(_get(env_cfg, "vehicle", "drone_1")),
             width=int(_get(env_cfg, "width", 224)),

@@ -89,6 +89,12 @@ def main() -> int:
         help="Actor goal conditioning: metre goal_rel (Step E) or F9 g_norm",
     )
     parser.add_argument("--mock", action="store_true")
+    parser.add_argument("--depth-budget-s", type=float, default=None,
+                        help="Refuse to start when one depth frame costs more than this many "
+                             "seconds (median of --link-probe-n). Default: "
+                             "env/rate_gate.DEFAULT_DEPTH_BUDGET_S. 0 disables the gate.")
+    parser.add_argument("--link-probe-n", type=int, default=5,
+                        help="Depth frames timed by the pre-run link-rate gate")
     parser.add_argument("--out", default="artifacts/wam_phase2_accept_result.json")
     parser.add_argument(
         "--spawn-tol-m",
@@ -154,6 +160,7 @@ def main() -> int:
         _build_safety,
         load_torch_dynamics,
     )
+    from experiments.aerial.rl.env.rate_gate import DEFAULT_DEPTH_BUDGET_S, assert_link_rate
 
     cfg_file = (root / args.config).resolve()
     cfg = yaml.safe_load(cfg_file.read_text()) if cfg_file.is_file() else {}
@@ -177,6 +184,22 @@ def main() -> int:
     env_cfg["step_hz"] = float(args.step_hz)
     env_cfg["grab_depth"] = True
     env = _build_env(env_cfg)
+
+    # Pre-run link-rate gate — before any ckpt load or route. A slow renderer link
+    # silently caps the closed loop below the commanded rate, and E0/E1's numbers
+    # were read as policy failures when they were link failures (2026-09-03; see
+    # experiments/aerial/rl/env/rate_gate.py). No-op on --mock.
+    depth_budget_s = DEFAULT_DEPTH_BUDGET_S if args.depth_budget_s is None else float(args.depth_budget_s)
+    link_probe = None
+    if depth_budget_s > 0:
+        link_probe = assert_link_rate(
+            env,
+            budget_s=depth_budget_s,
+            n=int(args.link_probe_n),
+            step_hz=float(args.step_hz),
+        )
+    else:
+        logger.warning("link-rate gate DISABLED by --depth-budget-s 0")
 
     wm_cfg = cfg.get("world_model") or {}
     wm_path = (
@@ -607,6 +630,9 @@ def main() -> int:
         "protocol_version": "wam_phase2_mainline_l0_honest_goal_20260902",
         "goal_feat_mode": str(args.goal_feat_mode),
         "actor_ckpt": str(actor_path),
+        # Which renderer answered, and how fast — so no verdict here is readable
+        # without its link speed (2026-09-03 incident).
+        "link_probe": link_probe,
         "cruise_speed_m_s": args.cruise_speed,
         "rolling_global": bool(args.rolling_global),
         "global_horizon_m": float(args.global_horizon_m),

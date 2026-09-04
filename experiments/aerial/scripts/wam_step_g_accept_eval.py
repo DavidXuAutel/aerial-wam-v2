@@ -37,6 +37,7 @@ import numpy as np
 import yaml
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
+
 logger = logging.getLogger("wam_accept_g")
 
 
@@ -84,6 +85,12 @@ def main() -> int:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true", help="Enable enhanced ImaginationPlanner for online multi-step candidate scoring")
     parser.add_argument("--planner-horizon", type=int, default=5, help="Imagination horizon for planner rollout")
+    parser.add_argument("--depth-budget-s", type=float, default=None,
+                        help="Refuse to start when one depth frame costs more than this many "
+                             "seconds (median of --link-probe-n). Default: "
+                             "env/rate_gate.DEFAULT_DEPTH_BUDGET_S. 0 disables the gate.")
+    parser.add_argument("--link-probe-n", type=int, default=5,
+                        help="Depth frames timed by the pre-run link-rate gate")
     parser.add_argument("--out", default="artifacts/wam_accept_result_20260828.json")
     args = parser.parse_args()
 
@@ -96,6 +103,7 @@ def main() -> int:
     from experiments.aerial.rl.collector import RolloutCollector
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.env.action import body_delta_limits
+    from experiments.aerial.rl.env.rate_gate import DEFAULT_DEPTH_BUDGET_S, assert_link_rate
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.train_rl import _build_env, _build_safety, load_torch_dynamics
@@ -105,6 +113,22 @@ def main() -> int:
     cfg["env"]["step_hz"] = float(args.step_hz)
     cfg["env"]["grab_depth"] = True
     env = _build_env(cfg["env"])
+
+    # Pre-run link-rate gate. Before any ckpt is loaded or a single route flown:
+    # a slow renderer link caps the closed loop below the commanded rate and the
+    # resulting metrics mean nothing against the thresholds below (2026-09-03,
+    # 0.33 Hz cross-net -> arrival 0/16 for a policy that scores 75% on loopback).
+    depth_budget_s = DEFAULT_DEPTH_BUDGET_S if args.depth_budget_s is None else float(args.depth_budget_s)
+    link_probe = None
+    if depth_budget_s > 0:
+        link_probe = assert_link_rate(
+            env,
+            budget_s=depth_budget_s,
+            n=int(args.link_probe_n),
+            step_hz=float(args.step_hz),
+        )
+    else:
+        logger.warning("link-rate gate DISABLED by --depth-budget-s 0")
 
     reward_cfg = RewardConfig(**(cfg.get("reward") or {}))
     reward_cfg.success_dist_m = float(args.success_dist)
@@ -299,6 +323,9 @@ def main() -> int:
         "n_scored": n_scored,
         "wm_ckpt": str(wm_path),
         "actor_ckpt": str(actor_path),
+        # Which renderer this ran against and how fast it answered. Recorded so a
+        # verdict can never again be read without its link speed (2026-09-03).
+        "link_probe": link_probe,
         "thresholds": {
             "arrival_rate_min": 0.25,
             "severe_collision_rate_max": 0.125,
