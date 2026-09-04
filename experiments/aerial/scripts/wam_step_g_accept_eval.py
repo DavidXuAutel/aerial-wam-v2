@@ -85,10 +85,14 @@ def main() -> int:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true", help="Enable ImaginationPlanner (ConstantLatentPolicy scoring by default)")
     parser.add_argument("--planner-horizon", type=int, default=5, help="Imagination horizon for planner rollout")
-    parser.add_argument("--smooth-alpha", type=float, default=0.0,
-                        help="EMA smoothing coefficient on planner output (0=off, 0.4 recommended for smoother paths)")
+    parser.add_argument("--smooth-alpha", type=float, default=0.3,
+                        help="EMA smoothing coefficient on planner output (0=off; default 0.3)")
     parser.add_argument("--planner-actor-rollout", action="store_true",
                         help="Use ActorRolloutPolicy in imagination steps 1+ (experimental; hurts SR in practice)")
+    parser.add_argument("--planner-coll-scale", type=float, default=0.1,
+                        help="Scale w_collision in planner imagination reward (default 0.1). "
+                             "The real shield handles collision avoidance; this prevents the WM's "
+                             "p_coll bias from overriding forward candidates with hover/backward.")
     parser.add_argument("--depth-budget-s", type=float, default=None,
                         help="Refuse to start when one depth frame costs more than this many "
                              "seconds (median of --link-probe-n). Default: "
@@ -157,10 +161,17 @@ def main() -> int:
             ImaginationActorPolicy(actor_ac, deterministic=True)
             if args.planner_actor_rollout else None
         )
+        # Separate reward config for imagination scoring: scale down collision weight so
+        # the WM's p_coll bias does not cause hover/backward candidates to beat forward
+        # progress. The real shield handles collision avoidance; the planner's job is
+        # direction selection. w_collision=10 in real reward, ~1 in imagination is fine.
+        planner_reward_cfg = RewardConfig(**(cfg.get("reward") or {}))
+        planner_reward_cfg.success_dist_m = float(args.success_dist)
+        planner_reward_cfg.w_collision = reward_cfg.w_collision * float(args.planner_coll_scale)
         planner = ImaginationPlanner(
             dynamics=dynamics,
             horizon=int(args.planner_horizon),
-            reward_cfg=reward_cfg,
+            reward_cfg=planner_reward_cfg,
             action_limits=limits,
             actor=planner_actor,
             max_horizon=int(args.planner_horizon),
@@ -169,7 +180,9 @@ def main() -> int:
         scoring_mode = "actor-rollout" if planner_actor is not None else "constant-policy"
         logger.info(
             f"ImaginationPlanner ACTIVE: horizon={args.planner_horizon}, "
-            f"scoring={scoring_mode}, smooth_alpha={args.smooth_alpha}, limits={limits.tolist()}"
+            f"scoring={scoring_mode}, smooth_alpha={args.smooth_alpha}, "
+            f"w_collision={planner_reward_cfg.w_collision:.3g} (scale={args.planner_coll_scale}), "
+            f"limits={limits.tolist()}"
         )
 
     ann_path = (root / args.annotation).resolve() if not Path(args.annotation).is_absolute() else Path(args.annotation)
@@ -341,6 +354,7 @@ def main() -> int:
             "horizon": int(args.planner_horizon) if args.planner else None,
             "scoring": ("actor-rollout" if (args.planner and args.planner_actor_rollout) else "constant-policy") if args.planner else None,
             "smooth_alpha": float(args.smooth_alpha) if args.planner else None,
+            "coll_scale": float(args.planner_coll_scale) if args.planner else None,
         },
         # Which renderer this ran against and how fast it answered. Recorded so a
         # verdict can never again be read without its link speed (2026-09-03).
