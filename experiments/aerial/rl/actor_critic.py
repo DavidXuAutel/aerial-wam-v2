@@ -590,7 +590,7 @@ class LatentActorCritic:
         scale = torch.tensor(
             old_lim / new_lim, dtype=torch.float32, device=self._device
         )
-        last_linear = self._actor[-1]
+        last_linear = self._actor.net[-1]
         with torch.no_grad():
             last_linear.weight.data *= scale.unsqueeze(1)
             last_linear.bias.data *= scale
