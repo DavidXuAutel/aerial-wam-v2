@@ -5,7 +5,7 @@
 
 env:
   backend: mock            # mock | airsim
-  host: 10.229.20.110      # AirSim renderer (migrated 2026-08-31); airsim backend only
+  host: 127.0.0.1          # AirSim renderer (loopback; .110 retired 2026-09-04)
   port: 41451
   camera: front_custom
   vehicle: drone_1
