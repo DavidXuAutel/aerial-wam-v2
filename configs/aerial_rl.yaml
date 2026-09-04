@@ -20,7 +20,7 @@ env:
   step_hz: 5.0
   grab_depth: false        # depth is supervision-only (spec §1.2); enable via
                            # collect_dataset --grab-depth on 4090 loopback at step_hz≤5.
-  health_check: true       # sanity-gate IMU + depth on reset (airsim backend)
+  health_check: true       # sanity-gate IMU on reset; depth gate skipped when grab_depth=false
   seed: 0
 
 buffer:

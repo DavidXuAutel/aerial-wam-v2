@@ -4,7 +4,7 @@
 
 **Goal:** Build a hierarchical long-horizon navigation module (200~800m) with adaptive lookahead and curvature/clearance governors supporting up to 10 m/s cruise speed on top of the validated Phase 1 local WAM policy.
 
-**Architecture:** A lightweight high-level `AdaptiveSubgoalGenerator` dynamically projects current vehicle position onto a global reference polyline, modulates lookahead radius $R_{\text{lookahead}} \in [20, 60]\text{m}$ based on forward depth clearance $\hat{D}_{\text{fwd}}$, path curvature $\theta_{\text{turn}}$, and remaining distance, converts the subgoal into local SE(3) body-relative coordinates $g_{\text{rel}}^{\text{body}}$, and passes it to the 5Hz Phase 1 `LatentActorDeployPolicy` + `ImaginationPlanner`.
+**Architecture:** A lightweight high-level outer loop (`TowardGoalIntent`) projects the vehicle position geometrically toward the final goal, generating near-range subgoal $c^*$ from pure geometry (no depth sensing in the outer loop). The outer loop modulates lookahead radius $R_{\text{lookahead}} \in [20, 60]\text{m}$ based on path curvature $\theta_{\text{turn}}$ and remaining distance, converts the subgoal into local SE(3) body-relative coordinates $g_{\text{rel}}^{\text{body}}$, and passes it to the 5Hz Phase 1 `LatentActorDeployPolicy` + `ImaginationPlanner`. **DepthPlanar is not used in the outer loop** (`grab_depth=false`); depth supervision lives inside the Phase-1 WAM latent space only.
 
 **Tech Stack:** Python 3.10+, PyTorch, NumPy, AirSim / Mock Environment, Pytest.
 
