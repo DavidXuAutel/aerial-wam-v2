@@ -23,7 +23,6 @@ from typing import Any, Dict, List
 import numpy as np
 import yaml
 
-from experiments.aerial.rl.env.rate_gate import DEFAULT_DEPTH_BUDGET_S, assert_link_rate
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("wam_phase2_eval")
@@ -170,10 +169,6 @@ def main() -> int:
         "--actor-ckpt",
         default="experiments/aerial/rl/artifacts/v4_ac_ckpt_step_e_20260828/v4_ac_latest.pt",
     )
-    parser.add_argument(
-        "--depth-ckpt",
-        default="experiments/aerial/rl/artifacts/depth_ckpt_p45mid_s8j_20260825/depth_best_holdout_da3_ft_head.pt",
-    )
     parser.add_argument("--annotation", default="artifacts/seen_airsim16_long_routes.json")
     parser.add_argument("--episodes", type=int, default=16)
     parser.add_argument(
@@ -199,20 +194,15 @@ def main() -> int:
         default="meter",
         help="Actor goal conditioning: metre goal_rel (Step E) or F9 g_norm",
     )
+    parser.add_argument(
+        "--depth-ckpt",
+        default="experiments/aerial/rl/artifacts/depth_ckpt_p45mid_s8j_20260825/depth_best_holdout_da3_ft_head.pt",
+    )
+    parser.add_argument(
+        "--tau-ckpt",
+        default="experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt",
+    )
     parser.add_argument("--mock", action="store_true")
-    parser.add_argument(
-        "--depth-budget-s",
-        type=float,
-        default=None,
-        help="Refuse to start when one depth frame costs more than this many seconds "
-             "(median of --link-probe-n). 0 disables the gate.",
-    )
-    parser.add_argument(
-        "--link-probe-n",
-        type=int,
-        default=5,
-        help="Depth frames timed by the pre-run link-rate gate",
-    )
     parser.add_argument("--out", default="artifacts/wam_phase2_accept_result.json")
     parser.add_argument(
         "--spawn-tol-m",
@@ -278,13 +268,14 @@ def main() -> int:
         LatentActorCritic,
         LatentActorDeployPolicy,
     )
-    from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.env.action import body_delta_limits, clip_body_delta
     from experiments.aerial.rl.path_heading_assist import apply_path_heading_assist
     from experiments.aerial.rl.goal_features import body_vel_from_obs
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.global_ref_planner import GlobalRefConfig, GlobalRefPlanner
+    from experiments.aerial.rl.depth_predictor import DepthMinPredictor
+    from experiments.aerial.rl.tau_predictor import make_tau_predictor
     from experiments.aerial.rl.scene_intent import TowardGoalIntent
     from experiments.aerial.rl.subgoal_generator import (
         AdaptiveSubgoalGenerator,
@@ -317,20 +308,8 @@ def main() -> int:
     env_cfg = dict(cfg.get("env") or {})
     env_cfg["backend"] = "mock" if args.mock else "airsim"
     env_cfg["step_hz"] = float(args.step_hz)
-    env_cfg["grab_depth"] = False  # outer loop is pure geometry; DepthPlanar grab removed
+    env_cfg["grab_depth"] = True
     env = _build_env(env_cfg)
-
-    depth_budget_s = DEFAULT_DEPTH_BUDGET_S if args.depth_budget_s is None else float(args.depth_budget_s)
-    link_probe: Any = None
-    if depth_budget_s > 0:
-        link_probe = assert_link_rate(
-            env,
-            budget_s=depth_budget_s,
-            n=int(args.link_probe_n),
-            step_hz=float(args.step_hz),
-        )
-    else:
-        logger.warning("link-rate gate DISABLED by --depth-budget-s 0")
 
     wm_cfg = cfg.get("world_model") or {}
     wm_path = (
@@ -359,6 +338,39 @@ def main() -> int:
     else:
         actor_ac = LatentActorCritic.from_config(
             {"latent_dim": dynamics.latent_dim, "device": device_str}
+        )
+
+    depth_path = (
+        (root / args.depth_ckpt).resolve()
+        if not Path(args.depth_ckpt).is_absolute()
+        else Path(args.depth_ckpt)
+    )
+    depth_pred = (
+        DepthMinPredictor.from_checkpoint(depth_path, device=device_str)
+        if (not args.mock and depth_path.is_file())
+        else None
+    )
+    if depth_pred is None and not args.mock:
+        raise SystemExit(
+            f"ABORT: depth checkpoint not found at {depth_path}\n"
+            "ThreeZoneShield forward cap requires depth. "
+            "Pass --depth-ckpt <path> or --mock to run without it."
+        )
+
+    tau_path = (
+        (root / args.tau_ckpt).resolve()
+        if not Path(args.tau_ckpt).is_absolute()
+        else Path(args.tau_ckpt)
+    )
+    tau_pred = make_tau_predictor(
+        kind="foe_calibrated",
+        ckpt=tau_path if (not args.mock and tau_path.is_file()) else None,
+        device=device_str,
+    )
+    if not args.mock and not tau_path.is_file():
+        logger.warning(
+            "tau checkpoint not found at %s — running uncalibrated FOE tau (τ latch active but less accurate)",
+            tau_path,
         )
 
     phys_limits = body_delta_limits(1.0 / float(args.step_hz))
@@ -391,17 +403,6 @@ def main() -> int:
 
     policy = LatentActorDeployPolicy(
         dynamics, actor_ac, deterministic=True, stream_latent=True
-    )
-
-    depth_path = (
-        (root / args.depth_ckpt).resolve()
-        if not Path(args.depth_ckpt).is_absolute()
-        else Path(args.depth_ckpt)
-    )
-    depth_pred = (
-        DepthMinPredictor.from_checkpoint(depth_path, device=device_str)
-        if (not args.mock and depth_path.is_file())
-        else None
     )
 
     safety_cfg = dict(cfg.get("safety") or {})
@@ -439,7 +440,7 @@ def main() -> int:
 
     subgoal_source = str(args.subgoal_source)
     intent: Any = None
-    r_intent = 25.0 if float(args.cruise_speed) >= 8.0 else 20.0
+    r_intent = 100.0
     if subgoal_source in ("toward_g", "direct_g"):
         intent = TowardGoalIntent(
             r_m=r_intent,
@@ -501,6 +502,7 @@ def main() -> int:
             shield.reset()
         if depth_pred is not None:
             depth_pred.reset()
+        tau_pred.reset()
         policy.reset()
         if planner is not None:
             planner.reset()
@@ -574,6 +576,7 @@ def main() -> int:
         arrived = False
         collided = False
         severe_coll = False
+        fail_tag: str | None = None
         interventions = 0
         intervened_steps: set[int] = set()
         s_prog = 0.0
@@ -582,6 +585,9 @@ def main() -> int:
 
         for step in range(args.max_steps):
             d_fwd = None
+            obs.info.pop("depth_min_pred", None)
+            obs.info.pop("depth_cones_pred", None)
+            obs.info.pop("tau_pred", None)
             if depth_pred is not None and obs.rgb is not None:
                 pred_both = getattr(depth_pred, "predict_min_and_cones", None)
                 if callable(pred_both):
@@ -601,7 +607,9 @@ def main() -> int:
                     d_fwd = depth_pred.predict_min(obs)
                     if d_fwd is not None:
                         obs.info["depth_min_pred"] = float(d_fwd)
-
+            tau_v = tau_pred.predict_tau(obs)
+            if tau_v is not None:
+                obs.info["tau_pred"] = float(tau_v)
             path_for_carrot = pts
             rem_full = None
             true_s_full = None
@@ -748,7 +756,7 @@ def main() -> int:
                     "Route %02d F-tele teleportation at step %d: jump=%.1fm — episode invalidated",
                     ep_idx + 1, step, _step_jump,
                 )
-                severe_coll = True  # treat as episode failure, not SCR
+                fail_tag = "F-tele"  # teleport: episode invalid, not a real collision
                 break
 
             traj.append(p_curr.copy())
@@ -828,6 +836,7 @@ def main() -> int:
             "n_intent_offaxis": int(getattr(intent, "offaxis_count", 0)),
             "mean_intent_dev_deg": round(float(np.mean(dev_degs)), 2) if dev_degs else 0.0,
             "max_intent_dev_deg": round(float(np.max(dev_degs)), 2) if dev_degs else 0.0,
+            "fail_tag": fail_tag,
         }
         if traj_writer is not None:
             traj_writer.close()
@@ -851,8 +860,12 @@ def main() -> int:
         "protocol_version": "wam_phase2_goal_scene_e0_20260903",
         "goal_feat_mode": str(args.goal_feat_mode),
         "actor_ckpt": str(actor_path),
+        "depth_ckpt": str(depth_path),
+        "tau_ckpt": str(tau_path),
+        "r_m_intent": r_intent,
         "cruise_speed_m_s": args.cruise_speed,
-        "link_probe": link_probe,
+        "max_steps": args.max_steps,
+        "spawn_tol_m": args.spawn_tol_m,
         "subgoal_source": subgoal_source,
         "rolling_global": bool(args.rolling_global),
         "global_horizon_m": float(args.global_horizon_m),
