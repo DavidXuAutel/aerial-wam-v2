@@ -475,6 +475,8 @@ def main() -> int:
         if depth_pred is not None:
             depth_pred.reset()
         policy.reset()
+        if planner is not None:
+            planner.reset()
 
         ep_dict = {
             # Full polyline so reset uses true start; goal = last waypoint
@@ -546,6 +548,7 @@ def main() -> int:
         collided = False
         severe_coll = False
         interventions = 0
+        intervened_steps: set[int] = set()
         s_prog = 0.0
         last_true_s: float | None = None
         dev_degs: List[float] = []
@@ -693,6 +696,7 @@ def main() -> int:
                 )
                 if overridden:
                     interventions += 1
+                    intervened_steps.add(step)
                 action = act_safe
 
             step_out = env.step(action)
@@ -733,7 +737,7 @@ def main() -> int:
                     "dev_deg": round(float(_srec["dev_deg"]), 2) if _srec.get("dev_deg") is not None else None,
                     "replan": _srec.get("replan"),
                     "n_feasible": _srec.get("n_feasible"),
-                    "intervened": bool(step in getattr(traj_writer, "_intervened", set())),
+                    "intervened": bool(step in intervened_steps),
                 }) + "\n")
 
             seg_d = _segment_min_dist(p_prev, p_curr, goal_pos)
