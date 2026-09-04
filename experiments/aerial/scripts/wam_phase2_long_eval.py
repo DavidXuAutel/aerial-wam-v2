@@ -241,8 +241,9 @@ def main() -> int:
         default="polyline",
         choices=("polyline", "toward_g", "direct_g", "scene"),
         help=(
-            "E0/E1: polyline=waterline; toward_g=main E0; "
-            "direct_g=ablation A; scene=E1 fan intent"
+            "polyline=waterline; toward_g=main (clip toward G, policy handles obstacles); "
+            "scene=alias for toward_g (fan intent removed; see E1r2 analysis); "
+            "direct_g=ablation A"
         ),
     )
     parser.add_argument(
@@ -269,7 +270,7 @@ def main() -> int:
     from experiments.aerial.rl.planner import ImaginationPlanner
     from experiments.aerial.rl.reward import RewardConfig
     from experiments.aerial.rl.global_ref_planner import GlobalRefConfig, GlobalRefPlanner
-    from experiments.aerial.rl.scene_intent import SceneIntentPlanner, TowardGoalIntent
+    from experiments.aerial.rl.scene_intent import TowardGoalIntent
     from experiments.aerial.rl.subgoal_generator import (
         AdaptiveSubgoalGenerator,
         nearest_on_polyline,
@@ -419,10 +420,13 @@ def main() -> int:
             cruise_speed=float(args.cruise_speed),
         )
     elif subgoal_source == "scene":
-        intent = SceneIntentPlanner(
+        # Fan-based SceneIntentPlanner removed (E1r2 analysis: single d_fwd scalar
+        # insufficient for 12-direction scoring; outer loop should not override the
+        # policy's own obstacle model). scene is now an alias for toward_g.
+        intent = TowardGoalIntent(
             r_m=r_intent,
+            mode="toward_g",
             cruise_speed=float(args.cruise_speed),
-            step_hz=float(args.step_hz),
         )
     if intent is not None and bool(args.rolling_global):
         raise SystemExit(
@@ -576,7 +580,7 @@ def main() -> int:
                     curr_pos=p_curr,
                     curr_yaw=curr_yaw,
                     goal=goal_pos,
-                    d_fwd_hat=d_fwd,
+                    d_fwd_hat=None,  # outer loop is pure geometry; policy handles obstacles
                 )
                 target_world = np.array(s_info["target_world"], dtype=np.float64)
                 rem_dist = float(s_info["rem_dist"])
