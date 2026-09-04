@@ -184,6 +184,7 @@ def imagine(
             r = reward_terms(
                 prog, out.p_coll, maneuver, cfg,
                 efficiency_cost_val=float(eff["efficiency_cost"]),
+                forward_vel=float(a[0]),
             )["reward"]
             # Mirror NavigationReward.step: arrival earns the same success bonus,
             # so imagined and real returns are on one scale (spec reward §4.5).

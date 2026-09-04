@@ -65,6 +65,9 @@ class RewardConfig:
     w_maneuver_final: float = 0.01
     maneuver_curriculum_threshold: float = 0.0
     maneuver_curriculum_ramp: float = 1.0
+    # Speed fine-tuning terms (default 0 = no-op; activated via finetune_actor_speed.py)
+    w_step_penalty: float = 0.0    # constant cost per step — penalises dithering
+    w_forward_vel: float = 0.0     # reward for body-frame forward dx (action[0])
 
 
 def maneuver_weight_at(metric: float, cfg: RewardConfig, w_start: Optional[float] = None) -> float:
@@ -132,14 +135,24 @@ def reward_terms(
     cfg: RewardConfig = RewardConfig(),
     curiosity_gain: float = 0.0,
     efficiency_cost_val: float = 0.0,
+    forward_vel: float = 0.0,
 ) -> Dict[str, float]:
-    """Pure term breakdown + scalar reward. Used by both real and imagined paths."""
+    """Pure term breakdown + scalar reward. Used by both real and imagined paths.
+
+    ``forward_vel`` is the body-frame forward displacement (``action[0]``) for
+    the speed fine-tuning reward (``w_forward_vel``). Defaults to 0 — no-op for
+    all existing callers that do not pass it.
+    """
+    step_pen = float(cfg.w_step_penalty)
+    fwd_rew = float(cfg.w_forward_vel) * float(forward_vel)
     r = (
         cfg.w_progress * float(progress)
         - cfg.w_collision * float(collision_risk)
         - cfg.w_maneuver * float(maneuver_cost)
         + cfg.w_curiosity * float(np.clip(curiosity_gain, 0.0, cfg.curiosity_max_bonus))
         - float(efficiency_cost_val)
+        - step_pen
+        + fwd_rew
     )
     return {
         "reward": float(r),
@@ -148,6 +161,8 @@ def reward_terms(
         "maneuver_cost": float(maneuver_cost),
         "curiosity_gain": float(curiosity_gain),
         "efficiency_cost": float(efficiency_cost_val),
+        "step_penalty": float(step_pen),
+        "forward_vel_reward": float(fwd_rew),
     }
 
 

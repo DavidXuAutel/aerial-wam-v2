@@ -30,6 +30,7 @@ the invalidated policy class can never be warm-started into training.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
@@ -564,6 +565,43 @@ class LatentActorCritic:
         ac._critic.load_state_dict(payload["critic"])
         ac._log_std.data = payload["log_std"].to(ac._device)
         return ac
+
+    def override_action_limits(self, new_limits: np.ndarray) -> None:
+        """Expand (or change) action limits post-load for speed fine-tuning.
+
+        Updates ``config``, the ``_limits`` tensor, and rescales the last actor
+        layer so that the initial output is magnitude-equivalent to the original
+        policy. Without the rescale, expanding limits 2× would immediately
+        double all proposed actions and destabilise the imagination rollout.
+
+        Only valid for bounded (POLICY_TANH_BOUNDED) actors.
+        """
+        _require_torch()
+        if not self.bounded:
+            raise ValueError("override_action_limits is only valid for bounded (tanh) actors")
+        old_lim = np.asarray(self.config.action_limits, dtype=np.float64)
+        new_lim = np.abs(np.asarray(new_limits, dtype=np.float64).reshape(-1))
+        if new_lim.shape != (4,) or not np.all(new_lim > 0):
+            raise ValueError(f"new_limits must be 4 positive values, got {new_limits!r}")
+
+        # Scale last layer weights/bias so network initially produces the same
+        # effective (pre-tanh) outputs as before the limit change.
+        # net_out * tanh = old_lim * tanh(u)  →  net_out_new = net_out * (old_lim / new_lim)
+        scale = torch.tensor(
+            old_lim / new_lim, dtype=torch.float32, device=self._device
+        )
+        last_linear = self._actor[-1]
+        with torch.no_grad():
+            last_linear.weight.data *= scale.unsqueeze(1)
+            last_linear.bias.data *= scale
+
+        # Update config (immutable dataclass → replace) and _limits tensor.
+        self.config = dataclasses.replace(self.config, action_limits=tuple(new_lim.tolist()))
+        self._limits = torch.tensor(new_lim, dtype=torch.float32, device=self._device)
+        logger.info(
+            "override_action_limits: %s → %s (last-layer rescaled for equivalence)",
+            old_lim.tolist(), new_lim.tolist(),
+        )
 
 
 class LatentActorDeployPolicy:
