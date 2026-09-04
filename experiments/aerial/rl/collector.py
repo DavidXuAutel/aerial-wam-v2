@@ -143,6 +143,9 @@ class RolloutCollector:
         reset_pred = getattr(self.depth_predictor, "reset", None)
         if callable(reset_pred):
             reset_pred()
+        reset_planner = getattr(self.planner, "reset", None)
+        if callable(reset_planner):
+            reset_planner()
         if self.dynamics is not None:
             self._latent = np.asarray(self.dynamics.encode(obs), dtype=np.float64)
 

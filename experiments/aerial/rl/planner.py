@@ -101,11 +101,17 @@ class ImaginationPlanner:
     action_limits: Optional[np.ndarray] = None
     #: When set, steps 1+ of each imagined candidate use actor π(z, goal_rel)
     #: instead of repeating the candidate action (actor-rollout MPC).
+    #: NOTE: in practice this HURTS discrimination (all candidates converge to
+    #: similar π-driven returns after step 0). Default=None keeps ConstantLatentPolicy,
+    #: which gives clean per-candidate signal and higher SR.
     #: Accepts any object with act_latent(z, goal_rel=None) -> np.ndarray[4].
     actor: Optional[Any] = None
     #: Overrides the MAX_IMAGINATION_HORIZON safety cap for longer-horizon runs.
     #: Caller bears responsibility for WM fidelity at the chosen horizon.
     max_horizon: int = MAX_IMAGINATION_HORIZON
+    #: EMA smoothing on the returned action across consecutive plan() calls.
+    #: 0.0 = off; 0.4 = 40% from prev step. Resets between episodes via reset().
+    smooth_alpha: float = 0.0
 
     def __post_init__(self) -> None:
         self.horizon = int(self.horizon)
@@ -122,6 +128,11 @@ class ImaginationPlanner:
             raise ValueError(
                 f"planner horizon {self.horizon} exceeds max_horizon {self.max_horizon}"
             )
+        self._prev_action: Optional[np.ndarray] = None
+
+    def reset(self) -> None:
+        """Clear per-episode state (call at episode start to avoid cross-episode smoothing)."""
+        self._prev_action = None
 
     def set_goal(self, goal: Optional[np.ndarray]) -> None:
         set_goal = getattr(self.dynamics, "set_goal", None)
@@ -180,4 +191,8 @@ class ImaginationPlanner:
             if score > best_score:
                 best_score = score
                 best_a = cand
-        return np.asarray(best_a, dtype=np.float64).reshape(4)
+        out = np.asarray(best_a, dtype=np.float64).reshape(4)
+        if self.smooth_alpha > 0.0 and self._prev_action is not None:
+            out = (1.0 - self.smooth_alpha) * out + self.smooth_alpha * self._prev_action
+        self._prev_action = out.copy()
+        return out

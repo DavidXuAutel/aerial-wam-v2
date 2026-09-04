@@ -83,8 +83,12 @@ def main() -> int:
     parser.add_argument("--max-steps", type=int, default=250)
     parser.add_argument("--success-dist", type=float, default=3.0)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--planner", action="store_true", help="Enable enhanced ImaginationPlanner for online multi-step candidate scoring")
+    parser.add_argument("--planner", action="store_true", help="Enable ImaginationPlanner (ConstantLatentPolicy scoring by default)")
     parser.add_argument("--planner-horizon", type=int, default=5, help="Imagination horizon for planner rollout")
+    parser.add_argument("--smooth-alpha", type=float, default=0.0,
+                        help="EMA smoothing coefficient on planner output (0=off, 0.4 recommended for smoother paths)")
+    parser.add_argument("--planner-actor-rollout", action="store_true",
+                        help="Use ActorRolloutPolicy in imagination steps 1+ (experimental; hurts SR in practice)")
     parser.add_argument("--depth-budget-s", type=float, default=None,
                         help="Refuse to start when one depth frame costs more than this many "
                              "seconds (median of --link-probe-n). Default: "
@@ -149,15 +153,24 @@ def main() -> int:
     planner = None
     if args.planner:
         limits = np.array([1.0, 0.4, 0.4, math.pi / 10.0], dtype=np.float64)
+        planner_actor = (
+            ImaginationActorPolicy(actor_ac, deterministic=True)
+            if args.planner_actor_rollout else None
+        )
         planner = ImaginationPlanner(
             dynamics=dynamics,
             horizon=int(args.planner_horizon),
             reward_cfg=reward_cfg,
             action_limits=limits,
-            actor=ImaginationActorPolicy(actor_ac, deterministic=True),
+            actor=planner_actor,
             max_horizon=int(args.planner_horizon),
+            smooth_alpha=float(args.smooth_alpha),
         )
-        logger.info(f"ImaginationPlanner ACTIVE: horizon={args.planner_horizon}, limits={limits.tolist()}, hybrid_rollout=True")
+        scoring_mode = "actor-rollout" if planner_actor is not None else "constant-policy"
+        logger.info(
+            f"ImaginationPlanner ACTIVE: horizon={args.planner_horizon}, "
+            f"scoring={scoring_mode}, smooth_alpha={args.smooth_alpha}, limits={limits.tolist()}"
+        )
 
     ann_path = (root / args.annotation).resolve() if not Path(args.annotation).is_absolute() else Path(args.annotation)
     with ann_path.open("r", encoding="utf-8") as f:
@@ -323,6 +336,12 @@ def main() -> int:
         "n_scored": n_scored,
         "wm_ckpt": str(wm_path),
         "actor_ckpt": str(actor_path),
+        "planner_config": {
+            "enabled": bool(args.planner),
+            "horizon": int(args.planner_horizon) if args.planner else None,
+            "scoring": ("actor-rollout" if (args.planner and args.planner_actor_rollout) else "constant-policy") if args.planner else None,
+            "smooth_alpha": float(args.smooth_alpha) if args.planner else None,
+        },
         # Which renderer this ran against and how fast it answered. Recorded so a
         # verdict can never again be read without its link speed (2026-09-03).
         "link_probe": link_probe,
