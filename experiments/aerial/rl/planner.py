@@ -85,6 +85,35 @@ def default_candidates(base_action: np.ndarray) -> List[np.ndarray]:
     ]
 
 
+def _actor_sample_candidates(
+    actor: Any,
+    z: np.ndarray,
+    goal_rel: np.ndarray,
+    n: int,
+) -> List[np.ndarray]:
+    """Generate n candidate actions by sampling from the actor distribution.
+
+    The deterministic mean is always included as the first candidate.
+    Remaining n-1 are stochastic draws so the actor's natural speed and
+    direction are preserved — no hand-crafted magnitude limits applied here.
+    Used by ImaginationPlanner when n_actor_samples > 0.
+    """
+    z_arr = np.asarray(z, dtype=np.float64).reshape(-1)
+    gr_arr = np.asarray(goal_rel, dtype=np.float32).reshape(-1)
+
+    def _call(det: bool) -> np.ndarray:
+        try:
+            a = actor.act_latent(z_arr, goal_rel=gr_arr, deterministic=det)
+        except TypeError:
+            a = actor.act_latent(z_arr, goal_rel=gr_arr)
+        return np.asarray(a, dtype=np.float64).reshape(4)
+
+    candidates: List[np.ndarray] = [_call(det=True)]
+    for _ in range(n - 1):
+        candidates.append(_call(det=False))
+    return candidates
+
+
 @dataclass
 class ImaginationPlanner:
     """Pick the best first action via batched short imagined rollouts."""
@@ -112,6 +141,12 @@ class ImaginationPlanner:
     #: EMA smoothing on the returned action across consecutive plan() calls.
     #: 0.0 = off; 0.4 = 40% from prev step. Resets between episodes via reset().
     smooth_alpha: float = 0.0
+    #: When > 0, generate candidates by sampling from ``actor``'s distribution
+    #: (1 deterministic mean + n-1 stochastic draws) instead of using
+    #: ``candidate_fn``. Scored with ConstantLatentPolicy (not ActorRolloutPolicy)
+    #: and NOT clipped to action_limits — actor's natural speed is preserved.
+    #: Requires actor to be set. Equivalent to MPC best-of-K actor proposal.
+    n_actor_samples: int = 0
 
     def __post_init__(self) -> None:
         self.horizon = int(self.horizon)
@@ -157,13 +192,22 @@ class ImaginationPlanner:
             z0 = np.asarray(self.dynamics.encode(obs), dtype=np.float64)
         goal_rel = goal_rel_from_obs(obs)
         body_vel = body_vel_from_obs(obs)
-        candidates = list(self.candidate_fn(np.asarray(base_action, dtype=np.float64)))
-        candidates = drop_backward_if_subgoal_ahead(candidates, goal_rel)
+
+        use_actor_samples = self.n_actor_samples > 0 and self.actor is not None
+        if use_actor_samples:
+            # MPC best-of-K: actor proposes candidates at natural speed/direction,
+            # WM scores each with ConstantLatentPolicy over the full horizon.
+            # No clipping — actor tanh bounds already enforce the action box.
+            candidates = _actor_sample_candidates(self.actor, z0, goal_rel, self.n_actor_samples)
+        else:
+            candidates = list(self.candidate_fn(np.asarray(base_action, dtype=np.float64)))
+            candidates = drop_backward_if_subgoal_ahead(candidates, goal_rel)
+            if self.action_limits is not None:
+                lim = self.action_limits
+                candidates = [np.clip(c, -lim, lim) for c in candidates]
+
         if not candidates:
             return np.asarray(base_action, dtype=np.float64).reshape(4)
-        if self.action_limits is not None:
-            lim = self.action_limits
-            candidates = [np.clip(c, -lim, lim) for c in candidates]
 
         best_a = candidates[0]
         best_score = -np.inf
@@ -171,9 +215,13 @@ class ImaginationPlanner:
         bv0 = np.asarray(body_vel, dtype=np.float32).reshape(1, -1)
         for cand in candidates:
             img_policy = (
-                ActorRolloutPolicy(cand, self.actor)
-                if self.actor is not None
-                else ConstantLatentPolicy(cand)
+                ConstantLatentPolicy(cand)
+                if use_actor_samples
+                else (
+                    ActorRolloutPolicy(cand, self.actor)
+                    if self.actor is not None
+                    else ConstantLatentPolicy(cand)
+                )
             )
             roll = imagine(
                 self.dynamics,

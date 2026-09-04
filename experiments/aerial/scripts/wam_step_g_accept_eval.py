@@ -89,6 +89,11 @@ def main() -> int:
                         help="EMA smoothing coefficient on planner output (0=off; default 0.3)")
     parser.add_argument("--planner-actor-rollout", action="store_true",
                         help="Use ActorRolloutPolicy in imagination steps 1+ (experimental; hurts SR in practice)")
+    parser.add_argument("--planner-actor-samples", type=int, default=0,
+                        help="MPC best-of-K: sample K actions from actor distribution (1 deterministic + K-1 "
+                             "stochastic), score each with WM ConstantLatentPolicy over --planner-horizon steps, "
+                             "execute the highest-return first action. Preserves actor speed; WM filters collision. "
+                             "0=disabled (use default_candidates). Recommended: 8.")
     parser.add_argument("--planner-coll-scale", type=float, default=0.1,
                         help="Scale w_collision in planner imagination reward (default 0.1). "
                              "The real shield handles collision avoidance; this prevents the WM's "
@@ -155,16 +160,31 @@ def main() -> int:
     shield = _build_safety(cfg.get("safety") or {})
 
     planner = None
+    scoring_mode: str = "none"
+    smooth_alpha_for_planner: float = 0.0
     if args.planner:
         limits = np.array([1.0, 0.4, 0.4, math.pi / 10.0], dtype=np.float64)
-        planner_actor = (
-            ImaginationActorPolicy(actor_ac, deterministic=True)
-            if args.planner_actor_rollout else None
-        )
-        # Separate reward config for imagination scoring: scale down collision weight so
-        # the WM's p_coll bias does not cause hover/backward candidates to beat forward
-        # progress. The real shield handles collision avoidance; the planner's job is
-        # direction selection. w_collision=10 in real reward, ~1 in imagination is fine.
+        n_actor_samples = int(args.planner_actor_samples)
+        use_actor_samples = n_actor_samples > 0
+
+        if use_actor_samples:
+            # MPC best-of-K mode: actor proposes K candidates at natural speed,
+            # WM scores each with ConstantLatentPolicy, best first-action executed.
+            # action_limits=None: actor tanh already enforces the box; no extra clip.
+            # smooth_alpha=0: actor samples vary naturally; EMA would dampen diversity.
+            planner_actor = actor_ac
+            action_limits_for_planner = None
+            smooth_alpha_for_planner = 0.0
+            scoring_mode = f"actor-samples-k{n_actor_samples}"
+        else:
+            planner_actor = (
+                ImaginationActorPolicy(actor_ac, deterministic=True)
+                if args.planner_actor_rollout else None
+            )
+            action_limits_for_planner = limits
+            smooth_alpha_for_planner = float(args.smooth_alpha)
+            scoring_mode = "actor-rollout" if planner_actor is not None else "constant-policy"
+
         planner_reward_cfg = RewardConfig(**(cfg.get("reward") or {}))
         planner_reward_cfg.success_dist_m = float(args.success_dist)
         planner_reward_cfg.w_collision = reward_cfg.w_collision * float(args.planner_coll_scale)
@@ -172,17 +192,17 @@ def main() -> int:
             dynamics=dynamics,
             horizon=int(args.planner_horizon),
             reward_cfg=planner_reward_cfg,
-            action_limits=limits,
+            action_limits=action_limits_for_planner,
             actor=planner_actor,
             max_horizon=int(args.planner_horizon),
-            smooth_alpha=float(args.smooth_alpha),
+            smooth_alpha=smooth_alpha_for_planner,
+            n_actor_samples=n_actor_samples,
         )
-        scoring_mode = "actor-rollout" if planner_actor is not None else "constant-policy"
         logger.info(
             f"ImaginationPlanner ACTIVE: horizon={args.planner_horizon}, "
-            f"scoring={scoring_mode}, smooth_alpha={args.smooth_alpha}, "
+            f"scoring={scoring_mode}, smooth_alpha={smooth_alpha_for_planner}, "
             f"w_collision={planner_reward_cfg.w_collision:.3g} (scale={args.planner_coll_scale}), "
-            f"limits={limits.tolist()}"
+            f"action_limits={action_limits_for_planner}"
         )
 
     ann_path = (root / args.annotation).resolve() if not Path(args.annotation).is_absolute() else Path(args.annotation)
@@ -352,8 +372,9 @@ def main() -> int:
         "planner_config": {
             "enabled": bool(args.planner),
             "horizon": int(args.planner_horizon) if args.planner else None,
-            "scoring": ("actor-rollout" if (args.planner and args.planner_actor_rollout) else "constant-policy") if args.planner else None,
-            "smooth_alpha": float(args.smooth_alpha) if args.planner else None,
+            "scoring": scoring_mode if args.planner else None,
+            "n_actor_samples": int(args.planner_actor_samples) if args.planner else None,
+            "smooth_alpha": smooth_alpha_for_planner if args.planner else None,
             "coll_scale": float(args.planner_coll_scale) if args.planner else None,
         },
         # Which renderer this ran against and how fast it answered. Recorded so a
