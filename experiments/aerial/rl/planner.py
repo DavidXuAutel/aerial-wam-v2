@@ -7,10 +7,14 @@ test-time imagination scoring path — distinct from V4 actor-critic training.
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from experiments.aerial.rl.dynamics import LatentDynamics
 from experiments.aerial.rl.env.obs import Observation
@@ -93,24 +97,31 @@ def _actor_sample_candidates(
 ) -> List[np.ndarray]:
     """Generate n candidate actions by sampling from the actor distribution.
 
-    The deterministic mean is always included as the first candidate.
-    Remaining n-1 are stochastic draws so the actor's natural speed and
-    direction are preserved — no hand-crafted magnitude limits applied here.
-    Used by ImaginationPlanner when n_actor_samples > 0.
+    Row 0 = deterministic mean, rows 1..n-1 = stochastic draws.
+    Uses ``sample_k_latent`` (one GPU forward pass) when available;
+    falls back to n serial ``act_latent`` calls otherwise.
+    No action_limits clipping — actor tanh/bounds already enforce the box.
     """
     z_arr = np.asarray(z, dtype=np.float64).reshape(-1)
     gr_arr = np.asarray(goal_rel, dtype=np.float32).reshape(-1)
 
-    def _call(det: bool) -> np.ndarray:
-        try:
-            a = actor.act_latent(z_arr, goal_rel=gr_arr, deterministic=det)
-        except TypeError:
-            a = actor.act_latent(z_arr, goal_rel=gr_arr)
-        return np.asarray(a, dtype=np.float64).reshape(4)
+    sample_k = getattr(actor, "sample_k_latent", None)
+    if callable(sample_k):
+        # One forward pass for all K samples (mean at row 0, stochastic at 1..K-1).
+        batch = sample_k(z_arr, goal_rel=gr_arr, k=n)   # [n, 4]
+        return [np.asarray(batch[i], dtype=np.float64).reshape(4) for i in range(n)]
 
-    candidates: List[np.ndarray] = [_call(det=True)]
+    # Serial fallback — actor does not expose sample_k_latent.
+    # B1 fix: do NOT use try/except that silently drops deterministic=True.
+    # Both call sites use keyword-only `deterministic`; TypeError here means the
+    # actor API is genuinely incompatible and should fail loudly, not silently.
+    candidates: List[np.ndarray] = [
+        np.asarray(actor.act_latent(z_arr, goal_rel=gr_arr, deterministic=True), dtype=np.float64).reshape(4)
+    ]
     for _ in range(n - 1):
-        candidates.append(_call(det=False))
+        candidates.append(
+            np.asarray(actor.act_latent(z_arr, goal_rel=gr_arr, deterministic=False), dtype=np.float64).reshape(4)
+        )
     return candidates
 
 
@@ -164,6 +175,7 @@ class ImaginationPlanner:
                 f"planner horizon {self.horizon} exceeds max_horizon {self.max_horizon}"
             )
         self._prev_action: Optional[np.ndarray] = None
+        self._plan_call_count: int = 0
 
     def reset(self) -> None:
         """Clear per-episode state (call at episode start to avoid cross-episode smoothing)."""
@@ -186,6 +198,7 @@ class ImaginationPlanner:
         When ``latent`` is provided (deploy streaming posterior), imagination
         scores from that state instead of resetting via ``encode(obs)``.
         """
+        _t0 = time.perf_counter()
         if latent is not None:
             z0 = np.asarray(latent, dtype=np.float64).reshape(-1)
         else:
@@ -243,4 +256,14 @@ class ImaginationPlanner:
         if self.smooth_alpha > 0.0 and self._prev_action is not None:
             out = (1.0 - self.smooth_alpha) * out + self.smooth_alpha * self._prev_action
         self._prev_action = out.copy()
+
+        self._plan_call_count += 1
+        # Log timing for first 5 calls and every 50 thereafter so latency is visible.
+        if self._plan_call_count <= 5 or self._plan_call_count % 50 == 0:
+            elapsed_ms = (time.perf_counter() - _t0) * 1000.0
+            n_cands = len(candidates)
+            logger.debug(
+                "plan() call #%d: %d candidates × h=%d → %.1f ms (best_score=%.3f)",
+                self._plan_call_count, n_cands, self.horizon, elapsed_ms, best_score,
+            )
         return out

@@ -364,6 +364,31 @@ class LatentActorCritic:
             a = np.clip(a, -self.action_limits, self.action_limits)
         return a
 
+    def sample_k_latent(
+        self,
+        z: np.ndarray,
+        goal_rel: Optional[np.ndarray] = None,
+        k: int = 1,
+    ) -> np.ndarray:
+        """Return k actions in one forward pass: row 0 = deterministic mean, rows 1..k-1 = stochastic.
+
+        Shape: [k, action_dim]. Used by ImaginationPlanner's MPC best-of-K mode to
+        replace k serial act_latent calls with a single GPU forward pass.
+        """
+        feat_t = self._feat_tensor(z, goal_rel)  # [1, feat_dim]
+        with torch.no_grad():
+            mean, std = self._pre_dist(feat_t)  # [1, action_dim]
+            mean_k = mean.expand(k, -1)         # [k, action_dim]
+            std_k = std.expand(k, -1)
+            noise = torch.randn_like(mean_k)
+            noise[0] = 0.0                       # row 0 = deterministic mean
+            u_k = mean_k + std_k * noise
+            act_k = self._limits * torch.tanh(u_k) if self.bounded else u_k
+        arr = act_k.cpu().numpy().astype(np.float64)  # [k, action_dim]
+        if self.bounded:
+            arr = np.clip(arr, -self.action_limits, self.action_limits)
+        return arr
+
     def evaluate_actions(
         self,
         z: np.ndarray,

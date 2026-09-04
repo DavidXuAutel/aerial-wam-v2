@@ -230,13 +230,20 @@ class RolloutCollector:
 
             next_obs, info = self.env.step(action)
             if self.dynamics is not None and self._latent is not None:
-                out = self.dynamics.step(
-                    self._latent,
-                    action,
-                    goal_rel=goal_rel_from_obs(obs),
-                    body_vel=body_vel_from_obs(obs),
-                )
-                self._latent = np.asarray(out.z_next, dtype=np.float64)
+                if not intervened and wm_out is not None:
+                    # Shield did not change the action: wm_out was computed with the
+                    # same action that was actually executed — reuse z_next directly.
+                    self._latent = np.asarray(wm_out.z_next, dtype=np.float64)
+                else:
+                    # Shield changed the action (or no pre-shield wm_out): recompute
+                    # with the shielded action so _latent tracks what actually happened.
+                    out = self.dynamics.step(
+                        self._latent,
+                        action,
+                        goal_rel=goal_rel_from_obs(obs),
+                        body_vel=body_vel_from_obs(obs),
+                    )
+                    self._latent = np.asarray(out.z_next, dtype=np.float64)
             r, done, terms = reward.step(next_obs, action)
             ep_info = {**info, **terms, "intervention": intervened}
             if goal_xyz is not None:

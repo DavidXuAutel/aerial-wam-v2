@@ -153,6 +153,13 @@ def main() -> int:
     actor_path = (root / args.actor_ckpt).resolve() if not Path(args.actor_ckpt).is_absolute() else Path(args.actor_ckpt)
     actor_ac = LatentActorCritic.load_from_checkpoint(actor_path, device=str(args.device))
     policy = LatentActorDeployPolicy(dynamics, actor_ac, deterministic=True)
+    # F2: surface bounded/limits so planner logs tell us whether actor-samples
+    # run in tanh-bounded (speed ≡ fixed-candidate) or legacy-unbounded mode.
+    logger.info(
+        "actor_ac: bounded=%s action_limits=%s",
+        getattr(actor_ac, "bounded", "?"),
+        getattr(actor_ac, "action_limits", "?"),
+    )
 
     depth_path = (root / args.depth_ckpt).resolve() if not Path(args.depth_ckpt).is_absolute() else Path(args.depth_ckpt)
     depth_pred = DepthMinPredictor.from_checkpoint(depth_path, device=str(args.device)) if depth_path.is_file() else None
@@ -166,6 +173,19 @@ def main() -> int:
         limits = np.array([1.0, 0.4, 0.4, math.pi / 10.0], dtype=np.float64)
         n_actor_samples = int(args.planner_actor_samples)
         use_actor_samples = n_actor_samples > 0
+
+        # D1: both flags set — actor-samples silently wins; warn so the log is clear.
+        if use_actor_samples and args.planner_actor_rollout:
+            logger.warning(
+                "--planner-actor-rollout is IGNORED: --planner-actor-samples=%d takes precedence",
+                n_actor_samples,
+            )
+        # D2: smooth-alpha is forced to 0.0 in actor-sample mode; warn if user supplied a non-zero value.
+        if use_actor_samples and float(args.smooth_alpha) != 0.0:
+            logger.warning(
+                "--smooth-alpha=%.3g is IGNORED in actor-samples mode (forced to 0.0 to preserve candidate diversity)",
+                args.smooth_alpha,
+            )
 
         if use_actor_samples:
             # MPC best-of-K mode: actor proposes K candidates at natural speed,
@@ -376,6 +396,7 @@ def main() -> int:
             "n_actor_samples": int(args.planner_actor_samples) if args.planner else None,
             "smooth_alpha": smooth_alpha_for_planner if args.planner else None,
             "coll_scale": float(args.planner_coll_scale) if args.planner else None,
+            "planner_w_collision": float(planner_reward_cfg.w_collision) if args.planner else None,
         },
         # Which renderer this ran against and how fast it answered. Recorded so a
         # verdict can never again be read without its link speed (2026-09-03).
