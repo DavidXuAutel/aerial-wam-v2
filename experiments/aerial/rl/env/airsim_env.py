@@ -151,16 +151,15 @@ class AirSimDroneEnv:
             for _ in range(max(0, self.config.warmup_frames)):
                 self._grab_scene(client)
 
-            # Force a depth frame on reset so health_check can run even when
-            # per-step grab_depth is False (rate-oriented collection).
-            # Depth+pose are taken while paused so Z does not collapse during the
-            # slow DepthPlanar RPC on Outdoor (.110).
-            obs = self.observe(force_depth=True)
+            # Only force a depth frame on reset when grab_depth is enabled.
+            # On Outdoor hosts (.110) DepthPlanar can hang indefinitely, which
+            # stalls every episode reset and blocks the entire eval.
+            obs = self.observe(force_depth=self.config.grab_depth)
             if episode is not None:
                 p0 = np.asarray(obs.position, dtype=np.float64).reshape(3)
                 if float(np.linalg.norm(p0 - start)) > 5.0:
                     client.simSetVehiclePose(pose, True, **self._vk)
-                    obs = self.observe(force_depth=True)
+                    obs = self.observe(force_depth=self.config.grab_depth)
             if paused:
                 client.simPause(False)
                 paused = False
@@ -351,11 +350,12 @@ class AirSimDroneEnv:
         ok, note = sanity.imu_ok(obs.imu)
         if not ok:
             raise RuntimeError(f"IMU sanity failed on reset: {note}")
-        if obs.depth is None:
-            raise RuntimeError(
-                "no depth data on reset — renderer/sensors unavailable (CV-only "
-                "mode or dead bridge)."
-            )
-        ok, note = sanity.depth_ok(depth_sanity_detail(obs.depth))
-        if not ok:
-            raise RuntimeError(f"depth sanity failed on reset: {note}")
+        if self.config.grab_depth:
+            if obs.depth is None:
+                raise RuntimeError(
+                    "no depth data on reset — renderer/sensors unavailable (CV-only "
+                    "mode or dead bridge)."
+                )
+            ok, note = sanity.depth_ok(depth_sanity_detail(obs.depth))
+            if not ok:
+                raise RuntimeError(f"depth sanity failed on reset: {note}")
