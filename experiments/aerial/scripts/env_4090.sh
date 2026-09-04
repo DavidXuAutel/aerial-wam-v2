@@ -19,21 +19,8 @@ fi
 export PYTHON_BIN
 export AERIAL_PY="$PYTHON_BIN"
 export AIRSIM_PORT="${AIRSIM_PORT:-41451}"
-# Auto-detect this box's local renderer. Was hardcoded 10.229.20.110: on 125
-# that silently aimed every run at 110's renderer (2026-09-03 incident).
-# Set AIRSIM_HOST yourself to override.
-if [[ -z "${AIRSIM_HOST:-}" ]]; then
-  if AIRSIM_HOST="$("$PYTHON_BIN" -m experiments.aerial.rl.env.renderer_host \
-      --port "$AIRSIM_PORT" 2>/dev/null)"; then
-    export AIRSIM_HOST
-  else
-    echo "[env_4090] WARNING: no local AirSim renderer on :$AIRSIM_PORT" >&2
-    echo "[env_4090]   start it: \$AERIAL_PERSIST_ROOT/recover_renderer.sh" >&2
-    unset AIRSIM_HOST
-  fi
-else
-  export AIRSIM_HOST
-fi
+# 125 binds AirSim to 127.0.0.1; use loopback by default.
+export AIRSIM_HOST="${AIRSIM_HOST:-127.0.0.1}"
 export AIRSIM_CAMERA=front_custom
 export AIRSIM_VEHICLE=drone_1
 export ANNOTATION="${ANNOTATION:-$ROOT/artifacts/seen_airsim16_m1a20.json}"
