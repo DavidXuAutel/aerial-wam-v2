@@ -317,7 +317,7 @@ def main() -> int:
     env_cfg = dict(cfg.get("env") or {})
     env_cfg["backend"] = "mock" if args.mock else "airsim"
     env_cfg["step_hz"] = float(args.step_hz)
-    env_cfg["grab_depth"] = True
+    env_cfg["grab_depth"] = False  # outer loop is pure geometry; DepthPlanar grab removed
     env = _build_env(env_cfg)
 
     depth_budget_s = DEFAULT_DEPTH_BUDGET_S if args.depth_budget_s is None else float(args.depth_budget_s)
