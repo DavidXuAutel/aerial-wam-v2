@@ -81,6 +81,39 @@ class HeuristicPolicy:
         return np.array([vec[0], vec[1], vec[2], 0.0], dtype=np.float64)
 
 
+class Phase2CollectionPolicy:
+    """Phase-2 data collection: learned AC + toward_g outer loop.
+
+    Before each act(), clips the episode goal G to r_m along the P→G ray and
+    writes the result to obs.info["goal"].  goal_rel_from_obs() (used by the
+    corrector's imagination update) then returns the toward_g goal_rel, so
+    imagination training is automatically conditioned on the same distribution
+    as Phase-2 eval — no separate goal-attachment step needed.
+    """
+
+    def __init__(self, inner: Any, goal_getter: Any, r_m: float = 100.0) -> None:
+        self._inner = inner
+        self._goal_getter = goal_getter
+        self._r_m = float(r_m)
+
+    def reset(self) -> None:
+        if hasattr(self._inner, "reset"):
+            self._inner.reset()
+
+    def act(self, obs: Any) -> np.ndarray:
+        from experiments.aerial.rl.scene_intent import clip_toward_goal
+
+        goal_G = self._goal_getter()
+        if goal_G is not None:
+            pos = np.asarray(obs.position, dtype=np.float64)
+            target = clip_toward_goal(pos, np.asarray(goal_G, dtype=np.float64), self._r_m)
+            info = getattr(obs, "info", None)
+            if not isinstance(info, dict):
+                obs.info = {}
+            obs.info["goal"] = target.tolist()
+        return self._inner.act(obs)
+
+
 def _get(cfg: Any, key: str, default: Any = None) -> Any:
     if isinstance(cfg, dict):
         return cfg.get(key, default)

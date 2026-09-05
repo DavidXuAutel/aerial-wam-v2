@@ -108,6 +108,20 @@ def main() -> int:
         default=None,
         help="warm-start actor/critic from an existing v4_ac_*.pt (F15 short FT)",
     )
+    p.add_argument(
+        "--phase2",
+        action="store_true",
+        help=(
+            "Phase-2 training: replace HeuristicPolicy with learned AC + toward_g "
+            "outer loop for data collection; enable online WM update."
+        ),
+    )
+    p.add_argument(
+        "--r-m",
+        type=float,
+        default=100.0,
+        help="Phase-2 toward_g clip radius (m); default 100 matches eval",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -137,7 +151,7 @@ def main() -> int:
     cfg["corrector"]["iterations"] = int(args.iters)
     cfg["corrector"]["episodes_per_iter"] = int(args.episodes_per_iter)
     cfg["corrector"]["enable_policy_update"] = True
-    cfg["corrector"]["enable_wm_update"] = False
+    cfg["corrector"]["enable_wm_update"] = bool(args.phase2)
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
@@ -232,7 +246,7 @@ def main() -> int:
         logger.error("actor_critic not built — install torch")
         return 1
     if args.init_actor_ckpt:
-        from experiments.aerial.rl.actor_critic import LatentActorCritic
+        from experiments.aerial.rl.actor_critic import ImaginationActorPolicy, LatentActorCritic
 
         init_path = Path(args.init_actor_ckpt)
         if not init_path.is_file():
@@ -248,6 +262,7 @@ def main() -> int:
             )
             return 1
         loop.actor_critic = warmed
+        loop.imagination_policy = ImaginationActorPolicy(warmed)
         logger.info(
             "warm-started actor from %s (goal_feat_mode=%s condition_on_goal=%s)",
             init_path,
@@ -267,6 +282,28 @@ def main() -> int:
         "policy: class=%s action_limits=%s (step_hz=%.3f) action_scale=%.3f",
         ac_cfg.policy_class, ac_cfg.action_limits, ac_cfg.step_hz, ac_cfg.action_scale,
     )
+
+    if args.phase2:
+        from experiments.aerial.rl.train_rl import Phase2CollectionPolicy
+        from experiments.aerial.rl.actor_critic import LatentActorDeployPolicy
+
+        if loop.dynamics is None or not hasattr(loop.dynamics, "encode"):
+            logger.error("--phase2 requires --dynamics torch with a loaded WM checkpoint")
+            return 1
+        inner_policy = LatentActorDeployPolicy(
+            loop.dynamics, loop.actor_critic, stream_latent=True
+        )
+        env_ref = loop.collector.env
+        loop.collector.policy = Phase2CollectionPolicy(
+            inner_policy,
+            goal_getter=lambda: getattr(env_ref, "goal", None),
+            r_m=float(args.r_m),
+        )
+        logger.info(
+            "Phase-2: collection policy = step_e AC + toward_g r_m=%.0f; "
+            "wm_update=ON policy_update=ON",
+            args.r_m,
+        )
 
     reports = loop.run()
     losses = []
