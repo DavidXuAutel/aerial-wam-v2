@@ -107,10 +107,14 @@ class Phase2CollectionPolicy:
         if goal_G is not None:
             pos = np.asarray(obs.position, dtype=np.float64)
             target = clip_toward_goal(pos, np.asarray(goal_G, dtype=np.float64), self._r_m)
-            info = getattr(obs, "info", None)
-            if not isinstance(info, dict):
-                obs.info = {}
-            obs.info["goal"] = target.tolist()
+            # PolicyObservation is a frozen dataclass — bypass __setattr__.
+            # Mutable Observation: mutate info dict in place instead.
+            try:
+                object.__setattr__(obs, "goal", np.asarray(target, dtype=np.float64))
+            except (AttributeError, TypeError):
+                info = getattr(obs, "info", None)
+                if isinstance(info, dict):
+                    info["goal"] = target.tolist()
         return self._inner.act(obs)
 
 
