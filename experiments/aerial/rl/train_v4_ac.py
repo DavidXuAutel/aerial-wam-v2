@@ -151,7 +151,9 @@ def main() -> int:
     cfg["corrector"]["iterations"] = int(args.iters)
     cfg["corrector"]["episodes_per_iter"] = int(args.episodes_per_iter)
     cfg["corrector"]["enable_policy_update"] = True
-    cfg["corrector"]["enable_wm_update"] = bool(args.phase2)
+    # Phase-2 only retrains the AC (WM is env-valid from Phase-1; WM update via
+    # train_rl.py only).  Skip WM update here to avoid loaded-ckpt grad issues.
+    cfg["corrector"]["enable_wm_update"] = False
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
