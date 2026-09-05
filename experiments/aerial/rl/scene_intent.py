@@ -145,7 +145,7 @@ class SceneIntentPlanner:
     # obstacles once d_fwd drops well below d_clear.
     w_fwd: float = 2.0
     d_danger: float = 3.0
-    d_clear: float = 22.0
+    d_clear: float = 40.0
     min_creep_speed: float = 1.0
     stall_eps_m: float = 0.05
 
@@ -326,7 +326,10 @@ class SceneIntentPlanner:
                     best_idx = i
             target = best.copy()
             self._c_prev = target.copy()
-            self._steps_since_replan = 0
+            # Candidate 0 is clip_toward_goal — identical to TowardGoalIntent.
+            # Skip the hold period so it tracks position every step, matching
+            # the E0 baseline.  Offaxis candidates hold for stability.
+            self._steps_since_replan = 10**9 if best_idx == 0 else 0
             self._stall_steps = 0
             self.replan_count += 1
             if best_idx != 0:

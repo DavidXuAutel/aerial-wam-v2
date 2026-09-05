@@ -618,7 +618,7 @@ def main() -> int:
                     curr_pos=p_curr,
                     curr_yaw=curr_yaw,
                     goal=goal_pos,
-                    d_fwd_hat=None,  # outer loop is pure geometry; policy handles obstacles
+                    d_fwd_hat=d_fwd,  # scene fan needs depth to score candidates
                 )
                 target_world = np.array(s_info["target_world"], dtype=np.float64)
                 rem_dist = float(s_info["rem_dist"])

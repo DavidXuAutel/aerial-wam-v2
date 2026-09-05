@@ -66,31 +66,41 @@ def test_scene_planner_picks_forward_when_clear():
     assert tw[0] > 0.0
 
 
-def test_scene_planner_holds_between_replans():
+def test_scene_candidate0_no_hold():
+    """Candidate 0 (toward_g) skips hold so the subgoal tracks position every
+    step — identical to TowardGoalIntent.  Offaxis candidates do hold."""
     pl = SceneIntentPlanner(r_m=25.0, replan_period_s=2.0, step_hz=5.0)
     pl.reset()
-    _, info0 = pl.compute(
-        np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 40.0
-    )
-    t0 = info0["target_world"]
+    # Step 0: clear path → candidate 0 chosen
+    _, info0 = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 50.0)
+    assert info0["chosen_idx"] == 0
+    # Step 1: candidate 0 was chosen → must replan immediately (no hold)
     _, info1 = pl.compute(
-        np.array([1.0, 0.0, 0.0]), 0.0, np.array([100.0, 0.0, 0.0]), 40.0
+        np.array([1.0, 0.0, 0.0]), 0.0, np.array([100.0, 0.0, 0.0]), 50.0
     )
-    assert info1.get("replan") is False
-    np.testing.assert_allclose(info1["target_world"], t0, atol=1e-6)
+    assert info1.get("replan") is True, "candidate 0 must not hold; must replan each step"
+
+    # Offaxis case: when an offaxis candidate is chosen, the hold period applies.
+    pl2 = SceneIntentPlanner(r_m=25.0, replan_period_s=2.0, step_hz=5.0, d_danger=3.0, d_clear=22.0, w_fwd=2.0)
+    pl2.reset()
+    _, i0 = pl2.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 4.0)
+    assert i0["chosen_idx"] != 0, "offaxis candidate should win at d_fwd=4m"
+    _, i1 = pl2.compute(np.array([0.3, 0.0, 0.0]), 0.0, np.array([100.0, 0.0, 0.0]), 4.0)
+    assert i1.get("replan") is False, "offaxis candidate must hold between period steps"
 
 
 def test_scene_no_replan_in_soft_zone():
-    """d_fwd < d_clear must NOT trigger replan (old bug: fired every step in
-    forest because d_clear=22 m is always exceeded there)."""
+    """d_fwd in soft zone [d_danger, d_clear) → offaxis candidate wins → hold
+    applies → next step does NOT replan (d_fwd alone must not trigger replan)."""
     pl = SceneIntentPlanner(r_m=25.0, replan_period_s=2.0, step_hz=5.0)
     pl.reset()
     _, info0 = pl.compute(np.zeros(3), 0.0, np.array([100.0, 0.0, 0.0]), 15.0)
     assert info0.get("replan") is True  # first call always replans
+    assert info0["chosen_idx"] != 0, "d_fwd=15 in soft zone should pick offaxis"
     _, info1 = pl.compute(
         np.array([0.3, 0.0, 0.0]), 0.0, np.array([100.0, 0.0, 0.0]), 15.0
     )
-    assert info1.get("replan") is False, "d_fwd=15 < d_clear=22 must not trigger replan"
+    assert info1.get("replan") is False, "offaxis hold: d_fwd alone must not trigger replan"
 
 
 def test_scene_danger_triggers_emergency_replan():
