@@ -777,12 +777,15 @@ def main() -> int:
 
             if traj_writer is not None:
                 _srec = s_info if intent is not None else {}
+                _cones = obs.info.get("depth_cones_pred") or {}
                 traj_writer.write(json.dumps({
                     "step": step,
                     "pos": p_curr.tolist(),
                     "yaw_deg": round(float(np.degrees(curr_yaw)), 2),
                     "d_to_g": round(float(np.linalg.norm(goal_pos - p_curr)), 2),
                     "d_fwd": round(float(d_fwd), 3) if d_fwd is not None else None,
+                    "d_left": round(float(_cones["left"]), 2) if _cones.get("left") is not None else None,
+                    "d_right": round(float(_cones["right"]), 2) if _cones.get("right") is not None else None,
                     "intent_target": _srec.get("target_world"),
                     "chosen_idx": _srec.get("chosen_idx"),
                     "dev_deg": round(float(_srec["dev_deg"]), 2) if _srec.get("dev_deg") is not None else None,
