@@ -151,9 +151,9 @@ def main() -> int:
     cfg["corrector"]["iterations"] = int(args.iters)
     cfg["corrector"]["episodes_per_iter"] = int(args.episodes_per_iter)
     cfg["corrector"]["enable_policy_update"] = True
-    # Phase-2 only retrains the AC (WM is env-valid from Phase-1; WM update via
-    # train_rl.py only).  Skip WM update here to avoid loaded-ckpt grad issues.
-    cfg["corrector"]["enable_wm_update"] = False
+    # Phase-2 Direction A: enable joint WM+AC update. freeze=False in load_torch_dynamics
+    # keeps WM params trainable so dynamics.update() can backprop after ckpt load.
+    cfg["corrector"]["enable_wm_update"] = bool(args.phase2)
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
@@ -227,6 +227,7 @@ def main() -> int:
             wm_ckpt_path,
             device=str(args.device),
             success_dist_m=success_dist_m,
+            freeze=not args.phase2,
         )
         loop.dynamics = dynamics
         if loop.actor_critic is not None:

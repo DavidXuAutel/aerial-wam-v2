@@ -192,8 +192,13 @@ def load_torch_dynamics(
     *,
     device: str = "cuda",
     success_dist_m: float = 3.0,
+    freeze: bool = True,
 ) -> tuple[Any, Dict[str, Any]]:
-    """Build ``TorchRSSMDynamics`` and load WM weights (shared train + deploy path)."""
+    """Build ``TorchRSSMDynamics`` and load WM weights (shared train + deploy path).
+
+    ``freeze=True`` (default): freeze all WM params for inference-only use.
+    ``freeze=False``: keep params trainable for joint WM+AC update (Phase-2 Direction A).
+    """
     from pathlib import Path
 
     ckpt = Path(ckpt_path).expanduser().resolve()
@@ -207,9 +212,12 @@ def load_torch_dynamics(
         wm_cfg=cfg,
     )
     payload = dynamics.load_checkpoint(str(ckpt))
-    dynamics.eval()
-    for param in dynamics.parameters():
-        param.requires_grad_(False)
+    if freeze:
+        dynamics.eval()
+        for param in dynamics.parameters():
+            param.requires_grad_(False)
+    else:
+        dynamics.train()
     return dynamics, payload
 
 
