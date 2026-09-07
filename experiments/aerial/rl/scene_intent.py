@@ -78,6 +78,7 @@ class TowardGoalIntent:
         curr_yaw: float,
         goal: np.ndarray,
         d_fwd_hat: Optional[float] = None,
+        **_kwargs: Any,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         mode = str(self.mode)
         if mode not in ("toward_g", "direct_g"):
@@ -217,6 +218,44 @@ class SceneIntentPlanner:
         horiz = max(1e-6, float(np.hypot(fwd, left)))
         return fwd / horiz
 
+    def _body_bearing_deg(self, p: np.ndarray, cand: np.ndarray, yaw: float) -> float:
+        """Body-frame bearing (degrees) from p to cand; 0=forward, +90=left, -90=right."""
+        delta = cand - p
+        world_angle = float(np.arctan2(delta[1], delta[0]))
+        bearing = float(np.rad2deg(world_angle - float(yaw)))
+        # normalise to (-180, 180]
+        while bearing > 180.0:
+            bearing -= 360.0
+        while bearing <= -180.0:
+            bearing += 360.0
+        return bearing
+
+    def _cone_depth(
+        self,
+        bearing_deg: float,
+        depth_cones: Optional[Dict[str, Optional[float]]],
+    ) -> Optional[float]:
+        """Map a candidate's body-frame bearing to the appropriate cone depth.
+
+        Uses the 5-cone dict from DepthMinPredictor (forward/left/right/up/down).
+        Candidates pointing mostly forward use the forward cone; candidates pointing
+        more than ±30° use the appropriate side cone (positive bearing = left in ENU).
+        Falls back to the forward cone if the side cone is unavailable.
+        """
+        if depth_cones is None:
+            return None
+        a = abs(float(bearing_deg))
+        if a <= 30.0:
+            key = "forward"
+        elif float(bearing_deg) > 0:
+            key = "left"
+        else:
+            key = "right"
+        v = depth_cones.get(key)
+        if v is None or not np.isfinite(float(v)):
+            v = depth_cones.get("forward")
+        return float(v) if v is not None and np.isfinite(float(v)) else None
+
     def _blocked(
         self,
         p: np.ndarray,
@@ -251,6 +290,7 @@ class SceneIntentPlanner:
         cand: np.ndarray,
         d_fwd_hat: Optional[float],
         yaw: float,
+        depth_cones: Optional[Dict[str, Optional[float]]] = None,
     ) -> float:
         d_before = float(np.linalg.norm(goal - p))
         d_after = float(np.linalg.norm(goal - cand))
@@ -258,28 +298,28 @@ class SceneIntentPlanner:
         jump = 0.0
         if self._c_prev is not None:
             jump = float(np.linalg.norm(cand - self._c_prev))
-        # Soft forward-depth penalty: penalise candidates pointing into a shallow
-        # depth zone [d_danger, d_clear].  Only applied to candidates that
-        # actually point forward (alignment > 0); purely lateral candidates are
-        # not penalised since we have no depth reading from their direction.
-        #
-        # With w_fwd=2.0 the max penalty is tight=1 × alignment=1 × r_m × 2.0
-        # ≈ 50 m, which exceeds toward_g's typical progress advantage (~25 m),
-        # so the fan genuinely steers away when d_fwd is well below d_clear.
-        # At w_fwd=0.5 (old default) the max was ~12.5 m — always dominated by
-        # progress, so scene was behaviourally identical to toward_g.
+        # Per-candidate depth penalty: use the cone matching the candidate's body-frame
+        # bearing so that off-axis candidates get penalised by their own direction's depth
+        # (not just the drone's forward reading).  Falls back to d_fwd_hat when no cones.
+        bearing = self._body_bearing_deg(p, cand, yaw)
+        d_cand = self._cone_depth(bearing, depth_cones)
+        if d_cand is None:
+            d_cand = d_fwd_hat
         fwd_penalty = 0.0
-        if d_fwd_hat is not None and np.isfinite(float(d_fwd_hat)):
-            d_fwd = float(d_fwd_hat)
-            if float(self.d_danger) <= d_fwd < float(self.d_clear):
+        if d_cand is not None and np.isfinite(float(d_cand)):
+            d_c = float(d_cand)
+            if float(self.d_danger) <= d_c < float(self.d_clear):
                 tight = float(
                     np.clip(
-                        (float(self.d_clear) - d_fwd)
+                        (float(self.d_clear) - d_c)
                         / max(1e-6, float(self.d_clear) - float(self.d_danger)),
                         0.0,
                         1.0,
                     )
                 )
+                # Penalise all candidates proportionally to how aligned they are with
+                # their own danger direction (alignment now uses candidate bearing, not
+                # nose — a candidate pointing 60° left is penalised by left-cone depth).
                 alignment = max(0.0, self._nose_alignment(p, cand, yaw))
                 fwd_penalty = tight * alignment * float(self.r_m) * float(self.w_fwd)
         return float(-float(self.w_g) * progress + float(self.w_jump) * jump + fwd_penalty)
@@ -290,6 +330,7 @@ class SceneIntentPlanner:
         curr_yaw: float,
         goal: np.ndarray,
         d_fwd_hat: Optional[float] = None,
+        depth_cones: Optional[Dict[str, Optional[float]]] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         p = np.asarray(curr_pos, dtype=np.float64).reshape(3)
         g = np.asarray(goal, dtype=np.float64).reshape(3)
@@ -317,9 +358,9 @@ class SceneIntentPlanner:
                     )
                 ]
             best_idx, best = feasible[0]
-            best_j = self._score(p, g, best, d_fwd_hat, yaw)
+            best_j = self._score(p, g, best, d_fwd_hat, yaw, depth_cones=depth_cones)
             for i, c in feasible[1:]:
-                j = self._score(p, g, c, d_fwd_hat, yaw)
+                j = self._score(p, g, c, d_fwd_hat, yaw, depth_cones=depth_cones)
                 if j < best_j:
                     best_j = j
                     best = c

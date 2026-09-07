@@ -276,7 +276,7 @@ def main() -> int:
     from experiments.aerial.rl.global_ref_planner import GlobalRefConfig, GlobalRefPlanner
     from experiments.aerial.rl.depth_predictor import DepthMinPredictor
     from experiments.aerial.rl.tau_predictor import make_tau_predictor
-    from experiments.aerial.rl.scene_intent import TowardGoalIntent
+    from experiments.aerial.rl.scene_intent import SceneIntentPlanner, TowardGoalIntent
     from experiments.aerial.rl.subgoal_generator import (
         AdaptiveSubgoalGenerator,
         nearest_on_polyline,
@@ -448,12 +448,8 @@ def main() -> int:
             cruise_speed=float(args.cruise_speed),
         )
     elif subgoal_source == "scene":
-        # Fan-based SceneIntentPlanner removed (E1r2 analysis: single d_fwd scalar
-        # insufficient for 12-direction scoring; outer loop should not override the
-        # policy's own obstacle model). scene is now an alias for toward_g.
-        intent = TowardGoalIntent(
+        intent = SceneIntentPlanner(
             r_m=r_intent,
-            mode="toward_g",
             cruise_speed=float(args.cruise_speed),
         )
     if intent is not None and bool(args.rolling_global):
@@ -618,7 +614,8 @@ def main() -> int:
                     curr_pos=p_curr,
                     curr_yaw=curr_yaw,
                     goal=goal_pos,
-                    d_fwd_hat=d_fwd,  # scene fan needs depth to score candidates
+                    d_fwd_hat=d_fwd,
+                    depth_cones=obs.info.get("depth_cones_pred") if subgoal_source == "scene" else None,
                 )
                 target_world = np.array(s_info["target_world"], dtype=np.float64)
                 rem_dist = float(s_info["rem_dist"])

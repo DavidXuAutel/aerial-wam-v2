@@ -183,3 +183,83 @@ def test_scene_counters_reset_per_route():
     pl.reset()
     assert pl.replan_count == 0
     assert pl.offaxis_count == 0
+
+
+# ---------------------------------------------------------------------------
+# _cone_depth and _body_bearing_deg
+# ---------------------------------------------------------------------------
+
+def test_cone_depth_forward_sector():
+    pl = SceneIntentPlanner()
+    cones = {"forward": 10.0, "left": 50.0, "right": 50.0}
+    # 0° bearing → forward cone
+    assert pl._cone_depth(0.0, cones) == pytest.approx(10.0)
+    # ±29° → still forward
+    assert pl._cone_depth(29.0, cones) == pytest.approx(10.0)
+    assert pl._cone_depth(-29.0, cones) == pytest.approx(10.0)
+
+
+def test_cone_depth_side_sectors():
+    pl = SceneIntentPlanner()
+    cones = {"forward": 50.0, "left": 8.0, "right": 12.0}
+    # +45° bearing (left) → left cone
+    assert pl._cone_depth(45.0, cones) == pytest.approx(8.0)
+    # -45° bearing (right) → right cone
+    assert pl._cone_depth(-45.0, cones) == pytest.approx(12.0)
+    # +75° bearing (far left) → left cone
+    assert pl._cone_depth(75.0, cones) == pytest.approx(8.0)
+
+
+def test_cone_depth_fallback_when_side_missing():
+    pl = SceneIntentPlanner()
+    cones = {"forward": 20.0}  # no left/right
+    assert pl._cone_depth(60.0, cones) == pytest.approx(20.0)
+    assert pl._cone_depth(-60.0, cones) == pytest.approx(20.0)
+
+
+def test_cone_depth_none_when_cones_none():
+    pl = SceneIntentPlanner()
+    assert pl._cone_depth(0.0, None) is None
+
+
+def test_body_bearing_forward():
+    pl = SceneIntentPlanner()
+    p = np.zeros(3)
+    # Candidate directly in front (yaw=0 → x-axis)
+    cand = np.array([25.0, 0.0, 0.0])
+    bearing = pl._body_bearing_deg(p, cand, yaw=0.0)
+    assert abs(bearing) < 1e-6
+
+
+def test_body_bearing_left():
+    pl = SceneIntentPlanner()
+    p = np.zeros(3)
+    # yaw=0, candidate at +y → 90° left
+    cand = np.array([0.0, 25.0, 0.0])
+    bearing = pl._body_bearing_deg(p, cand, yaw=0.0)
+    assert bearing == pytest.approx(90.0, abs=1e-5)
+
+
+def test_scene_planner_uses_left_cone_for_left_candidate():
+    """When a left candidate faces a shallow left cone, it should be penalised
+    even though d_fwd (forward cone) is clear.  Without depth_cones the test
+    baseline shows the left candidate wins; with a blocked left cone the forward
+    candidate should win instead."""
+    # Setup: forward clear (50 m), left shallow (5 m → inside soft zone)
+    # yaw = 0, goal far ahead → candidate 0 is toward_g (forward)
+    # d_fwd=50 m (clear) so no forward penalty.
+    # Left cone depth=5 → left candidates get penalised.
+    pl = SceneIntentPlanner(r_m=25.0, d_danger=3.0, d_clear=40.0, w_fwd=2.0)
+    pl.reset()
+    cones_left_blocked = {"forward": 50.0, "left": 5.0, "right": 50.0}
+    _, info = pl.compute(
+        curr_pos=np.zeros(3),
+        curr_yaw=0.0,
+        goal=np.array([100.0, 0.0, 0.0]),
+        d_fwd_hat=50.0,
+        depth_cones=cones_left_blocked,
+    )
+    # Forward clear, left blocked → toward_g (candidate 0) should win
+    assert info["chosen_idx"] == 0, (
+        "left candidates should be penalised by left-cone depth; forward candidate wins"
+    )
