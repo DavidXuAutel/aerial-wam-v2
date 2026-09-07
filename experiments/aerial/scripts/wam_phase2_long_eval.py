@@ -184,6 +184,13 @@ def main() -> int:
     parser.add_argument("--step-hz", type=float, default=5.0)
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--cruise-speed", type=float, default=25.0)
+    parser.add_argument(
+        "--a-max",
+        type=float,
+        default=None,
+        help="Override ThreeZoneShield a_max_m_s2 (default: use config/2.5). "
+             "E.g. --a-max 5 halves engage_outer at cs=25 (134→72 m).",
+    )
     parser.add_argument("--success-dist", type=float, default=3.0)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true")
@@ -411,6 +418,8 @@ def main() -> int:
         logger.warning("safety.kind was null — forcing three_zone for mainline Phase 2")
     # Keep three-zone cruise assumption aligned with --cruise-speed (engage scales as v²).
     safety_cfg["v_cruise_m_s"] = float(args.cruise_speed)
+    if args.a_max is not None:
+        safety_cfg["a_max_m_s2"] = float(args.a_max)
     safety_cfg.pop("schedule_margin_l1_m", None)
     safety_cfg.pop("schedule_margin_l2_m", None)
     safety_cfg.pop("disc_lag_steps", None)
