@@ -66,13 +66,17 @@ def test_cone_clearances_five_regions():
     assert set(cones) == set(CONE_KEYS)
     h, w = d.shape
     mid_r, mid_c = h // 2, w // 2
-    # Regions overlap at the centre; assert each cone matches its definition.
+    # left/right now use the same row band as forward (center rows only) so that
+    # ground pixels in the lower part of the image don't dominate lateral clearance.
+    cf = 0.5
+    dh = max(1, int(h * cf))
+    r0 = (h - dh) // 2
     from experiments.aerial.rl.depth_geometry import forward_min_depth
 
     finite = lambda reg: reg[np.isfinite(reg) & (reg > 0)]
     assert cones["forward"] == forward_min_depth(d, center_frac=0.5)
-    assert cones["left"] == pytest.approx(float(np.min(finite(d[:, :mid_c]))))
-    assert cones["right"] == pytest.approx(float(np.min(finite(d[:, mid_c:]))))
+    assert cones["left"] == pytest.approx(float(np.min(finite(d[r0 : r0 + dh, :mid_c]))))
+    assert cones["right"] == pytest.approx(float(np.min(finite(d[r0 : r0 + dh, mid_c:]))))
     assert cones["up"] == pytest.approx(float(np.min(finite(d[:mid_r, :]))))
     assert cones["down"] == pytest.approx(float(np.min(finite(d[mid_r:, :]))))
     assert cones["down"] == pytest.approx(2.0)  # global min lives in bottom half

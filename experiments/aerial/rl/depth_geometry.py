@@ -114,10 +114,16 @@ def cone_clearances(depth: np.ndarray, *, center_frac: float = 0.5) -> Dict[str,
     Regions (``H×W`` depth, row↓ col→):
 
     * **forward** — central ``center_frac`` box (same as :func:`forward_min_depth`)
-    * **left** — left half ``[:, :W//2]`` (``col`` near 0)
-    * **right** — right half ``[:, W//2:]`` (``col`` near 1)
-    * **up** — top half ``[:H//2, :]`` (``row`` near 0)
-    * **down** — bottom half ``[H//2:, :]`` (``row`` near 1, ground)
+    * **left**  — center-frac rows, left half columns (col < W//2)
+    * **right** — center-frac rows, right half columns (col ≥ W//2)
+    * **up**    — top half rows (row < H//2), all columns
+    * **down**  — bottom half rows (row ≥ H//2, ground), all columns
+
+    left/right use the same row band as *forward* so that ground pixels in
+    the lower part of the image do not dominate the lateral clearance estimate
+    (ground at ~47 m was causing left/right ≪ forward in AirSim forest, which
+    made the SceneIntentPlanner penalise side candidates more than forward and
+    prevented E1 from routing around obstacles).
 
     Empty / invalid regions return ``inf`` (no finite positive depth seen).
     """
@@ -126,10 +132,13 @@ def cone_clearances(depth: np.ndarray, *, center_frac: float = 0.5) -> Dict[str,
         raise ValueError(f"cone_clearances expects 2-D depth, got shape {d.shape}")
     h, w = d.shape
     mid_r, mid_c = h // 2, w // 2
+    cf = float(np.clip(center_frac, 0.05, 1.0))
+    dh = max(1, int(h * cf))
+    r0 = (h - dh) // 2
     return {
         "forward": forward_min_depth(d, center_frac=center_frac),
-        "left": _min_finite_positive(d[:, :mid_c]),
-        "right": _min_finite_positive(d[:, mid_c:]),
+        "left": _min_finite_positive(d[r0 : r0 + dh, :mid_c]),
+        "right": _min_finite_positive(d[r0 : r0 + dh, mid_c:]),
         "up": _min_finite_positive(d[:mid_r, :]),
         "down": _min_finite_positive(d[mid_r:, :]),
     }

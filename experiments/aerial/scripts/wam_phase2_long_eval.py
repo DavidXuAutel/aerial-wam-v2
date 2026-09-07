@@ -448,9 +448,17 @@ def main() -> int:
             cruise_speed=float(args.cruise_speed),
         )
     elif subgoal_source == "scene":
+        # Set d_clear proportional to the ThreeZoneShield engage threshold so E1
+        # starts routing before the shield fires (not after).  At cs=25 the shield
+        # engages at ~134 m; with d_clear=40 m (old default) E1 only routes at
+        # d_fwd<35 m — well into the braking zone where the drone is nearly stopped.
+        _cs = float(args.cruise_speed)
+        _engage_m = 10.0 + (_cs ** 2 - 4.0) / 5.0  # l1_sched + need(cs,v1=2,a=2.5)
+        _d_clear_intent = float(max(40.0, 0.75 * _engage_m))
         intent = SceneIntentPlanner(
             r_m=r_intent,
-            cruise_speed=float(args.cruise_speed),
+            cruise_speed=_cs,
+            d_clear=_d_clear_intent,
         )
     if intent is not None and bool(args.rolling_global):
         raise SystemExit(
