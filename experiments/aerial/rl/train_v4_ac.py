@@ -175,7 +175,7 @@ def main() -> int:
     cfg["corrector"]["enable_policy_update"] = True
     # Phase-2 Direction A: enable joint WM+AC update. freeze=False in load_torch_dynamics
     # keeps WM params trainable so dynamics.update() can backprop after ckpt load.
-    cfg["corrector"]["enable_wm_update"] = bool(args.phase2)
+    cfg["corrector"]["enable_wm_update"] = False  # WM is env-valid; AC-only FT here
     cfg["imagination"]["horizon"] = int(args.imagine_horizon)
     cfg["imagination"]["batch"] = int(args.imagine_batch)
     cfg["env"]["backend"] = str(args.backend)
