@@ -196,7 +196,7 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--routes", type=str, default=None,
                         help="Comma-separated 0-based route indices")
     parser.add_argument("--step-hz", type=float, default=5.0)
-    parser.add_argument("--max-steps", type=int, default=1000)
+    parser.add_argument("--max-steps", type=int, default=2000)
     parser.add_argument("--cruise-speed", type=float, default=10.0)
     parser.add_argument("--tti-coeff", type=float, default=2.5,
                         help="ThreeZoneShield tti_coeff (2.5 = Phase-2 close config)")
