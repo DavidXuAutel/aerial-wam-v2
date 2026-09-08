@@ -1,0 +1,167 @@
+# Aerial WAM Phase-3 — Unified Outdoor + Indoor（骨架）
+#
+# 起点：Phase-2 close（phase2-pass-20260908）+ Indoor 主航道合同（RUNBOOK_indoor_0xm.md）
+# 目标：一次 FT 覆盖户外长航程（米级到达 + 合法折线 + 局部胡萝卜）与
+#       室内小空间（0.x m 到达 + 微尺度动作 + pose_source 合同）。
+#
+# 用法（占位）：
+#   python -m experiments.aerial.phase3.train_phase3 --config configs/aerial_rl_phase3_unified.yaml
+#
+# 未签字（Indoor 阶段 C 签字 + 混采比例签字）前禁止 FT。此 yaml 仅骨架。
+
+# ---------------------------------------------------------------------------
+# 场景混采（Phase-3 核心新增）
+# ---------------------------------------------------------------------------
+scene_mix:
+  # 混采比例：outdoor 长航程 vs indoor 小空间。签字前禁改。
+  outdoor_prob: 0.7
+  indoor_prob: 0.3
+  # 单个 episode 内 scene 是否可切换（默认 false：一 episode 一 scene）
+  cross_scene_in_episode: false
+  # 场景标注字段：episode 元数据必带 scene ∈ {outdoor_long, indoor_micro}
+  require_scene_tag: true
+
+# ---------------------------------------------------------------------------
+# 场景特化 profile（scene tag → action_limits / success_dist / safety）
+# ---------------------------------------------------------------------------
+scene_profiles:
+  outdoor_long:
+    # Phase-2 close 冻结值
+    action_limits:
+      max_dx: 1.0
+      max_dy: 0.4
+      max_dz: 0.4
+      max_dyaw: 0.314
+    success_dist_m: 3.0
+    safety:
+      kind: three_zone
+      l1_m: 8.0
+      l2_m: 5.0
+      l3_m: 1.5
+      v1_m_s: 2.0
+      v2_m_s: 1.0
+      v_stop_m_s: 0.2
+      v_cruise_m_s: 25.0
+      a_max_m_s2: 2.5
+      delay_s: 0.2
+      min_tau_s: 1.0
+      max_p_coll: 0.5
+      retreat_step_m: 3.0
+  indoor_micro:
+    # aerial_rl_indoor_lossless.yaml 冻结值
+    action_limits:
+      max_dx: 0.15
+      max_dy: 0.08
+      max_dz: 0.08
+      max_dyaw: 0.10
+    success_dist_m: 0.5
+    safety:
+      kind: three_zone
+      l1_m: 1.5
+      l2_m: 0.8
+      l3_m: 0.4
+      v1_m_s: 0.6
+      v2_m_s: 0.3
+      v_stop_m_s: 0.05
+      v_cruise_m_s: 1.0
+      a_max_m_s2: 1.5
+      delay_s: 0.1
+      min_tau_s: 0.5
+      max_p_coll: 0.5
+      retreat_step_m: 0.3
+
+# ---------------------------------------------------------------------------
+# 传感合同（Indoor A0 冻结；outdoor 同构生效）
+# ---------------------------------------------------------------------------
+pose_contract:
+  pose_source_required: true      # 每 episode 必填 ∈ {vio_est, odom_from_imu_rgb, gt_proxy}
+  forbid_gt_world_pose_control: true
+  forbid_silent_gt_goal_rel: true
+  # 训练期允许 gt_proxy（stamp 落盘），验收禁默认 gt_proxy
+  train_allow_gt_proxy: true
+  eval_allow_gt_proxy: false
+
+# ---------------------------------------------------------------------------
+# 环境 / buffer / dynamics —— 与 aerial_rl.yaml 对齐；用 CLI/override 覆盖
+# ---------------------------------------------------------------------------
+env:
+  backend: airsim
+  host: 127.0.0.1
+  port: 41451
+  camera: front_custom
+  vehicle: drone_1
+  width: 224
+  height: 224
+  step_hz: 5.0
+  grab_depth: false
+  health_check: true
+  seed: 0
+
+buffer:
+  capacity_episodes: 2000        # 双分布需更大 buffer；签字后调
+  seed: 0
+
+reward:
+  w_progress: 1.0
+  w_collision: 10.0
+  w_maneuver: 0.01
+  success_bonus: 10.0
+  # NOTE: 运行期从 scene_profiles[scene].success_dist_m 取,此处仅兜底
+  success_dist_m: 3.0
+
+dynamics:
+  kind: torch
+  latent_dim: 8
+  collide_radius_m: 2.0
+
+# world_model / depth_head / tau_predictor —— 沿用 Phase-2 close ckpt。
+# TODO(phase3-signoff): 决定是 Phase-2 ckpt 直接 FT,还是重启 WM 训练。
+world_model:
+  # 占位：签字后填 Phase-2 close ckpt 路径
+  checkpoint_dir: null
+
+imagination:
+  batch: 64
+  horizon: 10
+
+planner:
+  enable: false
+  horizon: 5
+
+# ---------------------------------------------------------------------------
+# V4 actor-critic
+# ---------------------------------------------------------------------------
+corrector:
+  iterations: 10
+  episodes_per_iter: 1
+  max_steps: 200
+  enable_wm_update: false        # Phase-2 fix 冻结：--phase2 模式禁 wm update
+  enable_policy_update: false    # 签字后开
+  strict_gates: false
+  wm_batch: 32
+  wm_window: 8
+  smoke: false
+
+v4:
+  lambda_gae: 0.95
+  gamma: 0.997
+  entropy_scale: 3.0e-4
+  actor_lr: 1.0e-4
+  critic_lr: 1.0e-4
+  action_scale: 1.0
+  device: cpu
+
+# ---------------------------------------------------------------------------
+# 报表强制字段（评测/训练 JSONL 必须落盘）
+# ---------------------------------------------------------------------------
+report_required_fields:
+  - scene                        # outdoor_long | indoor_micro
+  - controller_attribution       # wam | gt_pd | assist
+  - sensors_used
+  - pose_source                  # vio_est | odom_from_imu_rgb | gt_proxy
+  - used_gt_world_pose_for_control
+  - goal_rel_pose_source
+  - success_dist_m               # 应等于 scene_profiles[scene].success_dist_m
+
+annotation: null
+max_episodes: 20
