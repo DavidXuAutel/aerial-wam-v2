@@ -247,6 +247,7 @@ def _build_safety(safety_cfg: Any) -> Any:
             min_tau_s=float(_get(safety_cfg, "min_tau_s", 1.0)),
             max_p_coll=float(_get(safety_cfg, "max_p_coll", 0.5)),
             retreat_step_m=float(_get(safety_cfg, "retreat_step_m", 3.0)),
+            tti_coeff=float(_get(safety_cfg, "tti_coeff", 4.0)),
         )
     raise ValueError(f"unknown safety kind {kind!r}")
 
@@ -313,6 +314,91 @@ def _load_episodes(cfg: Any) -> Optional[List[Dict[str, Any]]]:
 
     episodes = load_annotation(Path(str(ann)))
     return episodes[: max(0, int(_get(cfg, "max_episodes", 20)))]
+
+
+def augment_near_goal_episodes(
+    episodes: List[Dict[str, Any]],
+    near_frac: float,
+    dist_min_m: float = 5.0,
+    dist_max_m: float = 30.0,
+    rng: Optional[Any] = None,
+) -> List[Dict[str, Any]]:
+    """Append near-goal spawn variants to the episode list.
+
+    For each route, samples waypoints within [dist_min_m, dist_max_m] of the
+    goal as alternative start positions.  These teach the policy to complete
+    the final approach — a scenario underrepresented when every episode starts
+    100-500 m from goal.
+
+    The augmented episodes are appended so the collector cycles through them
+    alongside the originals.  Mix ratio = near_frac / (1 - near_frac).
+    """
+    if near_frac <= 0.0:
+        return episodes
+    _rng = np.random.default_rng(rng)
+    near_eps: List[Dict[str, Any]] = []
+    for ep in episodes:
+        pts = np.array(ep.get("pos", []), dtype=np.float64)
+        if len(pts) < 2:
+            continue
+        goal = pts[-1]
+        # distances of each waypoint (except goal itself) from goal
+        dists = np.linalg.norm(pts[:-1] - goal, axis=1)
+        idxs = np.where((dists >= dist_min_m) & (dists <= dist_max_m))[0]
+        if len(idxs) == 0:
+            continue
+        for idx in idxs:
+            pt = pts[idx]
+            d_vec = goal[:2] - pt[:2]
+            spawn_yaw = float(np.arctan2(d_vec[1], d_vec[0]))
+            near_eps.append({
+                "pos": [pt.tolist(), goal.tolist()],
+                "yaw": [spawn_yaw, spawn_yaw],
+                "gpt_instruction": ep.get("gpt_instruction", ""),
+                "_near_goal_spawn": True,
+            })
+    if not near_eps:
+        logger.warning("augment_near_goal_episodes: no waypoints in [%.0f, %.0f]m of goal", dist_min_m, dist_max_m)
+        return episodes
+    # target: near_frac fraction of total
+    n_orig = len(episodes)
+    n_near_target = max(1, int(round(n_orig * near_frac / max(1.0 - near_frac, 1e-6))))
+    # sample with replacement if needed
+    chosen = [near_eps[i % len(near_eps)] for i in _rng.permutation(n_near_target)]
+    logger.info(
+        "near-goal augment: %d original + %d near-goal episodes "
+        "(frac=%.0f%%, d=[%.0f, %.0f]m)",
+        n_orig, len(chosen), 100.0 * near_frac, dist_min_m, dist_max_m,
+    )
+    combined = list(episodes) + chosen
+    _rng.shuffle(combined)
+    return combined
+
+
+def assign_variable_cruise_speed(
+    episodes: List[Dict[str, Any]],
+    cs_values: List[float],
+    rng: Optional[Any] = None,
+) -> List[Dict[str, Any]]:
+    """Annotate each episode with a randomly chosen cruise_speed from cs_values.
+
+    The collector reads ``episode["cruise_speed"]`` and caps ``limits[0]`` +
+    updates ``shield.zone.v_cruise_m_s`` for that episode, so the policy
+    trains under varied speed regimes rather than a fixed cs=10.
+    """
+    if not cs_values:
+        return episodes
+    _rng = np.random.default_rng(rng)
+    cs_arr = np.array([float(c) for c in cs_values])
+    result = []
+    for ep in episodes:
+        chosen = float(_rng.choice(cs_arr))
+        result.append({**ep, "cruise_speed": chosen})
+    logger.info(
+        "variable-cs: %d episodes annotated with cs in %s",
+        len(result), sorted(float(c) for c in cs_values),
+    )
+    return result
 
 
 def _build_actor_critic(cfg: Any, latent_dim: int) -> Optional[Any]:

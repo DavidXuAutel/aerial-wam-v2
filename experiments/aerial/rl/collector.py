@@ -160,6 +160,18 @@ class RolloutCollector:
         # consistent with what env.step will apply).
         step_hz = float(getattr(getattr(self.env, "config", None), "step_hz", DEFAULT_STEP_HZ))
         limits = body_delta_limits(1.0 / step_hz)
+        # Variable-cs training: if the episode carries a cruise_speed field,
+        # cap forward action to that speed and update shield's v_cruise_m_s.
+        ep_cs = float((episode or {}).get("cruise_speed", 0.0))
+        _prev_shield_cs: Optional[float] = None
+        if ep_cs > 0.0:
+            limits = list(limits)
+            limits[0] = ep_cs / step_hz
+            if self.safety is not None:
+                zone = getattr(self.safety, "zone", None)
+                if zone is not None and hasattr(zone, "v_cruise_m_s"):
+                    _prev_shield_cs = float(zone.v_cruise_m_s)
+                    zone.v_cruise_m_s = ep_cs
         t_start = time.perf_counter()
 
         for _ in range(self.max_steps):
@@ -269,6 +281,11 @@ class RolloutCollector:
                 "collector achieved %.1f Hz (< %.1f Hz target) over %d steps",
                 stats.achieved_hz, self.target_hz, stats.steps,
             )
+        # Restore shield cs so it doesn't bleed into the next episode.
+        if _prev_shield_cs is not None:
+            zone = getattr(self.safety, "zone", None)
+            if zone is not None and hasattr(zone, "v_cruise_m_s"):
+                zone.v_cruise_m_s = _prev_shield_cs
         self.buffer.add_episode(transitions)
         if self.on_episode is not None:
             self.on_episode(transitions, stats)

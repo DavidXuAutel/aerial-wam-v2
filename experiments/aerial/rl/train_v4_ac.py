@@ -122,6 +122,28 @@ def main() -> int:
         default=100.0,
         help="Phase-2 toward_g clip radius (m); default 100 matches eval",
     )
+    p.add_argument(
+        "--near-goal-frac",
+        type=float,
+        default=0.0,
+        help=(
+            "Fraction of training episodes that spawn near goal (0=disabled). "
+            "E.g. 0.4 → 40%% of episodes start within --near-goal-dist of goal."
+        ),
+    )
+    p.add_argument("--near-goal-dist-min", type=float, default=5.0,
+                   help="Min distance from goal for near-goal spawns (m).")
+    p.add_argument("--near-goal-dist-max", type=float, default=30.0,
+                   help="Max distance from goal for near-goal spawns (m).")
+    p.add_argument(
+        "--cs-values",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated cruise speeds for variable-cs training "
+            "(e.g. '3,5,7,10'). Empty = fixed cs from config (default)."
+        ),
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -307,6 +329,21 @@ def main() -> int:
             "wm_update=ON policy_update=ON",
             args.r_m,
         )
+
+    if args.near_goal_frac > 0.0 and loop.episodes is not None:
+        from experiments.aerial.rl.train_rl import augment_near_goal_episodes
+        loop.episodes = augment_near_goal_episodes(
+            loop.episodes,
+            near_frac=args.near_goal_frac,
+            dist_min_m=args.near_goal_dist_min,
+            dist_max_m=args.near_goal_dist_max,
+        )
+
+    if args.cs_values and loop.episodes is not None:
+        from experiments.aerial.rl.train_rl import assign_variable_cruise_speed
+        cs_list = [float(x.strip()) for x in args.cs_values.split(",") if x.strip()]
+        if cs_list:
+            loop.episodes = assign_variable_cruise_speed(loop.episodes, cs_list)
 
     reports = loop.run()
     losses = []

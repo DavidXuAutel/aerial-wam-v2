@@ -191,6 +191,13 @@ def main() -> int:
         help="Override ThreeZoneShield a_max_m_s2 (default: use config/2.5). "
              "E.g. --a-max 5 halves engage_outer at cs=25 (134→72 m).",
     )
+    parser.add_argument(
+        "--tti-coeff",
+        type=float,
+        default=None,
+        help="Override ThreeZoneSpeedShield tti_coeff (default: 4.0). "
+             "Trigger distance = tti_coeff × v_ref. Lower = shield fires later.",
+    )
     parser.add_argument("--success-dist", type=float, default=3.0)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true")
@@ -420,17 +427,20 @@ def main() -> int:
     safety_cfg["v_cruise_m_s"] = float(args.cruise_speed)
     if args.a_max is not None:
         safety_cfg["a_max_m_s2"] = float(args.a_max)
+    if args.tti_coeff is not None:
+        safety_cfg["tti_coeff"] = float(args.tti_coeff)
     safety_cfg.pop("schedule_margin_l1_m", None)
     safety_cfg.pop("schedule_margin_l2_m", None)
     safety_cfg.pop("disc_lag_steps", None)
     shield = _build_safety(safety_cfg)
     if hasattr(shield, "zone"):
         logger.info(
-            "three_zone v_cruise=%.1f engage_outer=%.1fm margins L1/L2=%.2f/%.2f",
+            "three_zone v_cruise=%.1f engage_outer=%.1fm margins L1/L2=%.2f/%.2f tti_coeff=%.1f",
             float(shield.zone.v_cruise_m_s),
             float(shield.zone.engage_outer_m),
             float(shield.zone.schedule_margin_l1_m),
             float(shield.zone.schedule_margin_l2_m),
+            float(shield.tti_coeff),
         )
 
     # Local carrot for step_e π (H1 + P1 sweep 2026-09-01): r_base=25 /
@@ -605,6 +615,9 @@ def main() -> int:
                 pred_both = getattr(depth_pred, "predict_min_and_cones", None)
                 if callable(pred_both):
                     d_min, cones = pred_both(obs)
+                    if step < 3:
+                        import logging as _log
+                        _log.getLogger(__name__).info("DIAG step=%d d_min=%s cones_type=%s cones=%s", step, d_min, type(cones).__name__, cones)
                     if d_min is not None:
                         obs.info["depth_min_pred"] = float(d_min)
                         d_fwd = float(d_min)
