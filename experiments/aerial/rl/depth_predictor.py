@@ -91,6 +91,10 @@ class DepthMinPredictor:
             return None
         return cones
 
+    def predict_depth(self, obs: Observation) -> Optional[np.ndarray]:
+        """Push ``obs.rgb`` into history; return full 2-D D̂ map (meters) or None."""
+        return self._run_depth_head(obs)
+
     def predict_min(self, obs: Observation) -> Optional[float]:
         """Push ``obs.rgb`` into history; return min ``D̂`` or None if unloaded."""
         d = self._run_depth_head(obs)

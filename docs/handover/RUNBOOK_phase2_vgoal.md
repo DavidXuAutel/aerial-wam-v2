@@ -82,11 +82,13 @@ python -m experiments.aerial.scripts.wam_phase2_long_eval \
   --out artifacts/wam_phase2_geom_baseline.json
 ```
 
-### 3.2 视觉目标主臂（vgoal）
+### 3.2 视觉目标主臂（M2 · 单目纯视觉）
 
 ```bash
 python -m experiments.aerial.scripts.wam_vgoal_eval \
   --vgoal-repo ~/Projects/aerial-vgoal-wam \
+  --detector yolo \
+  --target-class car \
   --annotation artifacts/seen_airsim16_long_routes.json \
   --cruise-speed 10.0 \
   --tti-coeff 2.5 \
@@ -96,24 +98,26 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
   --out artifacts/wam_vgoal_eval_result.json
 ```
 
-短探针（2 路）：
+语义 / 开放词表：
 
 ```bash
-  --episodes 2
-# 或
-  --routes 0,1
+  --detector open_vocab --visual-prompt "red car"
 ```
+
+短探针：`--episodes 2` 或 `--routes 0,1`
 
 ### 3.3 关键 CLI
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
+| `--detector` | `yolo` | `yolo` / `open_vocab` / `mock` / `gt`(debug) |
+| `--target-class` | `car` | YOLO COCO 类过滤 |
+| `--visual-prompt` | — | 开放词表 prompt |
 | `--vgoal-repo` | `~/Projects/aerial-vgoal-wam` | 兄弟仓路径 |
-| `--camera-fov-deg` | 80 | 针孔投影 |
-| `--img-w/h` | 224 | 与 WAM RGB 一致 |
-| `--tracker-max-occlusion-s` | 2.0 | 超时回 SEARCHING |
-| `--fallback-toward-g` | ON | 丢失检测时几何回落 |
-| `--no-fallback-toward-g` | — | 仅搜索/悬停（消融） |
+| `--search-fwd-speed` | 0.2 | SEARCHING 前进 (m/step) |
+| `--search-yaw-rate` | 0.314 | SEARCHING 偏航 (rad/step) |
+| `--fallback-toward-g` | **OFF** | 消融：SEARCHING 时几何 toward_g |
+| `--detector gt` | — | **仅 debug**，非产品路径 |
 
 ## 4. 验收阶梯（本 project）
 

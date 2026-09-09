@@ -6,7 +6,9 @@
 
 ## 一句话
 
-在 **Phase-2 已 close** 的户外长航程栈（`toward_g` + `step_e` π + TTI 罩）上，把 **goal 来源** 从「评测特权世界坐标」换成 **相机检测 + 跟踪器**（`aerial-vgoal-wam`），几何 `toward_g` 仅作 SEARCHING 回落。
+在 **Phase-2 outdoor close**（E2 `toward_g` π · TTI 2.5 · long routes）上，叠 **实时目标识别 + 语义导航**；`aerial-vgoal-wam` 提供检测/跟踪/几何，**主栈与验收以 Phase-2 为准**（旧 Method B `step_e`/m1a20 短评不再作主航道）。
+
+V0 的 `wam_vgoal_eval`（GT 投影 + `toward_g` fallback）仅作接线探针；产品形态为 **YOLO + D̂ 反投影 + `VisualGoalWAMPolicy`** 接入同一 Phase-2 壳。
 
 **不含** Phase-3 室内融合、混采 FT、双尺度 profile。
 

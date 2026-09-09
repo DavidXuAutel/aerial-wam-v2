@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-"""Visual Goal Phase-2 evaluator.
+"""Phase-2 monocular visual goal eval (M1+M2).
 
-Replaces the geometric toward_g subgoal with a camera-based visual detector
-+ spatial tracker from aerial-vgoal-wam.
+Product stack (no GT world-goal control by default):
+  YOLO / open-vocab detector
+    → monocular D̂ back-projection (``bbox_to_goal_rel``)
+    → TargetTracker (TRACKING / OCCLUDED / SEARCHING)
+    → goal_rel → LatentActorDeployPolicy + ImaginationPlanner
+    → ThreeZoneSpeedShield → env.step
 
-Stack:
-  GroundTruthVisualTargetDetector (AirSim GT) | YOLO Detector (real deploy)
-    → TargetTracker (dead-reckoning, occlusion handling)
-    → goal_rel [d_fwd, d_left, d_up, dist] in body frame
-    → LatentActorDeployPolicy (Phase-2 AC ckpt)
-    → optional ImaginationPlanner
-    → ThreeZoneSpeedShield (tti_coeff=2.5 baseline)
-    → env.step
+SEARCHING: active scan (slow forward + yaw). ``--fallback-toward-g`` is
+opt-in ablation only — default is pure vision / search.
 
-Fallback: when tracker is SEARCHING (no detection memory), falls back to
-toward_g geometry until the target comes into camera FOV.
-
-Ckpt defaults match Phase-2 close config (E2 ckpt + tti=2.5).
+Ckpt defaults match Phase-2 close (E2 toward_g · tti=2.5 · long routes).
 """
 
 from __future__ import annotations
@@ -27,49 +22,24 @@ import logging
 import math
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import yaml
 
+from experiments.aerial.scripts.wam_phase2_long_eval import (
+    PASS_THRESHOLDS,
+    _goal_closure,
+    _goal_dist,
+    _segment_min_dist,
+    aggregate_metrics,
+)
+
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("wam_vgoal_eval")
-
-
-# ---------------------------------------------------------------------------
-# Re-use metric helpers from Phase-2 eval (safe to import as module)
-# ---------------------------------------------------------------------------
-def _goal_dist(pos: np.ndarray, goal: np.ndarray) -> float:
-    return float(np.linalg.norm(
-        np.asarray(goal, dtype=np.float64).reshape(3)
-        - np.asarray(pos, dtype=np.float64).reshape(3)
-    ))
-
-
-def _goal_closure(d_start_m: float, d_min_m: float) -> float:
-    d0 = float(max(1e-3, d_start_m))
-    return float(np.clip(1.0 - float(d_min_m) / d0, 0.0, 1.0))
-
-
-def _segment_min_dist(p0: np.ndarray, p1: np.ndarray, goal: np.ndarray) -> float:
-    p0_arr = np.asarray(p0, dtype=np.float64).reshape(3)
-    p1_arr = np.asarray(p1, dtype=np.float64).reshape(3)
-    g = np.asarray(goal, dtype=np.float64).reshape(3)
-    v = p1_arr - p0_arr
-    v_sq = float(np.sum(v**2))
-    if v_sq < 1e-8:
-        return float(np.linalg.norm(p0_arr - g))
-    t = float(np.clip(np.dot(g - p0_arr, v) / v_sq, 0.0, 1.0))
-    return float(np.linalg.norm(p0_arr + t * v - g))
-
-
-# Same PASS gates as Phase-2 mainline.
-PASS_THRESHOLDS: Dict[str, float] = {
-    "arrival_rate_min": 0.80,
-    "severe_collision_rate_max": 0.10,
-}
 
 
 def _select_route_indices(n_available: int, episodes: int, routes_arg: Optional[str]) -> List[int]:
@@ -84,16 +54,68 @@ def _select_route_indices(n_available: int, episodes: int, routes_arg: Optional[
     return idxs
 
 
-# ---------------------------------------------------------------------------
-# vgoal GroundTruth simulator (mirrors eval_visual_goal_airsim.py)
-# ---------------------------------------------------------------------------
+def _body_to_world(pos: np.ndarray, yaw: float, g_rel: np.ndarray) -> np.ndarray:
+    c, s = math.cos(yaw), math.sin(yaw)
+    g = np.asarray(g_rel, dtype=np.float64).reshape(-1)
+    return pos + np.array([
+        c * g[0] - s * g[1],
+        s * g[0] + c * g[1],
+        g[2] if g.size > 2 else 0.0,
+    ], dtype=np.float64)
+
+
+@dataclass
+class VisionStepResult:
+    goal_rel: Optional[np.ndarray]
+    target_world: Optional[np.ndarray]
+    tracker_state: str
+    det_hit: bool
+    using_vision: bool
+    using_fallback: bool
+    search_action: Optional[np.ndarray]
+
+
+def _build_detector(args: argparse.Namespace, vgoal_repo: Path) -> Any:
+    from vgoal.detector import MockDetector, OpenVocabPromptDetector, YOLOTargetDetector
+
+    kind = str(args.detector).lower()
+    if kind == "mock":
+        return MockDetector(confidence=0.0, class_name=str(args.target_class or "target"))
+    if kind == "gt":
+        logger.warning("--detector gt is DEBUG ONLY — not valid for product eval")
+        return _GroundTruthDetector(
+            fov_deg=float(args.camera_fov_deg),
+            img_w=int(args.img_w),
+            img_h=int(args.img_h),
+        )
+    if kind in ("open_vocab", "semantic"):
+        prompt = str(args.visual_prompt or args.target_class or "car")
+        return OpenVocabPromptDetector(
+            visual_prompt=prompt,
+            model_path=str(args.yolo_model),
+            conf_threshold=float(args.yolo_conf),
+            imgsz=int(args.yolo_imgsz),
+            device=str(args.yolo_device),
+        )
+    classes = [str(args.target_class)] if args.target_class else None
+    return YOLOTargetDetector(
+        model_path=str(args.yolo_model),
+        target_classes=classes,
+        conf_threshold=float(args.yolo_conf),
+        imgsz=int(args.yolo_imgsz),
+        device=str(args.yolo_device),
+    )
+
 
 class _GroundTruthDetector:
-    """Projects 3D goal into 2D camera and returns a DetectionResult with direct_depth."""
+    """DEBUG: project annotation goal into image (not product path)."""
 
     def __init__(self, fov_deg: float = 80.0, img_w: int = 224, img_h: int = 224) -> None:
         from vgoal.geometry import CameraIntrinsics
+        from vgoal.detector import DetectionResult
+
         self.intrinsics = CameraIntrinsics.from_fov(fov_deg, width=img_w, height=img_h)
+        self._DetectionResult = DetectionResult
         self._goal_world: Optional[np.ndarray] = None
         self._pos: Optional[np.ndarray] = None
         self._yaw: float = 0.0
@@ -105,75 +127,185 @@ class _GroundTruthDetector:
         self._pos = np.asarray(pos, dtype=np.float64).reshape(3)
         self._yaw = float(yaw)
 
-    def detect(self, rgb: Optional[np.ndarray] = None):  # -> Optional[DetectionResult]
-        """Simulate detection by projecting 3D goal into body-frame camera."""
+    def detect(self, rgb: Optional[np.ndarray] = None):
         if self._goal_world is None or self._pos is None:
             return None
         from vgoal.geometry import project_3d_to_pixel
-        from vgoal.detector import DetectionResult
+
         d_world = self._goal_world - self._pos
         c, s = math.cos(self._yaw), math.sin(self._yaw)
         d_fwd = float(c * d_world[0] + s * d_world[1])
         d_left = float(-s * d_world[0] + c * d_world[1])
         d_up = float(d_world[2])
         if d_fwd <= 0.5:
-            return None  # goal is behind the drone
-        intr = self.intrinsics
-        # x_cam = -d_left (body-left = camera-right → negative x_cam)
-        # y_cam = -d_up  (body-up = camera-up → depends on convention; WAM uses -y_cam=d_up)
-        x_cam = -d_left
-        y_cam = -d_up
-        u = float(intr.cx + intr.fx * x_cam / d_fwd)
-        v = float(intr.cy + intr.fy * y_cam / d_fwd)
-        w, h = intr.width, intr.height
+            return None
+        u, v, _z = project_3d_to_pixel([d_fwd, d_left, d_up], self.intrinsics)
+        if math.isnan(u) or math.isnan(v):
+            return None
+        w, h = self.intrinsics.width, self.intrinsics.height
         if not (0 <= u < w and 0 <= v < h):
-            return None  # out of FOV
+            return None
         half_box = max(6.0, 20.0 * (10.0 / max(1.0, d_fwd)))
         bbox = np.array([
             max(0.0, u - half_box), max(0.0, v - half_box),
             min(float(w - 1), u + half_box), min(float(h - 1), v + half_box),
         ], dtype=np.float32)
-        res = DetectionResult(bbox=bbox, confidence=0.95, class_id=0, class_name="goal")
+        res = self._DetectionResult(bbox=bbox, confidence=0.95, class_id=0, class_name="goal")
         setattr(res, "direct_depth", float(d_fwd))
-        # Store lateral offsets so goal_rel can be constructed without a depth map
         setattr(res, "_d_left", d_left)
         setattr(res, "_d_up", d_up)
         return res
 
 
-def _det_to_goal_rel(det: Any, intrinsics: Any) -> Optional[np.ndarray]:
-    """Convert DetectionResult → body-frame goal_rel [d_fwd, d_left, d_up, dist]."""
+def _det_to_goal_rel(det: Any, intrinsics: Any, depth_map: Optional[np.ndarray], src_shape: Tuple[int, int]) -> Optional[np.ndarray]:
+    from vgoal.geometry import bbox_to_goal_rel
+
     d_fwd = float(getattr(det, "direct_depth", 0.0) or 0.0)
-    if d_fwd <= 0.0:
+    if d_fwd > 0.0:
+        d_left_stored = getattr(det, "_d_left", None)
+        d_up_stored = getattr(det, "_d_up", None)
+        if d_left_stored is not None and d_up_stored is not None:
+            d_left = float(d_left_stored)
+            d_up = float(d_up_stored)
+            dist = float(np.sqrt(d_fwd**2 + d_left**2 + d_up**2))
+            return np.array([d_fwd, d_left, d_up, dist], dtype=np.float64)
+    if depth_map is None:
         return None
-    # Prefer stored lateral offsets (GroundTruthDetector) for accuracy
-    d_left_stored = getattr(det, "_d_left", None)
-    d_up_stored = getattr(det, "_d_up", None)
-    if d_left_stored is not None and d_up_stored is not None:
-        d_left = float(d_left_stored)
-        d_up = float(d_up_stored)
+    gr = bbox_to_goal_rel(det.bbox, depth_map, intrinsics, src_shape=src_shape)
+    if gr is None:
+        return None
+    return np.asarray(gr, dtype=np.float64)
+
+
+def _vision_step(
+    *,
+    obs: Any,
+    detector: Any,
+    tracker: Any,
+    depth_pred: Any,
+    intrinsics: Any,
+    pos: np.ndarray,
+    yaw: float,
+    prev_pos: np.ndarray,
+    prev_yaw: float,
+    dt: float,
+    search_fwd_speed: float,
+    search_yaw_rate: float,
+    fallback_intent: Any,
+    annot_goal: np.ndarray,
+    allow_fallback: bool,
+    prefer_nearest: bool,
+    camera_fov_deg: float,
+) -> VisionStepResult:
+    from vgoal.geometry import CameraIntrinsics
+    from vgoal.tracker import TargetState
+
+    rgb = getattr(obs, "rgb", None)
+    rgb_det = getattr(obs, "rgb_yolo", None)
+    rgb_det_arr = np.asarray(rgb_det if rgb_det is not None else rgb, dtype=np.uint8)
+    det_h, det_w = rgb_det_arr.shape[:2]
+    if det_w != intrinsics.width or det_h != intrinsics.height:
+        intrinsics = CameraIntrinsics.from_fov(float(camera_fov_deg), width=det_w, height=det_h)
+
+    depth_map = depth_pred.predict_depth(obs) if depth_pred is not None else None
+
+    if hasattr(detector, "set_pose"):
+        detector.set_pose(pos, yaw)
+    det = None
+    measured_gr: Optional[np.ndarray] = None
+    det_conf = 0.0
+
+    detect_all = getattr(detector, "detect_all", None)
+    if prefer_nearest and callable(detect_all) and depth_map is not None:
+        best_gr = None
+        best_conf = 0.0
+        best_det = None
+        for cand in detect_all(rgb_det_arr) or []:
+            gr = _det_to_goal_rel(cand, intrinsics, depth_map, (det_w, det_h))
+            if gr is None:
+                continue
+            if best_gr is None or float(gr[3]) < float(best_gr[3]):
+                best_gr = gr
+                best_conf = float(cand.confidence)
+                best_det = cand
+        if best_gr is not None:
+            det = best_det
+            measured_gr = best_gr
+            det_conf = best_conf
     else:
-        u_c = float((det.bbox[0] + det.bbox[2]) * 0.5)
-        v_c = float((det.bbox[1] + det.bbox[3]) * 0.5)
-        x_cam = (u_c - intrinsics.cx) * d_fwd / intrinsics.fx
-        y_cam = (v_c - intrinsics.cy) * d_fwd / intrinsics.fy
-        d_left = float(-x_cam)
-        d_up = float(-y_cam)
-    dist = float(np.sqrt(d_fwd**2 + d_left**2 + d_up**2))
-    return np.array([d_fwd, d_left, d_up, dist], dtype=np.float64)
+        det = detector.detect(rgb_det_arr)
+        if det is not None:
+            measured_gr = _det_to_goal_rel(det, intrinsics, depth_map, (det_w, det_h))
+            if measured_gr is not None:
+                det_conf = float(det.confidence)
 
+    d_world = pos - prev_pos
+    dyaw = float(yaw - prev_yaw)
+    dyaw = float((dyaw + math.pi) % (2.0 * math.pi) - math.pi)
+    c_yaw, s_yaw = math.cos(prev_yaw), math.sin(prev_yaw)
+    ego_delta = np.array([
+        c_yaw * d_world[0] + s_yaw * d_world[1],
+        -s_yaw * d_world[0] + c_yaw * d_world[1],
+        d_world[2],
+    ], dtype=np.float64)
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+    tracker_state = tracker.update(
+        measured_gr,
+        dt=dt,
+        ego_delta_body=ego_delta,
+        ego_delta_yaw=dyaw,
+        confidence=det_conf,
+    )
+    cur_goal_rel = tracker.goal_rel
+    det_hit = measured_gr is not None
+
+    if cur_goal_rel is not None and tracker_state != TargetState.SEARCHING:
+        g_rel = np.asarray(cur_goal_rel, dtype=np.float64)
+        target_world = _body_to_world(pos, yaw, g_rel)
+        return VisionStepResult(
+            goal_rel=g_rel,
+            target_world=target_world,
+            tracker_state=str(tracker_state.value),
+            det_hit=det_hit,
+            using_vision=True,
+            using_fallback=False,
+            search_action=None,
+        )
+
+    if allow_fallback and fallback_intent is not None:
+        d_fwd_hat = obs.info.get("depth_min_pred")
+        g_rel_body, s_info = fallback_intent.compute(
+            curr_pos=pos, curr_yaw=yaw, goal=annot_goal, d_fwd_hat=d_fwd_hat
+        )
+        target_world = np.array(s_info["target_world"], dtype=np.float64)
+        return VisionStepResult(
+            goal_rel=np.asarray(g_rel_body, dtype=np.float64),
+            target_world=target_world,
+            tracker_state=str(TargetState.SEARCHING.value),
+            det_hit=det_hit,
+            using_vision=False,
+            using_fallback=True,
+            search_action=None,
+        )
+
+    search_action = np.array([search_fwd_speed, 0.0, 0.0, search_yaw_rate], dtype=np.float64)
+    return VisionStepResult(
+        goal_rel=None,
+        target_world=None,
+        tracker_state=str(TargetState.SEARCHING.value),
+        det_hit=det_hit,
+        using_vision=False,
+        using_fallback=False,
+        search_action=search_action,
+    )
+
 
 def main() -> int:  # noqa: C901
-    parser = argparse.ArgumentParser(description="Visual Goal Phase-2 eval (vgoal integration)")
+    parser = argparse.ArgumentParser(description="Phase-2 monocular visual goal eval")
     parser.add_argument("--config", default="configs/aerial_rl.yaml")
     parser.add_argument(
         "--wm-ckpt",
         default="experiments/aerial/rl/artifacts/wm_ckpt_d_full_20260828/wm_step_3500.pt",
-        help="WM checkpoint (Phase-2 baseline)",
     )
     parser.add_argument(
         "--actor-ckpt",
@@ -181,7 +313,6 @@ def main() -> int:  # noqa: C901
             "experiments/aerial/rl/artifacts/"
             "v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt"
         ),
-        help="Phase-2 E2 actor ckpt (tti=2.5 baseline)",
     )
     parser.add_argument(
         "--depth-ckpt",
@@ -193,13 +324,11 @@ def main() -> int:  # noqa: C901
     )
     parser.add_argument("--annotation", default="artifacts/seen_airsim16_long_routes.json")
     parser.add_argument("--episodes", type=int, default=16)
-    parser.add_argument("--routes", type=str, default=None,
-                        help="Comma-separated 0-based route indices")
+    parser.add_argument("--routes", type=str, default=None)
     parser.add_argument("--step-hz", type=float, default=5.0)
     parser.add_argument("--max-steps", type=int, default=2000)
     parser.add_argument("--cruise-speed", type=float, default=10.0)
-    parser.add_argument("--tti-coeff", type=float, default=2.5,
-                        help="ThreeZoneShield tti_coeff (2.5 = Phase-2 close config)")
+    parser.add_argument("--tti-coeff", type=float, default=2.5)
     parser.add_argument("--success-dist", type=float, default=3.0)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true")
@@ -207,58 +336,32 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--out", default="artifacts/wam_vgoal_eval_result.json")
     parser.add_argument("--spawn-tol-m", type=float, default=12.0)
+    parser.add_argument("--traj-out", default=None)
+    parser.add_argument("--vgoal-repo", default=os.path.expanduser("~/Projects/aerial-vgoal-wam"))
+    parser.add_argument("--camera-fov-deg", type=float, default=80.0)
+    parser.add_argument("--img-w", type=int, default=224)
+    parser.add_argument("--img-h", type=int, default=224)
+    parser.add_argument("--tracker-max-occlusion-s", type=float, default=2.0)
+    parser.add_argument("--tracker-ema-alpha", type=float, default=0.7)
     parser.add_argument(
-        "--traj-out",
-        default=None,
-        help="Directory for per-route JSONL trajectory files",
+        "--detector",
+        choices=("yolo", "open_vocab", "semantic", "mock", "gt"),
+        default="yolo",
+        help="Perception frontend (default: yolo pure vision)",
     )
-    # vgoal-specific
-    parser.add_argument(
-        "--vgoal-repo",
-        default=os.path.expanduser("~/Projects/aerial-vgoal-wam"),
-        help="Path to aerial-vgoal-wam repo (for vgoal.* imports)",
-    )
-    parser.add_argument(
-        "--camera-fov-deg",
-        type=float,
-        default=80.0,
-        help="Horizontal camera FOV for projection / back-projection",
-    )
-    parser.add_argument(
-        "--img-w",
-        type=int,
-        default=224,
-        help="Detection image width in pixels (for pinhole projection)",
-    )
-    parser.add_argument(
-        "--img-h",
-        type=int,
-        default=224,
-        help="Detection image height in pixels",
-    )
-    parser.add_argument(
-        "--tracker-max-occlusion-s",
-        type=float,
-        default=2.0,
-        help="Tracker max occlusion seconds before resetting to SEARCHING",
-    )
-    parser.add_argument(
-        "--tracker-ema-alpha",
-        type=float,
-        default=0.7,
-        help="Tracker EMA smoothing for new measurements (1.0 = no smoothing)",
-    )
+    parser.add_argument("--target-class", default="car", help="YOLO COCO class filter")
+    parser.add_argument("--visual-prompt", default=None, help="Open-vocab prompt (open_vocab detector)")
+    parser.add_argument("--yolo-model", default="yolov8n.pt")
+    parser.add_argument("--yolo-conf", type=float, default=0.4)
+    parser.add_argument("--yolo-imgsz", type=int, default=640)
+    parser.add_argument("--yolo-device", default="cuda")
+    parser.add_argument("--prefer-nearest-target", action="store_true", default=True)
+    parser.add_argument("--search-fwd-speed", type=float, default=0.2)
+    parser.add_argument("--search-yaw-rate", type=float, default=0.314)
     parser.add_argument(
         "--fallback-toward-g",
         action="store_true",
-        default=True,
-        help="Fall back to toward_g when tracker is SEARCHING (default ON)",
-    )
-    parser.add_argument(
-        "--no-fallback-toward-g",
-        dest="fallback_toward_g",
-        action="store_false",
-        help="Disable toward_g fallback (hover/search only when SEARCHING)",
+        help="Ablation: geometric toward_g when SEARCHING (default OFF)",
     )
     args = parser.parse_args()
 
@@ -266,7 +369,6 @@ def main() -> int:  # noqa: C901
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-    # Wire vgoal repo into sys.path so `from vgoal.xxx import ...` resolves
     vgoal_repo = Path(args.vgoal_repo).expanduser().resolve()
     if not vgoal_repo.is_dir():
         raise SystemExit(f"--vgoal-repo not found: {vgoal_repo}")
@@ -274,7 +376,7 @@ def main() -> int:  # noqa: C901
         sys.path.insert(0, str(vgoal_repo))
 
     from vgoal.geometry import CameraIntrinsics
-    from vgoal.tracker import TargetTracker, TargetState, TrackerConfig
+    from vgoal.tracker import TargetTracker, TrackerConfig
 
     import torch
     from experiments.aerial.rl.actor_critic import LatentActorCritic, LatentActorDeployPolicy
@@ -292,13 +394,9 @@ def main() -> int:  # noqa: C901
 
     device_str = "cpu" if (args.mock or not torch.cuda.is_available()) else args.device
     device = torch.device(device_str)
-    logger.info("device=%s mock=%s", device, args.mock)
+    logger.info("device=%s mock=%s detector=%s fallback=%s", device, args.mock, args.detector, args.fallback_toward_g)
 
-    anno_path = (
-        (root / args.annotation).resolve()
-        if not Path(args.annotation).is_absolute()
-        else Path(args.annotation)
-    )
+    anno_path = (root / args.annotation).resolve() if not Path(args.annotation).is_absolute() else Path(args.annotation)
     with open(anno_path, "r", encoding="utf-8") as f:
         anno_data = json.load(f)
     routes = anno_data.get("routes", anno_data) if isinstance(anno_data, dict) else anno_data
@@ -312,56 +410,35 @@ def main() -> int:  # noqa: C901
     env = _build_env(env_cfg)
 
     wm_cfg = cfg.get("world_model") or {}
-    wm_path = (
-        (root / args.wm_ckpt).resolve()
-        if not Path(args.wm_ckpt).is_absolute()
-        else Path(args.wm_ckpt)
-    )
-    dynamics, _ = load_torch_dynamics(
-        wm_cfg, str(wm_path), device=device_str, success_dist_m=float(args.success_dist)
-    )
+    wm_path = (root / args.wm_ckpt).resolve() if not Path(args.wm_ckpt).is_absolute() else Path(args.wm_ckpt)
+    dynamics, _ = load_torch_dynamics(wm_cfg, str(wm_path), device=device_str, success_dist_m=float(args.success_dist))
 
-    actor_path = (
-        (root / args.actor_ckpt).resolve()
-        if not Path(args.actor_ckpt).is_absolute()
-        else Path(args.actor_ckpt)
-    )
+    actor_path = (root / args.actor_ckpt).resolve() if not Path(args.actor_ckpt).is_absolute() else Path(args.actor_ckpt)
     if not args.mock and actor_path.exists():
         actor_ac = LatentActorCritic.load_from_checkpoint(actor_path, device=device_str)
         actor_ac.config.goal_feat_mode = "meter"
         logger.info("Loaded actor-critic from %s", actor_path)
     else:
-        actor_ac = LatentActorCritic.from_config(
-            {"latent_dim": dynamics.latent_dim, "device": device_str}
-        )
+        actor_ac = LatentActorCritic.from_config({"latent_dim": dynamics.latent_dim, "device": device_str})
 
-    depth_path = (
-        (root / args.depth_ckpt).resolve()
-        if not Path(args.depth_ckpt).is_absolute()
-        else Path(args.depth_ckpt)
-    )
+    depth_path = (root / args.depth_ckpt).resolve() if not Path(args.depth_ckpt).is_absolute() else Path(args.depth_ckpt)
     depth_pred = (
         DepthMinPredictor.from_checkpoint(depth_path, device=device_str)
         if (not args.mock and depth_path.is_file())
         else None
     )
-    if depth_pred is None and not args.mock:
-        raise SystemExit(
-            f"depth checkpoint not found: {depth_path} — pass --depth-ckpt or --mock"
-        )
+    if depth_pred is None and not args.mock and args.detector not in ("gt", "mock"):
+        raise SystemExit(f"depth checkpoint required for YOLO back-projection: {depth_path}")
 
-    tau_path = (
-        (root / args.tau_ckpt).resolve()
-        if not Path(args.tau_ckpt).is_absolute()
-        else Path(args.tau_ckpt)
-    )
+    tau_path = (root / args.tau_ckpt).resolve() if not Path(args.tau_ckpt).is_absolute() else Path(args.tau_ckpt)
     tau_pred = make_tau_predictor(
         kind="foe_calibrated",
         ckpt=tau_path if (not args.mock and tau_path.is_file()) else None,
         device=device_str,
     )
 
-    phys_limits = body_delta_limits(1.0 / float(args.step_hz))
+    dt_step = 1.0 / float(args.step_hz)
+    phys_limits = body_delta_limits(dt_step)
     vx_max_step = float(min(float(args.cruise_speed) / float(args.step_hz), float(phys_limits[0])))
     action_limits = np.array(
         [vx_max_step, float(phys_limits[1]), float(phys_limits[2]), float(phys_limits[3])],
@@ -399,33 +476,26 @@ def main() -> int:  # noqa: C901
             float(shield.tti_coeff),
         )
 
-    # toward_g fallback intent (used when tracker is SEARCHING)
-    fallback_intent = TowardGoalIntent(r_m=100.0, mode="toward_g", cruise_speed=float(args.cruise_speed))
-
-    # vgoal detector + tracker setup
-    intrinsics = CameraIntrinsics.from_fov(
-        args.camera_fov_deg, width=args.img_w, height=args.img_h
+    fallback_intent = (
+        TowardGoalIntent(r_m=100.0, mode="toward_g", cruise_speed=float(args.cruise_speed))
+        if args.fallback_toward_g
+        else None
     )
+
+    intrinsics = CameraIntrinsics.from_fov(args.camera_fov_deg, width=args.img_w, height=args.img_h)
     tracker_cfg = TrackerConfig(
         success_dist_m=float(args.success_dist),
         max_occlusion_s=float(args.tracker_max_occlusion_s),
         ema_alpha=float(args.tracker_ema_alpha),
         min_confidence=0.5,
     )
-    # GroundTruth detector uses AirSim GT goal position (swap for YOLO in real deploy)
-    detector = _GroundTruthDetector(
-        fov_deg=float(args.camera_fov_deg),
-        img_w=int(args.img_w),
-        img_h=int(args.img_h),
-    )
+    detector = _build_detector(args, vgoal_repo)
 
+    visual_prompt = str(args.visual_prompt or args.target_class or "car")
     logger.info(
-        "vgoal eval: %d routes | cs=%.1f tti=%.1f | fov=%.0f img=%dx%d "
-        "tracker_occ=%.1fs ema=%.2f fallback_toward_g=%s",
-        n_routes, args.cruise_speed, args.tti_coeff,
-        args.camera_fov_deg, args.img_w, args.img_h,
-        args.tracker_max_occlusion_s, args.tracker_ema_alpha,
-        args.fallback_toward_g,
+        "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s search_fwd=%.2f yaw=%.2f",
+        n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
+        args.search_fwd_speed, args.search_yaw_rate,
     )
 
     results: List[Dict[str, Any]] = []
@@ -433,28 +503,29 @@ def main() -> int:  # noqa: C901
     for slot, ep_idx in enumerate(route_idxs):
         r_info = routes[ep_idx]
         pts = np.array(r_info.get("pos", r_info.get("positions")), dtype=np.float64)
-        goal_pos = pts[-1].copy()
+        annot_goal = pts[-1].copy()
         start_pos = pts[0].copy()
         yaws = np.array(r_info.get("yaw", [0.0] * len(pts)), dtype=np.float64)
         start_yaw = float(yaws[0]) if len(yaws) else 0.0
         ref_len = float(np.sum(np.linalg.norm(pts[1:] - pts[:-1], axis=1)))
 
-        # Per-episode resets
         policy.reset()
         shield.reset()
         tau_pred.reset()
-        fallback_intent.reset()
         if depth_pred is not None:
             depth_pred.reset()
         if planner is not None:
             planner.reset()
-        tracker = TargetTracker(tracker_cfg)        # fresh tracker per episode
-        detector.set_goal(goal_pos)                  # tell GT detector where goal is
+        if fallback_intent is not None:
+            fallback_intent.reset()
+        tracker = TargetTracker(tracker_cfg)
+        if hasattr(detector, "set_goal"):
+            detector.set_goal(annot_goal)
 
         ep_dict = {
             "pos": pts.tolist(),
             "yaw": yaws.tolist() if len(yaws) == len(pts) else [start_yaw] * len(pts),
-            "gpt_instruction": r_info.get("gpt_instruction", ""),
+            "gpt_instruction": r_info.get("gpt_instruction", visual_prompt),
         }
         obs = env.reset(ep_dict)
 
@@ -487,9 +558,11 @@ def main() -> int:  # noqa: C901
             })
             continue
 
-        d0 = _goal_dist(p_curr, goal_pos)
-        min_d = d0
-        d_final = d0
+        d0_annot = _goal_dist(p_curr, annot_goal)
+        min_d_annot = d0_annot
+        min_d_vision = float("inf")
+        d_final_vision = float("inf")
+        had_vision_lock = False
         traj = [p_curr.copy()]
         traj_writer = None
         if args.traj_out:
@@ -504,17 +577,21 @@ def main() -> int:  # noqa: C901
         interventions = 0
         intervened_steps: set = set()
         s_prog = 0.0
-        p_prev_tracker = p_curr.copy()  # for ego-motion dead-reckoning
+        p_prev_tracker = p_curr.copy()
         prev_yaw_tracker = curr_yaw
         detections_hit = 0
         steps_searching = 0
+        steps_vision = 0
+        steps_fallback = 0
+        vision_target_last: Optional[np.ndarray] = None
+
+        from vgoal.tracker import TargetState as TS
 
         for step in range(args.max_steps):
-            # --- Depth prediction ---
-            d_fwd = None
             obs.info.pop("depth_min_pred", None)
             obs.info.pop("depth_cones_pred", None)
             obs.info.pop("tau_pred", None)
+            d_fwd = None
             if depth_pred is not None and obs.rgb is not None:
                 pred_both = getattr(depth_pred, "predict_min_and_cones", None)
                 if callable(pred_both):
@@ -523,10 +600,7 @@ def main() -> int:  # noqa: C901
                         obs.info["depth_min_pred"] = float(d_min)
                         d_fwd = float(d_min)
                     if isinstance(cones, dict):
-                        obs.info["depth_cones_pred"] = {
-                            k: (float(v) if v is not None else None)
-                            for k, v in cones.items()
-                        }
+                        obs.info["depth_cones_pred"] = {k: (float(v) if v is not None else None) for k, v in cones.items()}
                         cf = cones.get("forward")
                         if cf is not None and np.isfinite(float(cf)):
                             d_fwd = float(cf)
@@ -538,120 +612,91 @@ def main() -> int:  # noqa: C901
             if tau_v is not None:
                 obs.info["tau_pred"] = float(tau_v)
 
-            # --- Visual detection ---
-            detector.set_pose(p_curr, curr_yaw)
-            det = detector.detect(obs.rgb if obs.rgb is not None else None)
-            measured_gr: Optional[np.ndarray] = None
-            det_conf = 0.0
-            if det is not None:
-                measured_gr = _det_to_goal_rel(det, intrinsics)
-                det_conf = float(det.confidence)
-                if measured_gr is not None:
-                    detections_hit += 1
-
-            # --- Ego-motion for tracker dead-reckoning ---
-            d_world = p_curr - p_prev_tracker
-            dyaw_dr = float(curr_yaw - prev_yaw_tracker)
-            dyaw_dr = float((dyaw_dr + math.pi) % (2.0 * math.pi) - math.pi)
-            c_yaw, s_yaw = math.cos(prev_yaw_tracker), math.sin(prev_yaw_tracker)
-            ego_delta = np.array([
-                c_yaw * d_world[0] + s_yaw * d_world[1],
-                -s_yaw * d_world[0] + c_yaw * d_world[1],
-                d_world[2],
-            ], dtype=np.float64)
+            vstep = _vision_step(
+                obs=obs,
+                detector=detector,
+                tracker=tracker,
+                depth_pred=depth_pred,
+                intrinsics=intrinsics,
+                pos=p_curr,
+                yaw=curr_yaw,
+                prev_pos=p_prev_tracker,
+                prev_yaw=prev_yaw_tracker,
+                dt=dt_step,
+                search_fwd_speed=float(args.search_fwd_speed),
+                search_yaw_rate=float(args.search_yaw_rate),
+                fallback_intent=fallback_intent,
+                annot_goal=annot_goal,
+                allow_fallback=bool(args.fallback_toward_g),
+                prefer_nearest=bool(args.prefer_nearest_target),
+                camera_fov_deg=float(args.camera_fov_deg),
+            )
             p_prev_tracker = p_curr.copy()
             prev_yaw_tracker = curr_yaw
 
-            dt_step = 1.0 / float(args.step_hz)
-            tracker_state = tracker.update(
-                measured_gr,
-                dt=dt_step,
-                ego_delta_body=ego_delta,
-                ego_delta_yaw=dyaw_dr,
-                confidence=det_conf,
-            )
-
-            # --- Build goal_rel for policy ---
-            cur_goal_rel = tracker.goal_rel  # 4D [d_fwd, d_left, d_up, dist] or None
-            using_fallback = False
-
-            if cur_goal_rel is not None and tracker_state != TargetState.SEARCHING:
-                # Tracker has a valid 3D estimate — use it directly
-                g_rel_body = np.asarray(cur_goal_rel, dtype=np.float64)
-                c, ss = math.cos(curr_yaw), math.sin(curr_yaw)
-                target_world = p_curr + np.array([
-                    c * g_rel_body[0] - ss * g_rel_body[1],
-                    ss * g_rel_body[0] + c * g_rel_body[1],
-                    g_rel_body[2],
-                ], dtype=np.float64)
-                rem_dist = float(g_rel_body[3]) if g_rel_body[3] > 0 else float(np.linalg.norm(g_rel_body[:3]))
-                safe_v = float(args.cruise_speed)
-                s_info: Dict[str, Any] = {"target_world": target_world.tolist(), "rem_dist": rem_dist}
-            elif args.fallback_toward_g:
-                # No detection memory — geometric toward_g fallback
-                g_rel_body, s_info = fallback_intent.compute(
-                    curr_pos=p_curr, curr_yaw=curr_yaw, goal=goal_pos, d_fwd_hat=d_fwd
-                )
-                target_world = np.array(s_info["target_world"], dtype=np.float64)
-                rem_dist = float(s_info["rem_dist"])
-                safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
-                using_fallback = True
+            if vstep.det_hit:
+                detections_hit += 1
+            if vstep.using_fallback:
+                steps_fallback += 1
+            elif vstep.search_action is not None:
                 steps_searching += 1
-            else:
-                # Slow forward drift when searching without fallback
-                g_rel_body = np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-                target_world = p_curr + np.array([1.0, 0.0, 0.0])
-                rem_dist = float(_goal_dist(p_curr, goal_pos))
-                safe_v = 1.0
-                s_info = {"target_world": target_world.tolist(), "rem_dist": rem_dist}
-                steps_searching += 1
+            elif vstep.using_vision:
+                steps_vision += 1
 
-            # --- Action limits and distance bookkeeping ---
-            phys = body_delta_limits(1.0 / float(args.step_hz))
-            vx_step_limit = float(min(safe_v / float(args.step_hz), float(phys[0])))
-            cur_limits = np.array(
-                [vx_step_limit, float(phys[1]), float(phys[2]), float(phys[3])],
-                dtype=np.float64,
-            )
-            if planner is not None:
-                planner.action_limits = cur_limits
+            if vstep.target_world is not None:
+                vision_target_last = vstep.target_world.copy()
+                had_vision_lock = True
+                d_vis = _goal_dist(p_curr, vstep.target_world)
+                min_d_vision = min(min_d_vision, d_vis)
+                d_final_vision = d_vis
+                if d_vis <= float(args.success_dist) or vstep.tracker_state == TS.ARRIVED.value:
+                    arrived = True
 
-            d_to_goal = _goal_dist(p_curr, goal_pos)
-            d_final = float(d_to_goal)
-            if d_to_goal < min_d:
-                min_d = d_to_goal
-            s_prog = float(max(0.0, d0 - d_to_goal))
+            d_annot = _goal_dist(p_curr, annot_goal)
+            min_d_annot = min(min_d_annot, d_annot)
+            s_prog = float(max(0.0, d0_annot - d_annot))
 
-            if d_to_goal <= float(args.success_dist):
-                arrived = True
+            if arrived:
                 break
 
-            # --- Policy step ---
-            obs.info["goal"] = target_world.tolist()
-            obs.info["goal_rel"] = g_rel_body.tolist()
-            if planner is not None:
-                planner.set_goal(target_world)
-
-            action = policy.act(obs)
-            if planner is not None:
-                action = planner.plan(obs, action, latent=policy._latent)
-            action = clip_body_delta(action, cur_limits)
-
-            # WM rollout for shield
-            wm_out = None
-            if policy._latent is not None and hasattr(dynamics, "step"):
-                try:
-                    wm_out = dynamics.step(
-                        policy._latent, action, goal_rel=g_rel_body,
-                        body_vel=body_vel_from_obs(obs),
-                    )
-                except Exception:
-                    wm_out = None
+            phys = body_delta_limits(dt_step)
+            if vstep.search_action is not None:
+                action = clip_body_delta(vstep.search_action, action_limits)
+                g_rel_body = np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+                target_world = p_curr + np.array([1.0, 0.0, 0.0])
+                wm_out = None
+            else:
+                assert vstep.goal_rel is not None and vstep.target_world is not None
+                g_rel_body = np.asarray(vstep.goal_rel, dtype=np.float64)
+                target_world = np.asarray(vstep.target_world, dtype=np.float64)
+                rem_dist = float(g_rel_body[3]) if g_rel_body[3] > 0 else float(np.linalg.norm(g_rel_body[:3]))
+                safe_v = float(args.cruise_speed)
+                if vstep.using_fallback and fallback_intent is not None:
+                    safe_v = float(args.cruise_speed)
+                vx_step_limit = float(min(safe_v / float(args.step_hz), float(phys[0])))
+                cur_limits = np.array([vx_step_limit, float(phys[1]), float(phys[2]), float(phys[3])], dtype=np.float64)
+                if planner is not None:
+                    planner.action_limits = cur_limits
+                obs.info["goal"] = target_world.tolist()
+                obs.info["goal_rel"] = g_rel_body.tolist()
+                if planner is not None:
+                    planner.set_goal(target_world)
+                action = policy.act(obs)
+                if planner is not None:
+                    action = planner.plan(obs, action, latent=policy._latent)
+                action = clip_body_delta(action, cur_limits)
+                wm_out = None
+                if policy._latent is not None and hasattr(dynamics, "step"):
+                    try:
+                        wm_out = dynamics.step(
+                            policy._latent, action, goal_rel=g_rel_body,
+                            body_vel=body_vel_from_obs(obs),
+                        )
+                    except Exception:
+                        wm_out = None
 
             if shield is not None:
-                act_safe, overridden = shield.apply_action(
-                    action, obs, wm_out=wm_out, limits=cur_limits
-                )
+                act_safe, overridden = shield.apply_action(action, obs, wm_out=wm_out, limits=action_limits)
                 if overridden:
                     interventions += 1
                     intervened_steps.add(step)
@@ -668,12 +713,8 @@ def main() -> int:  # noqa: C901
             p_curr = np.array(obs.position, dtype=np.float64)
             curr_yaw = float(obs.yaw) if hasattr(obs, "yaw") else curr_yaw
 
-            _step_jump = float(np.linalg.norm(p_curr - p_prev))
-            if _step_jump > 20.0:
-                logger.error(
-                    "Route %02d F-tele teleportation step=%d jump=%.1fm — invalidated",
-                    ep_idx + 1, step, _step_jump,
-                )
+            if float(np.linalg.norm(p_curr - p_prev)) > 20.0:
+                logger.error("Route %02d F-tele step=%d — invalidated", ep_idx + 1, step)
                 fail_tag = "F-tele"
                 break
 
@@ -683,27 +724,23 @@ def main() -> int:  # noqa: C901
                 traj_writer.write(json.dumps({
                     "step": step,
                     "pos": p_curr.tolist(),
-                    "yaw_deg": round(float(np.degrees(curr_yaw)), 2),
-                    "d_to_g": round(float(np.linalg.norm(goal_pos - p_curr)), 2),
-                    "d_fwd": round(float(d_fwd), 3) if d_fwd is not None else None,
-                    "tracker_state": str(tracker_state.value),
-                    "det_hit": measured_gr is not None,
-                    "using_fallback": using_fallback,
-                    "goal_rel": [round(float(x), 3) for x in g_rel_body],
-                    "intervened": bool(step in intervened_steps),
+                    "tracker_state": vstep.tracker_state,
+                    "det_hit": vstep.det_hit,
+                    "using_vision": vstep.using_vision,
+                    "using_fallback": vstep.using_fallback,
+                    "goal_rel": None if vstep.goal_rel is None else [round(float(x), 3) for x in vstep.goal_rel],
                 }) + "\n")
 
-            seg_d = _segment_min_dist(p_prev, p_curr, goal_pos)
-            if seg_d <= float(args.success_dist):
-                arrived = True
-                min_d = min(min_d, seg_d)
-                d_final = float(seg_d)
-                break
+            if vision_target_last is not None:
+                seg_d = _segment_min_dist(p_prev, p_curr, vision_target_last)
+                if seg_d <= float(args.success_dist):
+                    arrived = True
+                    min_d_vision = min(min_d_vision, seg_d)
+                    d_final_vision = float(seg_d)
+                    break
 
             if done:
-                collided = bool(
-                    getattr(obs, "collided", False) or step_info.get("collided", False)
-                )
+                collided = bool(getattr(obs, "collided", False) or step_info.get("collided", False))
                 if step_info.get("severe_collision", False) or collided:
                     severe_coll = True
                 break
@@ -711,13 +748,11 @@ def main() -> int:  # noqa: C901
         if traj_writer is not None:
             traj_writer.close()
 
-        actual_len = (
-            float(np.sum(np.linalg.norm(np.diff(np.array(traj), axis=0), axis=1)))
-            if len(traj) > 1 else 0.0
-        )
+        actual_len = float(np.sum(np.linalg.norm(np.diff(np.array(traj), axis=0), axis=1))) if len(traj) > 1 else 0.0
         prog_ratio = float(np.clip(s_prog / max(1e-3, ref_len), 0.0, 1.0))
         ep_spl = (ref_len / max(ref_len, actual_len)) if arrived else 0.0
-        goal_closure = _goal_closure(d0, min_d)
+        goal_closure = _goal_closure(d0_annot, min_d_annot)
+        n_steps = max(1, len(traj))
 
         ep_result = {
             "route_idx": ep_idx,
@@ -725,20 +760,27 @@ def main() -> int:  # noqa: C901
             "nominal_length_m": round(ref_len, 2),
             "actual_length_m": round(actual_len, 2),
             "steps": len(traj),
-            "d_start_m": round(d0, 2),
-            "d_min_m": round(min_d, 2),
-            "d_final_m": round(float(d_final), 2),
+            "d_start_m": round(d0_annot, 2),
+            "d_min_m": round(min_d_annot, 2),
+            "d_final_m": round(float(min_d_vision if had_vision_lock else d_annot), 2),
+            "d_min_vision_m": round(float(min_d_vision), 2) if had_vision_lock else None,
+            "d_final_vision_m": round(float(d_final_vision), 2) if had_vision_lock else None,
             "goal_closure": round(goal_closure, 4),
             "arrived": arrived,
+            "arrived_vision": bool(arrived and had_vision_lock and steps_fallback == 0),
             "collided": collided,
             "severe_collision": severe_coll,
             "progress_ratio": round(prog_ratio, 4),
             "spl": round(ep_spl, 4),
-            "intervention_rate": round(interventions / max(1, len(traj)), 4),
+            "intervention_rate": round(interventions / n_steps, 4),
             "subgoal_source": "visual",
+            "goal_from": "vision" if had_vision_lock and steps_fallback == 0 else ("mixed" if steps_fallback else "search_only"),
             "detections_hit": detections_hit,
             "steps_searching": steps_searching,
-            "detection_frac": round(detections_hit / max(1, len(traj)), 4),
+            "steps_vision": steps_vision,
+            "steps_fallback": steps_fallback,
+            "detection_frac": round(detections_hit / n_steps, 4),
+            "vision_frac": round(steps_vision / n_steps, 4),
             "fail_tag": fail_tag,
         }
         results.append(ep_result)
@@ -746,77 +788,56 @@ def main() -> int:  # noqa: C901
         scored_so_far = [r for r in results if not r.get("spawn_fail")]
         sr_now = float(np.mean([r["arrived"] for r in scored_so_far])) if scored_so_far else 0.0
         logger.info(
-            "Route %02d/%02d | arrived=%s d_final=%.1fm det_frac=%.0f%% search_steps=%d "
-            "IR=%.0f%% | SR_now=%.1f%%",
-            slot + 1, n_routes,
-            arrived, float(d_final),
-            ep_result["detection_frac"] * 100,
-            steps_searching,
-            ep_result["intervention_rate"] * 100,
-            sr_now * 100,
+            "Route %02d/%02d | arrived=%s vision=%s det=%.0f%% vis=%.0f%% fb=%d IR=%.0f%% | SR=%.1f%%",
+            slot + 1, n_routes, arrived, ep_result["goal_from"],
+            ep_result["detection_frac"] * 100, ep_result["vision_frac"] * 100,
+            steps_fallback, ep_result["intervention_rate"] * 100, sr_now * 100,
         )
 
-    # --- Aggregate ---
-    scored = [r for r in results if not r.get("spawn_fail")]
-    spawn_fails = [r for r in results if r.get("spawn_fail")]
-
-    def _mean(key: str) -> float:
-        return float(np.mean([r[key] for r in scored])) if scored else 0.0
-
-    sr = _mean("arrived")
-    scr = _mean("severe_collision")
-    metrics = {
-        "arrival_rate": round(sr, 4),
-        "spl": round(_mean("spl"), 4),
-        "severe_collision_rate": round(scr, 4),
-        "mean_goal_closure": round(_mean("goal_closure"), 4),
-        "mean_progress_ratio": round(_mean("progress_ratio"), 4),
-        "mean_intervention_rate": round(_mean("intervention_rate"), 4),
-        "mean_detection_frac": round(_mean("detection_frac"), 4),
-        "mean_steps_searching": round(_mean("steps_searching"), 1),
-    }
-    verdict = (
-        "PASS"
-        if sr >= PASS_THRESHOLDS["arrival_rate_min"] and scr <= PASS_THRESHOLDS["severe_collision_rate_max"]
-        else "FAIL"
-    )
+    scored, spawn_fails, metrics, verdict = aggregate_metrics(results)
+    metrics["mean_detection_frac"] = round(
+        float(np.mean([r["detection_frac"] for r in scored])), 4
+    ) if scored else 0.0
+    metrics["mean_vision_frac"] = round(
+        float(np.mean([r["vision_frac"] for r in scored])), 4
+    ) if scored else 0.0
 
     summary = {
         "verdict": verdict,
         "n_scored": len(scored),
         "n_spawn_fail": len(spawn_fails),
         "metrics": metrics,
+        "protocol_version": "phase2_vgoal_m2",
+        "method": "monocular_visual",
+        "goal_from": "vision",
         "config": {
             "actor_ckpt": str(args.actor_ckpt),
             "wm_ckpt": str(args.wm_ckpt),
             "cruise_speed": args.cruise_speed,
             "tti_coeff": args.tti_coeff,
-            "camera_fov_deg": args.camera_fov_deg,
-            "tracker_max_occlusion_s": args.tracker_max_occlusion_s,
-            "fallback_toward_g": args.fallback_toward_g,
+            "detector": args.detector,
+            "target_class": args.target_class,
+            "visual_prompt": visual_prompt,
+            "yolo_model": args.yolo_model,
+            "fallback_toward_g": bool(args.fallback_toward_g),
+            "search_fwd_speed": args.search_fwd_speed,
+            "search_yaw_rate": args.search_yaw_rate,
         },
         "episodes": results,
     }
 
-    out_path = (
-        (root / args.out).resolve()
-        if not Path(args.out).is_absolute()
-        else Path(args.out)
-    )
+    out_path = (root / args.out).resolve() if not Path(args.out).is_absolute() else Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
     logger.info("Written: %s", out_path)
-
     logger.info(
-        "FINAL | Verdict=%s SR=%.1f%% SCR=%.1f%% closure=%.2f "
-        "det_frac=%.0f%% IR=%.0f%%",
+        "FINAL | Verdict=%s SR=%.1f%% SCR=%.1f%% det=%.0f%% vision=%.0f%%",
         verdict,
         metrics["arrival_rate"] * 100,
         metrics["severe_collision_rate"] * 100,
-        metrics["mean_goal_closure"],
-        metrics["mean_detection_frac"] * 100,
-        metrics["mean_intervention_rate"] * 100,
+        metrics.get("mean_detection_frac", 0) * 100,
+        metrics.get("mean_vision_frac", 0) * 100,
     )
     return 0 if verdict == "PASS" else 1
 
