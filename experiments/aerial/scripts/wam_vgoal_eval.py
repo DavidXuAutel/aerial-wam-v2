@@ -188,7 +188,15 @@ class _GroundTruthDetector:
         return res
 
 
-def _det_to_goal_rel(det: Any, intrinsics: Any, depth_map: Optional[np.ndarray], src_shape: Tuple[int, int]) -> Optional[np.ndarray]:
+def _det_to_goal_rel(
+    det: Any,
+    intrinsics: Any,
+    depth_map: Optional[np.ndarray],
+    src_shape: Tuple[int, int],
+    *,
+    object_width_m: float = 2.0,
+    fuse_bbox_depth: bool = True,
+) -> Optional[np.ndarray]:
     from vgoal.geometry import bbox_to_goal_rel
 
     d_fwd = float(getattr(det, "direct_depth", 0.0) or 0.0)
@@ -202,7 +210,14 @@ def _det_to_goal_rel(det: Any, intrinsics: Any, depth_map: Optional[np.ndarray],
             return np.array([d_fwd, d_left, d_up, dist], dtype=np.float64)
     if depth_map is None:
         return None
-    gr = bbox_to_goal_rel(det.bbox, depth_map, intrinsics, src_shape=src_shape)
+    gr = bbox_to_goal_rel(
+        det.bbox,
+        depth_map,
+        intrinsics,
+        src_shape=src_shape,
+        object_width_m=object_width_m,
+        fuse_bbox_depth=fuse_bbox_depth,
+    )
     if gr is None:
         return None
     return np.asarray(gr, dtype=np.float64)
@@ -227,6 +242,8 @@ def _vision_step(
     allow_fallback: bool,
     prefer_nearest: bool,
     camera_fov_deg: float,
+    object_width_m: float = 2.0,
+    fuse_bbox_depth: bool = True,
 ) -> VisionStepResult:
     from vgoal.geometry import CameraIntrinsics
     from vgoal.tracker import TargetState
@@ -252,7 +269,14 @@ def _vision_step(
         best_conf = 0.0
         best_det = None
         for cand in detect_all(rgb_det_arr) or []:
-            gr = _det_to_goal_rel(cand, intrinsics, depth_map, (det_w, det_h))
+            gr = _det_to_goal_rel(
+                cand,
+                intrinsics,
+                depth_map,
+                (det_w, det_h),
+                object_width_m=object_width_m,
+                fuse_bbox_depth=fuse_bbox_depth,
+            )
             if gr is None:
                 continue
             if best_gr is None or float(gr[3]) < float(best_gr[3]):
@@ -266,7 +290,14 @@ def _vision_step(
     else:
         det = detector.detect(rgb_det_arr)
         if det is not None:
-            measured_gr = _det_to_goal_rel(det, intrinsics, depth_map, (det_w, det_h))
+            measured_gr = _det_to_goal_rel(
+                det,
+                intrinsics,
+                depth_map,
+                (det_w, det_h),
+                object_width_m=object_width_m,
+                fuse_bbox_depth=fuse_bbox_depth,
+            )
             if measured_gr is not None:
                 det_conf = float(det.confidence)
 
@@ -391,6 +422,22 @@ def main() -> int:  # noqa: C901
     )
     parser.add_argument("--tracker-max-occlusion-s", type=float, default=2.0)
     parser.add_argument("--tracker-ema-alpha", type=float, default=0.7)
+    parser.add_argument("--tracker-near-dist-m", type=float, default=35.0)
+    parser.add_argument("--tracker-near-ema-alpha", type=float, default=0.92)
+    parser.add_argument("--tracker-inflate-reject-m", type=float, default=4.0)
+    parser.add_argument("--tracker-inflate-alpha", type=float, default=0.15)
+    parser.add_argument(
+        "--car-width-m",
+        type=float,
+        default=2.0,
+        help="Assumed car width for bbox→depth prior (pinhole Z ≈ fx·W/w_px)",
+    )
+    parser.add_argument(
+        "--bbox-depth-fuse",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fuse D̂ patch depth with bbox-width prior (default ON)",
+    )
     parser.add_argument(
         "--detector",
         choices=("yolo", "open_vocab", "semantic", "mock", "gt"),
@@ -610,6 +657,10 @@ def main() -> int:  # noqa: C901
         max_occlusion_s=float(args.tracker_max_occlusion_s),
         ema_alpha=float(args.tracker_ema_alpha),
         min_confidence=tracker_min_conf,
+        near_dist_m=float(args.tracker_near_dist_m),
+        near_ema_alpha=float(args.tracker_near_ema_alpha),
+        inflate_reject_m=float(args.tracker_inflate_reject_m),
+        inflate_alpha=float(args.tracker_inflate_alpha),
     )
     detector = _build_detector(args, vgoal_repo)
 
@@ -617,11 +668,13 @@ def main() -> int:  # noqa: C901
     logger.info(
         "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s "
         "fanout=%s capture=%dx%d wam=%d search_fwd=%.3f(%s) yaw=%.2f "
-        "z_hold=%s visual_toward_g=%s tracker_conf=%.2f yolo_conf=%.2f",
+        "z_hold=%s visual_toward_g=%s tracker_conf=%.2f yolo_conf=%.2f "
+        "bbox_fuse=%s car_w=%.1fm near_ema=%.2f",
         n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
         use_fanout, int(args.capture_w), int(args.capture_h), int(args.wam_encode_size),
         search_fwd_step, search_fwd_label, args.search_yaw_rate,
         args.search_z_hold_mode, bool(args.visual_toward_g), tracker_min_conf, args.yolo_conf,
+        bool(args.bbox_depth_fuse), float(args.car_width_m), float(args.tracker_near_ema_alpha),
     )
 
     results: List[Dict[str, Any]] = []
@@ -765,6 +818,8 @@ def main() -> int:  # noqa: C901
                 allow_fallback=bool(args.fallback_toward_g),
                 prefer_nearest=bool(args.prefer_nearest_target),
                 camera_fov_deg=float(args.camera_fov_deg),
+                object_width_m=float(args.car_width_m),
+                fuse_bbox_depth=bool(args.bbox_depth_fuse),
             )
             p_prev_tracker = p_curr.copy()
             prev_yaw_tracker = curr_yaw
@@ -984,6 +1039,12 @@ def main() -> int:  # noqa: C901
             "visual_toward_g": bool(args.visual_toward_g),
             "toward_g_r_m": float(args.toward_g_r_m),
             "tracker_min_confidence": tracker_min_conf,
+            "tracker_near_dist_m": float(args.tracker_near_dist_m),
+            "tracker_near_ema_alpha": float(args.tracker_near_ema_alpha),
+            "tracker_inflate_reject_m": float(args.tracker_inflate_reject_m),
+            "tracker_inflate_alpha": float(args.tracker_inflate_alpha),
+            "car_width_m": float(args.car_width_m),
+            "bbox_depth_fuse": bool(args.bbox_depth_fuse),
             "yolo_conf": float(args.yolo_conf),
             "fanout_rgb": use_fanout,
             "capture_w": int(args.capture_w),
