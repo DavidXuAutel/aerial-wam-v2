@@ -114,11 +114,11 @@ def _nearest_scene_object_goal(
     *,
     yaw: float = 0.0,
     pattern: str = "Cart.*",
-    max_dist_m: float = 250.0,
-    fov_deg: float = 80.0,
+    max_dist_m: float = 600.0,
+    fov_deg: float = 160.0,
     min_fwd_m: float = 3.0,
 ) -> Optional[np.ndarray]:
-    """Pick nearest scene object inside the forward camera cone (GT smoke)."""
+    """Pick scene object for GT smoke: nearest in FOV cone, else boresight fallback."""
     connect = getattr(env, "_connect", None)
     if not callable(connect):
         return None
@@ -139,10 +139,8 @@ def _nearest_scene_object_goal(
     half_fov = math.radians(float(max(10.0, fov_deg)) * 0.5)
     c_yaw, s_yaw = math.cos(float(yaw)), math.sin(float(yaw))
     pos_xy = np.asarray(pos[:2], dtype=np.float64)
-    best_goal: Optional[np.ndarray] = None
-    best_dist = float(max_dist_m)
-    best_name: Optional[str] = None
     client = connect()
+    candidates: List[Tuple[float, float, float, str, np.ndarray]] = []
     for name in names:
         try:
             pose = client.simGetObjectPose(name)
@@ -154,25 +152,31 @@ def _nearest_scene_object_goal(
         d_left = float(-s_yaw * d_world[0] + c_yaw * d_world[1])
         if d_fwd < float(min_fwd_m):
             continue
-        bearing = math.atan2(d_left, d_fwd)
-        if abs(bearing) > half_fov:
-            continue
         horiz = float(np.linalg.norm(goal[:2] - pos_xy))
-        if horiz < best_dist:
-            best_dist = horiz
-            best_goal = goal
-            best_name = str(name)
-    if best_goal is not None and best_name is not None:
-        logger.info(
-            "GT scene pick %s bearing=%.1f° fwd=%.1fm horiz=%.1fm",
-            best_name,
-            math.degrees(math.atan2(
-                float(-s_yaw * (best_goal[0] - pos[0]) + c_yaw * (best_goal[1] - pos[1])),
-                float(c_yaw * (best_goal[0] - pos[0]) + s_yaw * (best_goal[1] - pos[1])),
-            )),
-            float(c_yaw * (best_goal[0] - pos[0]) + s_yaw * (best_goal[1] - pos[1])),
-            best_dist,
-        )
+        if horiz > float(max_dist_m):
+            continue
+        bearing = math.atan2(d_left, d_fwd)
+        candidates.append((horiz, abs(bearing), bearing, str(name), goal))
+
+    if not candidates:
+        return None
+
+    in_fov = [c for c in candidates if abs(c[2]) <= half_fov]
+    pick_pool = in_fov if in_fov else candidates
+    pick_mode = "fov" if in_fov else "boresight"
+    if in_fov:
+        horiz, _abs_bear, bearing, best_name, best_goal = min(pick_pool, key=lambda c: c[0])
+    else:
+        horiz, _abs_bear, bearing, best_name, best_goal = min(pick_pool, key=lambda c: (c[1], c[0]))
+
+    logger.info(
+        "GT scene pick (%s) %s bearing=%.1f° fwd=%.1fm horiz=%.1fm",
+        pick_mode,
+        best_name,
+        math.degrees(bearing),
+        float(c_yaw * (best_goal[0] - pos[0]) + s_yaw * (best_goal[1] - pos[1])),
+        horiz,
+    )
     return best_goal
 
 
@@ -536,12 +540,12 @@ def main() -> int:  # noqa: C901
         help="DEBUG/GT: use nearest AirSim scene object as goal (--detector gt)",
     )
     parser.add_argument("--gt-scene-pattern", default="Cart.*")
-    parser.add_argument("--gt-scene-max-dist-m", type=float, default=250.0)
+    parser.add_argument("--gt-scene-max-dist-m", type=float, default=600.0)
     parser.add_argument(
         "--gt-scene-fov-deg",
         type=float,
-        default=None,
-        help="Forward cone for GT object pick (default: --camera-fov-deg)",
+        default=160.0,
+        help="Forward cone for GT object pick (degrees)",
     )
     parser.add_argument("--gt-scene-min-fwd-m", type=float, default=3.0)
     parser.add_argument("--vgoal-repo", default=os.path.expanduser("~/Projects/aerial-vgoal-wam"))
@@ -866,11 +870,7 @@ def main() -> int:  # noqa: C901
         p_curr = np.array(obs.position, dtype=np.float64)
         curr_yaw = float(obs.yaw) if hasattr(obs, "yaw") else 0.0
         if bool(args.gt_nearest_scene_object) and str(args.detector).lower() == "gt":
-            gt_fov = (
-                float(args.gt_scene_fov_deg)
-                if args.gt_scene_fov_deg is not None
-                else float(args.camera_fov_deg)
-            )
+            gt_fov = float(args.gt_scene_fov_deg or args.camera_fov_deg)
             resolved = _nearest_scene_object_goal(
                 env,
                 p_curr,
@@ -1248,7 +1248,7 @@ def main() -> int:  # noqa: C901
             "perception_log": bool(args.perception_log),
             "gt_nearest_scene_object": bool(args.gt_nearest_scene_object),
             "gt_scene_pattern": str(args.gt_scene_pattern),
-            "gt_scene_fov_deg": float(args.gt_scene_fov_deg or args.camera_fov_deg),
+            "gt_scene_fov_deg": float(args.gt_scene_fov_deg or 160.0),
             "gt_scene_min_fwd_m": float(args.gt_scene_min_fwd_m),
             "yolo_conf": float(args.yolo_conf),
             "fanout_rgb": use_fanout,
