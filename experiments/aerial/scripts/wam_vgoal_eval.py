@@ -671,7 +671,7 @@ def main() -> int:  # noqa: C901
     depth_path = (root / args.depth_ckpt).resolve() if not Path(args.depth_ckpt).is_absolute() else Path(args.depth_ckpt)
     depth_pred = (
         DepthMinPredictor.from_checkpoint(depth_path, device=device_str)
-        if (not args.mock and depth_path.is_file())
+        if (not args.mock and depth_path.is_file() and str(args.detector).lower() not in ("gt", "mock"))
         else None
     )
     if depth_pred is None and not args.mock and args.detector not in ("gt", "mock"):
