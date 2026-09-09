@@ -649,7 +649,7 @@ def main() -> int:  # noqa: C901
     env_cfg["backend"] = "mock" if args.mock else "airsim"
     env_cfg["step_hz"] = float(args.step_hz)
     env_cfg["grab_depth"] = True
-    use_fanout = bool(args.fanout_rgb) and str(args.detector).lower() not in ("gt", "mock")
+    use_fanout = bool(args.fanout_rgb) and str(args.detector).lower() != "mock"
     env_cfg["fanout_rgb"] = use_fanout
     env_cfg["width"] = int(args.capture_w)
     env_cfg["height"] = int(args.capture_h)
