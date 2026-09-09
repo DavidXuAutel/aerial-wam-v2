@@ -145,6 +145,8 @@ def _build_env(env_cfg: Any) -> Any:
             vehicle=str(_get(env_cfg, "vehicle", "drone_1")),
             width=int(_get(env_cfg, "width", 224)),
             height=int(_get(env_cfg, "height", 224)),
+            fanout_rgb=bool(_get(env_cfg, "fanout_rgb", False)),
+            wam_encode_size=int(_get(env_cfg, "wam_encode_size", 224)),
             step_hz=float(_get(env_cfg, "step_hz", 30.0)),
             health_check=bool(_get(env_cfg, "health_check", True)),
             grab_depth=bool(_get(env_cfg, "grab_depth", True)),
