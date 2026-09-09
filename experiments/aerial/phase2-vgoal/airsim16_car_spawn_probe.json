@@ -1,50 +1,50 @@
 {
-  "version": "airsim16_car_spawn_probe_v1",
-  "description": "Spawn-only poses for outdoor YOLO car visibility (env_airsim_16). pos[-1] unused; success = YOLO lock at spawn.",
+  "version": "airsim16_car_spawn_probe_v2",
+  "description": "Spawn-only poses from 125 artifacts/seen_airsim16_long_routes starts (env_airsim_16). Routes 0-1 had YOLO det_hit at step 0 in vgoal_traj.",
   "n_routes": 4,
   "routes": [
     {
-      "route_id": "car_spawn_r3_start",
+      "route_id": "car_spawn_long00",
       "route_idx": 0,
-      "source": "seen_airsim16_long_routes route_idx=3 start (fanout 0909: 10 det / 2000 steps)",
+      "source": "125 long_route_01 start (base_route_idx=5); vgoal_traj route00 det@step0",
       "pos": [
-        [-1112.809, -346.613, 45.086],
-        [-1112.809, -346.613, 45.086]
+        [-746.355, -250.738, 36.855],
+        [-746.355, -250.738, 36.855]
       ],
-      "yaw": [-1.0471975511965979, -1.0471975511965979],
+      "yaw": [3.141592653589793, 3.141592653589793],
       "gpt_instruction": "Find and approach the nearest car"
     },
     {
-      "route_id": "car_spawn_r1_start",
+      "route_id": "car_spawn_long01",
       "route_idx": 1,
-      "source": "seen_airsim16_long_routes route_idx=1 start (fanout 0909: 10 det / 2000 steps)",
+      "source": "125 long_route_02 start (base_route_idx=16); vgoal_traj route01 det@step0",
       "pos": [
-        [-875.667, -530.09, 83.593],
-        [-875.667, -530.09, 83.593]
-      ],
-      "yaw": [3.141592653589793, 3.141592653589793],
-      "gpt_instruction": "Find and approach the nearest car"
-    },
-    {
-      "route_id": "car_spawn_r3_turn",
-      "route_idx": 2,
-      "source": "long route 3 waypoint near turn (-1082, -399)",
-      "pos": [
-        [-1082.476, -399.152, 45.086],
-        [-1082.476, -399.152, 45.086]
+        [-1289.828, 100.248, 19.743],
+        [-1289.828, 100.248, 19.743]
       ],
       "yaw": [-1.0471975511965979, -1.0471975511965979],
       "gpt_instruction": "Find and approach the nearest car"
     },
     {
-      "route_id": "car_spawn_r1_low",
-      "route_idx": 3,
-      "source": "route 1 start lowered to z=25 (road-level probe; tune after spawn sweep)",
+      "route_id": "car_spawn_long02",
+      "route_idx": 2,
+      "source": "125 long_route_03 start (base_route_idx=7)",
       "pos": [
-        [-875.667, -530.09, 25.0],
-        [-875.667, -530.09, 25.0]
+        [-641.481, -328.007, 29.894],
+        [-641.481, -328.007, 29.894]
       ],
-      "yaw": [3.141592653589793, 3.141592653589793],
+      "yaw": [2.617993877991494, 2.617993877991494],
+      "gpt_instruction": "Find and approach the nearest car"
+    },
+    {
+      "route_id": "car_spawn_long03",
+      "route_idx": 3,
+      "source": "125 long_route_04 start (base_route_idx=17)",
+      "pos": [
+        [91.733, 110.533, 19.472],
+        [91.733, 110.533, 19.472]
+      ],
+      "yaw": [-1.0471975511965979, -1.0471975511965979],
       "gpt_instruction": "Find and approach the nearest car"
     }
   ]
