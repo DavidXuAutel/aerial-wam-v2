@@ -104,6 +104,85 @@ class VisionStepResult:
     using_vision: bool
     using_fallback: bool
     search_action: Optional[np.ndarray]
+    perception: Optional[Dict[str, Any]] = None
+
+
+def _nearest_scene_object_goal(
+    env: Any,
+    pos: np.ndarray,
+    *,
+    pattern: str = "Cart.*",
+    max_dist_m: float = 250.0,
+) -> Optional[np.ndarray]:
+    """Resolve a static scene object pose from AirSim (GT smoke / car probe)."""
+    connect = getattr(env, "_connect", None)
+    if not callable(connect):
+        return None
+    try:
+        client = connect()
+        names = client.simListSceneObjects(str(pattern))
+    except Exception as exc:
+        logger.warning("gt scene goal lookup failed: %s", exc)
+        return None
+    if not names:
+        return None
+    best_goal: Optional[np.ndarray] = None
+    best_dist = float(max_dist_m)
+    pos_xy = np.asarray(pos[:2], dtype=np.float64)
+    for name in names:
+        try:
+            pose = client.simGetObjectPose(name)
+        except Exception:
+            continue
+        goal = np.array([pose.position.x_val, pose.position.y_val, pose.position.z_val], dtype=np.float64)
+        horiz = float(np.linalg.norm(goal[:2] - pos_xy))
+        if horiz < best_dist:
+            best_dist = horiz
+            best_goal = goal
+    return best_goal
+
+
+def _raw_perception_record(
+    det: Any,
+    depth_map: Optional[np.ndarray],
+    intrinsics: Any,
+    src_shape: Tuple[int, int],
+    measured_gr: Optional[np.ndarray],
+    *,
+    object_width_m: float,
+    det_conf: float,
+) -> Dict[str, Any]:
+    from vgoal.geometry import bbox_forward_depth_prior, extract_target_depth, fuse_target_depth
+
+    rec: Dict[str, Any] = {
+        "det_raw": det is not None,
+        "conf": round(float(det_conf), 4) if det_conf else None,
+        "measured_dist_m": round(float(measured_gr[3]), 3) if measured_gr is not None else None,
+        "measured_fwd_m": round(float(measured_gr[0]), 3) if measured_gr is not None else None,
+        "d_patch_m": None,
+        "d_bbox_prior_m": None,
+        "d_fused_m": None,
+        "bbox_w_px": None,
+        "gt_direct_depth_m": None,
+    }
+    if det is None:
+        return rec
+    bb = [float(x) for x in det.bbox]
+    rec["bbox_w_px"] = round(bb[2] - bb[0], 1)
+    d_direct = float(getattr(det, "direct_depth", 0.0) or 0.0)
+    if d_direct > 0.0:
+        rec["gt_direct_depth_m"] = round(d_direct, 3)
+    if depth_map is not None:
+        dp = extract_target_depth(depth_map, bb, src_shape=src_shape)
+        db = bbox_forward_depth_prior(bb, intrinsics, src_shape=src_shape, object_width_m=object_width_m)
+        df = fuse_target_depth(dp, db, bb[2] - bb[0])
+        if np.isfinite(dp):
+            rec["d_patch_m"] = round(float(dp), 3)
+        if np.isfinite(db):
+            rec["d_bbox_prior_m"] = round(float(db), 3)
+        if np.isfinite(df):
+            rec["d_fused_m"] = round(float(df), 3)
+    return rec
 
 
 def _build_detector(args: argparse.Namespace, vgoal_repo: Path) -> Any:
@@ -301,6 +380,16 @@ def _vision_step(
             if measured_gr is not None:
                 det_conf = float(det.confidence)
 
+    perception_rec = _raw_perception_record(
+        det,
+        depth_map,
+        intrinsics,
+        (det_w, det_h),
+        measured_gr,
+        object_width_m=object_width_m,
+        det_conf=det_conf,
+    )
+
     d_world = pos - prev_pos
     dyaw = float(yaw - prev_yaw)
     dyaw = float((dyaw + math.pi) % (2.0 * math.pi) - math.pi)
@@ -332,6 +421,7 @@ def _vision_step(
             using_vision=True,
             using_fallback=False,
             search_action=None,
+            perception=perception_rec,
         )
 
     if allow_fallback and fallback_intent is not None:
@@ -348,6 +438,7 @@ def _vision_step(
             using_vision=False,
             using_fallback=True,
             search_action=None,
+            perception=perception_rec,
         )
 
     search_action = np.array([search_fwd_step, 0.0, 0.0, search_yaw_rate], dtype=np.float64)
@@ -359,6 +450,7 @@ def _vision_step(
         using_vision=False,
         using_fallback=False,
         search_action=search_action,
+        perception=perception_rec,
     )
 
 
@@ -399,6 +491,18 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--out", default="artifacts/wam_vgoal_eval_result.json")
     parser.add_argument("--spawn-tol-m", type=float, default=12.0)
     parser.add_argument("--traj-out", default=None)
+    parser.add_argument(
+        "--perception-log",
+        default=None,
+        help="Per-step raw perception JSONL dir/prefix (route{idx}_perception.jsonl)",
+    )
+    parser.add_argument(
+        "--gt-nearest-scene-object",
+        action="store_true",
+        help="DEBUG/GT: use nearest AirSim scene object as goal (--detector gt)",
+    )
+    parser.add_argument("--gt-scene-pattern", default="Cart.*")
+    parser.add_argument("--gt-scene-max-dist-m", type=float, default=250.0)
     parser.add_argument("--vgoal-repo", default=os.path.expanduser("~/Projects/aerial-vgoal-wam"))
     parser.add_argument("--camera-fov-deg", type=float, default=80.0)
     parser.add_argument(
@@ -682,7 +786,10 @@ def main() -> int:  # noqa: C901
     for slot, ep_idx in enumerate(route_idxs):
         r_info = routes[ep_idx]
         pts = np.array(r_info.get("pos", r_info.get("positions")), dtype=np.float64)
-        annot_goal = pts[-1].copy()
+        goal_world = pts[-1].copy()
+        if r_info.get("goal_pos"):
+            goal_world = np.asarray(r_info["goal_pos"], dtype=np.float64).reshape(3)
+        annot_goal = goal_world.copy()
         start_pos = pts[0].copy()
         yaws = np.array(r_info.get("yaw", [0.0] * len(pts)), dtype=np.float64)
         start_yaw = float(yaws[0]) if len(yaws) else 0.0
@@ -707,8 +814,6 @@ def main() -> int:  # noqa: C901
             z_max=float(args.search_z_max),
         )
         tracker = TargetTracker(tracker_cfg)
-        if hasattr(detector, "set_goal"):
-            detector.set_goal(annot_goal)
 
         ep_dict = {
             "pos": pts.tolist(),
@@ -719,6 +824,27 @@ def main() -> int:  # noqa: C901
 
         p_curr = np.array(obs.position, dtype=np.float64)
         curr_yaw = float(obs.yaw) if hasattr(obs, "yaw") else 0.0
+        if bool(args.gt_nearest_scene_object) and str(args.detector).lower() == "gt":
+            resolved = _nearest_scene_object_goal(
+                env,
+                p_curr,
+                pattern=str(args.gt_scene_pattern),
+                max_dist_m=float(args.gt_scene_max_dist_m),
+            )
+            if resolved is not None:
+                annot_goal = np.asarray(resolved, dtype=np.float64)
+                goal_world = annot_goal.copy()
+                logger.info(
+                    "Route %02d GT goal from scene %s dist=%.1fm pos=%s",
+                    ep_idx + 1,
+                    args.gt_scene_pattern,
+                    float(np.linalg.norm(annot_goal[:2] - p_curr[:2])),
+                    [round(float(x), 2) for x in annot_goal],
+                )
+            else:
+                logger.warning("Route %02d GT scene goal lookup failed — using annotation goal", ep_idx + 1)
+        if hasattr(detector, "set_goal"):
+            detector.set_goal(annot_goal)
         spawn_err = float(np.linalg.norm(p_curr - start_pos))
 
         if spawn_err > float(args.spawn_tol_m) and not args.mock:
@@ -749,14 +875,20 @@ def main() -> int:  # noqa: C901
         d0_annot = _goal_dist(p_curr, annot_goal)
         min_d_annot = d0_annot
         min_d_vision = float("inf")
+        min_d_measured = float("inf")
         d_final_vision = float("inf")
         had_vision_lock = False
         traj = [p_curr.copy()]
         traj_writer = None
+        perception_writer = None
         if args.traj_out:
             _tp = Path(args.traj_out).with_suffix("") / f"route{ep_idx:02d}.jsonl"
             _tp.parent.mkdir(parents=True, exist_ok=True)
             traj_writer = _tp.open("w")
+        if args.perception_log:
+            _pp = Path(args.perception_log).with_suffix("") / f"route{ep_idx:02d}_perception.jsonl"
+            _pp.parent.mkdir(parents=True, exist_ok=True)
+            perception_writer = _pp.open("w")
 
         arrived = False
         collided = False
@@ -823,6 +955,9 @@ def main() -> int:  # noqa: C901
             )
             p_prev_tracker = p_curr.copy()
             prev_yaw_tracker = curr_yaw
+
+            if vstep.perception and vstep.perception.get("measured_dist_m") is not None:
+                min_d_measured = min(min_d_measured, float(vstep.perception["measured_dist_m"]))
 
             if vstep.det_hit:
                 detections_hit += 1
@@ -940,6 +1075,18 @@ def main() -> int:  # noqa: C901
                     "goal_rel": None if vstep.goal_rel is None else [round(float(x), 3) for x in vstep.goal_rel],
                 }) + "\n")
 
+            if perception_writer is not None and vstep.perception is not None:
+                perc_row = dict(vstep.perception)
+                perc_row.update({
+                    "step": step,
+                    "tracker_state": vstep.tracker_state,
+                    "det_hit": vstep.det_hit,
+                    "goal_rel_dist": (
+                        round(float(vstep.goal_rel[3]), 3) if vstep.goal_rel is not None else None
+                    ),
+                })
+                perception_writer.write(json.dumps(perc_row) + "\n")
+
             if vision_target_last is not None:
                 seg_d = _segment_min_dist(p_prev, p_curr, vision_target_last)
                 if seg_d <= float(args.success_dist):
@@ -956,6 +1103,8 @@ def main() -> int:  # noqa: C901
 
         if traj_writer is not None:
             traj_writer.close()
+        if perception_writer is not None:
+            perception_writer.close()
 
         actual_len = float(np.sum(np.linalg.norm(np.diff(np.array(traj), axis=0), axis=1))) if len(traj) > 1 else 0.0
         prog_ratio = float(np.clip(s_prog / max(1e-3, ref_len), 0.0, 1.0))
@@ -973,7 +1122,9 @@ def main() -> int:  # noqa: C901
             "d_min_m": round(min_d_annot, 2),
             "d_final_m": round(float(min_d_vision if had_vision_lock else d_annot), 2),
             "d_min_vision_m": round(float(min_d_vision), 2) if had_vision_lock else None,
+            "d_min_measured_m": round(float(min_d_measured), 2) if np.isfinite(min_d_measured) else None,
             "d_final_vision_m": round(float(d_final_vision), 2) if had_vision_lock else None,
+            "gt_goal_world": [round(float(x), 2) for x in annot_goal] if args.gt_nearest_scene_object else None,
             "goal_closure": round(goal_closure, 4),
             "arrived": arrived,
             "arrived_vision": bool(arrived and had_vision_lock and steps_fallback == 0),
@@ -1045,6 +1196,9 @@ def main() -> int:  # noqa: C901
             "tracker_inflate_alpha": float(args.tracker_inflate_alpha),
             "car_width_m": float(args.car_width_m),
             "bbox_depth_fuse": bool(args.bbox_depth_fuse),
+            "perception_log": bool(args.perception_log),
+            "gt_nearest_scene_object": bool(args.gt_nearest_scene_object),
+            "gt_scene_pattern": str(args.gt_scene_pattern),
             "yolo_conf": float(args.yolo_conf),
             "fanout_rgb": use_fanout,
             "capture_w": int(args.capture_w),
