@@ -14,9 +14,10 @@
 
 | 项 | 状态 |
 |----|------|
-| 分支 `project/phase2-vgoal` | **已建**（起自 tag + vgoal eval 脚本） |
+| 分支 `project/phase2-vgoal` | **已推** `github` + `origin`（125 bare） |
 | RUNBOOK / 模块 README | **已写** |
-| V1 全 16 路 vgoal eval | **待跑**（125/4090） |
+| 125 手递 | [`WAM_PHASE2_VGOAL_125_PROMPT.md`](WAM_PHASE2_VGOAL_125_PROMPT.md) |
+| V1 短探针 / 全 16 路 | **待 125**（Mac SSH 需 Cloudflare 登录，未能远程启动） |
 | V2 几何 vs vgoal 对照 | **待 V1** |
 | YOLO 替换 GT 检测器 | **未开始** |
 
