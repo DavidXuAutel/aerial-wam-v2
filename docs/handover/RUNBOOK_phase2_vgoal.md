@@ -135,6 +135,7 @@ nohup $PYTHON_BIN -u -m experiments.aerial.scripts.wam_vgoal_eval \
   --annotation experiments/aerial/phase2-vgoal/airsim16_car_spawn_probe.json \
   --routes 0,1,2,3 \
   --capture-w 640 --capture-h 480 --fanout-rgb \
+  --yolo-conf 0.2 --search-z-hold-mode auto \
   --cruise-speed 10.0 --tti-coeff 2.5 \
   --max-steps 400 \
   --planner --planner-horizon 5 \
@@ -165,7 +166,13 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
 | `--capture-w/h` | 640×480 | AirSim 原生采集（fan-out 前） |
 | `--fanout-rgb` | **ON** | `rgb_yolo`/`rgb_vio` 原生 · `rgb`→224 WAM |
 | `--wam-encode-size` | 224 | π/WM 分支 |
-| `--search-fwd-speed` | **cruise** | SEARCHING 前进 (m/step)；默认 `cruise_speed/step_hz`，与 TRACKING 同上限 |
+| `--search-fwd-speed` | **0.2** slow | SEARCHING 前进 (m/step)；`--search-at-cruise` 才用 cs |
+| `--search-z-hold-mode` | **auto** | 定高：spawn z 夹在 20–40 m；`off` 关闭 |
+| `--search-z-gain` | 1.0 | 定高 P 增益 |
+| `--visual-toward-g` | **ON** | TRACKING：视觉 `G` → `TowardGoalIntent` → π |
+| `--toward-g-r-m` | 25 | 视觉 G 裁剪半径 (m) |
+| `--tracker-min-confidence` | yolo_conf | 与 YOLO 对齐（默认 `max(0.15, min(0.5, yolo_conf))`） |
+| `--yolo-conf` | 0.25 | YOLO 检测阈值 |
 | `--search-yaw-rate` | 0.314 | SEARCHING 偏航 (rad/step) |
 | `--fallback-toward-g` | **OFF** | 消融：SEARCHING 时几何 toward_g |
 | `--detector gt` | — | **仅 debug**，非产品路径 |

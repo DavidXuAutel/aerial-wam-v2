@@ -8,8 +8,9 @@ Product stack (no GT world-goal control by default):
     → goal_rel → LatentActorDeployPolicy + ImaginationPlanner
     → ThreeZoneSpeedShield → env.step
 
-SEARCHING: active scan (slow forward + yaw). ``--fallback-toward-g`` is
-opt-in ablation only — default is pure vision / search.
+SEARCHING: slow forward + yaw scan with optional z-hold (spawn z clipped 20–40 m).
+TRACKING/APPROACH: visual ``G`` → ``TowardGoalIntent`` clip → π/planner (Phase-2
+toward_g shell). ``--fallback-toward-g`` is opt-in ablation only.
 
 Ckpt defaults match Phase-2 close (E2 toward_g · tti=2.5 · long routes).
 """
@@ -52,6 +53,36 @@ def _select_route_indices(n_available: int, episodes: int, routes_arg: Optional[
     if len(set(idxs)) != len(idxs):
         raise SystemExit(f"--routes has duplicates: {idxs}")
     return idxs
+
+
+def _resolve_search_fwd_step(
+    search_fwd_speed: Optional[float],
+    *,
+    search_at_cruise: bool,
+    vx_max_step: float,
+    slow_default: float = 0.2,
+) -> float:
+    if search_fwd_speed is not None:
+        return float(search_fwd_speed)
+    if search_at_cruise:
+        return float(vx_max_step)
+    return float(slow_default)
+
+
+def _episode_search_z_hold(
+    start_z: float,
+    *,
+    mode: str,
+    hold_m: Optional[float],
+    z_min: float,
+    z_max: float,
+) -> Optional[float]:
+    if str(mode).lower() == "off":
+        return None
+    if hold_m is not None:
+        return float(hold_m)
+    # auto: hold spawn altitude, clipped to outdoor search band
+    return float(np.clip(float(start_z), float(z_min), float(z_max)))
 
 
 def _body_to_world(pos: np.ndarray, yaw: float, g_rel: np.ndarray) -> np.ndarray:
@@ -369,7 +400,7 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--target-class", default="car", help="YOLO COCO class filter")
     parser.add_argument("--visual-prompt", default=None, help="Open-vocab prompt (open_vocab detector)")
     parser.add_argument("--yolo-model", default="yolov8n.pt")
-    parser.add_argument("--yolo-conf", type=float, default=0.4)
+    parser.add_argument("--yolo-conf", type=float, default=0.25)
     parser.add_argument("--yolo-imgsz", type=int, default=640)
     parser.add_argument("--yolo-device", default="cuda")
     parser.add_argument("--prefer-nearest-target", action="store_true", default=True)
@@ -377,9 +408,47 @@ def main() -> int:  # noqa: C901
         "--search-fwd-speed",
         type=float,
         default=None,
-        help="SEARCHING forward m/step; default uses cruise_speed/step_hz (same cap as TRACKING)",
+        help="SEARCHING forward m/step; default 0.2 (slow scan) unless --search-at-cruise",
+    )
+    parser.add_argument(
+        "--search-at-cruise",
+        action="store_true",
+        help="SEARCHING uses cruise_speed/step_hz forward (default: slow 0.2 m/step)",
     )
     parser.add_argument("--search-yaw-rate", type=float, default=0.314)
+    parser.add_argument(
+        "--search-z-hold-mode",
+        choices=("auto", "off"),
+        default="auto",
+        help="SEARCHING altitude hold: auto clips spawn z to [--search-z-min, --search-z-max]",
+    )
+    parser.add_argument("--search-z-hold-m", type=float, default=None, help="Fixed SEARCHING z (m); overrides auto")
+    parser.add_argument("--search-z-min", type=float, default=20.0)
+    parser.add_argument("--search-z-max", type=float, default=40.0)
+    parser.add_argument(
+        "--search-z-gain",
+        type=float,
+        default=1.0,
+        help="SEARCHING z-hold P gain: dz_step ~= gain * (z_hold - z) clipped per step",
+    )
+    parser.add_argument(
+        "--toward-g-r-m",
+        type=float,
+        default=25.0,
+        help="Visual G TowardGoalIntent clip radius (m)",
+    )
+    parser.add_argument(
+        "--visual-toward-g",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="TRACKING: clip visual target through TowardGoalIntent before π (default ON)",
+    )
+    parser.add_argument(
+        "--tracker-min-confidence",
+        type=float,
+        default=None,
+        help="TargetTracker lock threshold; default aligns with --yolo-conf (cap 0.5)",
+    )
     parser.add_argument(
         "--fallback-toward-g",
         action="store_true",
@@ -471,7 +540,21 @@ def main() -> int:  # noqa: C901
         [vx_max_step, float(phys_limits[1]), float(phys_limits[2]), float(phys_limits[3])],
         dtype=np.float64,
     )
-    search_fwd_step = float(args.search_fwd_speed) if args.search_fwd_speed is not None else vx_max_step
+    search_fwd_step = _resolve_search_fwd_step(
+        args.search_fwd_speed,
+        search_at_cruise=bool(args.search_at_cruise),
+        vx_max_step=vx_max_step,
+    )
+    search_fwd_label = (
+        "override"
+        if args.search_fwd_speed is not None
+        else ("cruise" if args.search_at_cruise else "slow")
+    )
+    tracker_min_conf = (
+        float(args.tracker_min_confidence)
+        if args.tracker_min_confidence is not None
+        else float(max(0.15, min(0.5, float(args.yolo_conf))))
+    )
 
     reward_cfg = RewardConfig(**(cfg.get("reward") or {}))
     reward_cfg.success_dist_m = float(args.success_dist)
@@ -509,6 +592,15 @@ def main() -> int:  # noqa: C901
         if args.fallback_toward_g
         else None
     )
+    visual_intent = (
+        TowardGoalIntent(
+            r_m=float(args.toward_g_r_m),
+            mode="toward_g",
+            cruise_speed=float(args.cruise_speed),
+        )
+        if args.visual_toward_g
+        else None
+    )
 
     det_w = int(args.capture_w)
     det_h = int(args.capture_h)
@@ -517,18 +609,19 @@ def main() -> int:  # noqa: C901
         success_dist_m=float(args.success_dist),
         max_occlusion_s=float(args.tracker_max_occlusion_s),
         ema_alpha=float(args.tracker_ema_alpha),
-        min_confidence=0.5,
+        min_confidence=tracker_min_conf,
     )
     detector = _build_detector(args, vgoal_repo)
 
     visual_prompt = str(args.visual_prompt or args.target_class or "car")
     logger.info(
         "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s "
-        "fanout=%s capture=%dx%d wam=%d search_fwd=%.3f(%s) yaw=%.2f",
+        "fanout=%s capture=%dx%d wam=%d search_fwd=%.3f(%s) yaw=%.2f "
+        "z_hold=%s visual_toward_g=%s tracker_conf=%.2f yolo_conf=%.2f",
         n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
         use_fanout, int(args.capture_w), int(args.capture_h), int(args.wam_encode_size),
-        search_fwd_step, "cruise" if args.search_fwd_speed is None else "override",
-        args.search_yaw_rate,
+        search_fwd_step, search_fwd_label, args.search_yaw_rate,
+        args.search_z_hold_mode, bool(args.visual_toward_g), tracker_min_conf, args.yolo_conf,
     )
 
     results: List[Dict[str, Any]] = []
@@ -551,6 +644,15 @@ def main() -> int:  # noqa: C901
             planner.reset()
         if fallback_intent is not None:
             fallback_intent.reset()
+        if visual_intent is not None:
+            visual_intent.reset()
+        ep_z_hold = _episode_search_z_hold(
+            float(start_pos[2]),
+            mode=str(args.search_z_hold_mode),
+            hold_m=args.search_z_hold_m,
+            z_min=float(args.search_z_min),
+            z_max=float(args.search_z_max),
+        )
         tracker = TargetTracker(tracker_cfg)
         if hasattr(detector, "set_goal"):
             detector.set_goal(annot_goal)
@@ -694,22 +796,36 @@ def main() -> int:  # noqa: C901
 
             phys = body_delta_limits(dt_step)
             if vstep.search_action is not None:
+                search_action = np.asarray(vstep.search_action, dtype=np.float64).copy()
+                if ep_z_hold is not None:
+                    z_err = float(ep_z_hold) - float(p_curr[2])
+                    search_action[2] = float(
+                        np.clip(z_err * float(args.search_z_gain), -float(phys[2]), float(phys[2]))
+                    )
                 vx_step_limit = float(min(float(args.cruise_speed) / float(args.step_hz), float(phys[0])))
                 search_limits = np.array(
                     [vx_step_limit, float(phys[1]), float(phys[2]), float(phys[3])],
                     dtype=np.float64,
                 )
-                action = clip_body_delta(vstep.search_action, search_limits)
+                action = clip_body_delta(search_action, search_limits)
                 g_rel_body = np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float64)
                 target_world = p_curr + np.array([1.0, 0.0, 0.0])
                 wm_out = None
             else:
                 assert vstep.goal_rel is not None and vstep.target_world is not None
-                g_rel_body = np.asarray(vstep.goal_rel, dtype=np.float64)
-                target_world = np.asarray(vstep.target_world, dtype=np.float64)
-                rem_dist = float(g_rel_body[3]) if g_rel_body[3] > 0 else float(np.linalg.norm(g_rel_body[:3]))
-                safe_v = float(args.cruise_speed)
-                if vstep.using_fallback and fallback_intent is not None:
+                g_vis = np.asarray(vstep.target_world, dtype=np.float64)
+                if vstep.using_vision and visual_intent is not None:
+                    g_rel_body, s_info = visual_intent.compute(
+                        curr_pos=p_curr,
+                        curr_yaw=curr_yaw,
+                        goal=g_vis,
+                        d_fwd_hat=obs.info.get("depth_min_pred"),
+                    )
+                    target_world = np.array(s_info["target_world"], dtype=np.float64)
+                    safe_v = float(s_info.get("safe_speed_limit", args.cruise_speed))
+                else:
+                    g_rel_body = np.asarray(vstep.goal_rel, dtype=np.float64)
+                    target_world = g_vis
                     safe_v = float(args.cruise_speed)
                 vx_step_limit = float(min(safe_v / float(args.step_hz), float(phys[0])))
                 cur_limits = np.array([vx_step_limit, float(phys[1]), float(phys[2]), float(phys[3])], dtype=np.float64)
@@ -859,8 +975,16 @@ def main() -> int:  # noqa: C901
             "yolo_model": args.yolo_model,
             "fallback_toward_g": bool(args.fallback_toward_g),
             "search_fwd_speed": search_fwd_step,
-            "search_fwd_from_cruise": args.search_fwd_speed is None,
+            "search_fwd_mode": search_fwd_label,
             "search_yaw_rate": args.search_yaw_rate,
+            "search_z_hold_mode": args.search_z_hold_mode,
+            "search_z_min": float(args.search_z_min),
+            "search_z_max": float(args.search_z_max),
+            "search_z_gain": float(args.search_z_gain),
+            "visual_toward_g": bool(args.visual_toward_g),
+            "toward_g_r_m": float(args.toward_g_r_m),
+            "tracker_min_confidence": tracker_min_conf,
+            "yolo_conf": float(args.yolo_conf),
             "fanout_rgb": use_fanout,
             "capture_w": int(args.capture_w),
             "capture_h": int(args.capture_h),
