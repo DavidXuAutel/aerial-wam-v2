@@ -97,6 +97,7 @@ def main() -> int:
     env_cfg["backend"] = "airsim"
     env_cfg["step_hz"] = float(args.step_hz)
     env_cfg["grab_depth"] = False
+    env_cfg["health_check"] = False
     env_cfg["fanout_rgb"] = bool(args.fanout_rgb)
     env_cfg["width"] = int(args.capture_w)
     env_cfg["height"] = int(args.capture_h)
@@ -128,7 +129,25 @@ def main() -> int:
                 "yaw": [spawn_yaw, spawn_yaw],
                 "gpt_instruction": r_info.get("gpt_instruction", ""),
             }
-            obs = env.reset(ep_dict)
+            try:
+                obs = env.reset(ep_dict)
+            except Exception as exc:
+                logger.warning("route %d yaw_off=%.1f° reset failed: %s", ep_idx, math.degrees(yaw_off), exc)
+                results.append({
+                    "route_idx": ep_idx,
+                    "route_id": r_info.get("route_id"),
+                    "source": r_info.get("source"),
+                    "start_pos": start_pos.tolist(),
+                    "yaw_rad": spawn_yaw,
+                    "yaw_off_deg": math.degrees(yaw_off),
+                    "spawn_err_m": None,
+                    "hit": False,
+                    "n_detections": 0,
+                    "confidence": 0.0,
+                    "snapshot": None,
+                    "reset_error": str(exc),
+                })
+                continue
             p_curr = np.array(obs.position, dtype=np.float64)
             spawn_err = float(np.linalg.norm(p_curr - start_pos))
             if spawn_err > float(args.spawn_tol_m):
