@@ -189,6 +189,9 @@ def _raw_perception_record(
     *,
     object_width_m: float,
     det_conf: float,
+    near_bbox_px: float = 20.0,
+    near_prior_dist_m: float = 25.0,
+    bbox_prior_near: bool = True,
 ) -> Dict[str, Any]:
     from vgoal.geometry import bbox_forward_depth_prior, extract_target_depth, fuse_target_depth
 
@@ -213,7 +216,14 @@ def _raw_perception_record(
     if depth_map is not None:
         dp = extract_target_depth(depth_map, bb, src_shape=src_shape)
         db = bbox_forward_depth_prior(bb, intrinsics, src_shape=src_shape, object_width_m=object_width_m)
-        df = fuse_target_depth(dp, db, bb[2] - bb[0])
+        df = fuse_target_depth(
+            dp,
+            db,
+            bb[2] - bb[0],
+            near_bbox_px=near_bbox_px,
+            near_prior_dist_m=near_prior_dist_m,
+            bbox_prior_near=bbox_prior_near,
+        )
         if np.isfinite(dp):
             rec["d_patch_m"] = round(float(dp), 3)
         if np.isfinite(db):
@@ -313,6 +323,9 @@ def _det_to_goal_rel(
     *,
     object_width_m: float = 2.0,
     fuse_bbox_depth: bool = True,
+    near_bbox_px: float = 20.0,
+    near_prior_dist_m: float = 25.0,
+    bbox_prior_near: bool = True,
 ) -> Optional[np.ndarray]:
     from vgoal.geometry import bbox_to_goal_rel
 
@@ -334,6 +347,9 @@ def _det_to_goal_rel(
         src_shape=src_shape,
         object_width_m=object_width_m,
         fuse_bbox_depth=fuse_bbox_depth,
+        near_bbox_px=near_bbox_px,
+        near_prior_dist_m=near_prior_dist_m,
+        bbox_prior_near=bbox_prior_near,
     )
     if gr is None:
         return None
@@ -361,6 +377,9 @@ def _vision_step(
     camera_fov_deg: float,
     object_width_m: float = 2.0,
     fuse_bbox_depth: bool = True,
+    near_bbox_px: float = 20.0,
+    near_prior_dist_m: float = 25.0,
+    bbox_prior_near: bool = True,
 ) -> VisionStepResult:
     from vgoal.geometry import CameraIntrinsics
     from vgoal.tracker import TargetState
@@ -393,6 +412,9 @@ def _vision_step(
                 (det_w, det_h),
                 object_width_m=object_width_m,
                 fuse_bbox_depth=fuse_bbox_depth,
+                near_bbox_px=near_bbox_px,
+                near_prior_dist_m=near_prior_dist_m,
+                bbox_prior_near=bbox_prior_near,
             )
             if gr is None:
                 continue
@@ -414,6 +436,9 @@ def _vision_step(
                 (det_w, det_h),
                 object_width_m=object_width_m,
                 fuse_bbox_depth=fuse_bbox_depth,
+                near_bbox_px=near_bbox_px,
+                near_prior_dist_m=near_prior_dist_m,
+                bbox_prior_near=bbox_prior_near,
             )
             if measured_gr is not None:
                 det_conf = float(det.confidence)
@@ -426,6 +451,9 @@ def _vision_step(
         measured_gr,
         object_width_m=object_width_m,
         det_conf=det_conf,
+        near_bbox_px=near_bbox_px,
+        near_prior_dist_m=near_prior_dist_m,
+        bbox_prior_near=bbox_prior_near,
     )
 
     d_world = pos - prev_pos
@@ -586,6 +614,20 @@ def main() -> int:  # noqa: C901
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Fuse D̂ patch depth with bbox-width prior (default ON)",
+    )
+    parser.add_argument(
+        "--bbox-prior-near",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Near range: min(d_bbox,d_patch) when bbox>=near-px or prior<=near-dist (default ON)",
+    )
+    parser.add_argument("--bbox-near-px", type=float, default=20.0)
+    parser.add_argument("--bbox-near-dist-m", type=float, default=25.0)
+    parser.add_argument(
+        "--tracker-freeze-dist-on-occlude",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="OCCLUDED dead-reckoning cannot inflate range (static target, default ON)",
     )
     parser.add_argument(
         "--detector",
@@ -810,6 +852,7 @@ def main() -> int:  # noqa: C901
         near_ema_alpha=float(args.tracker_near_ema_alpha),
         inflate_reject_m=float(args.tracker_inflate_reject_m),
         inflate_alpha=float(args.tracker_inflate_alpha),
+        freeze_dist_on_occlude=bool(args.tracker_freeze_dist_on_occlude),
     )
     detector = _build_detector(args, vgoal_repo)
 
@@ -818,12 +861,13 @@ def main() -> int:  # noqa: C901
         "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s "
         "fanout=%s capture=%dx%d wam=%d search_fwd=%.3f(%s) yaw=%.2f "
         "z_hold=%s visual_toward_g=%s tracker_conf=%.2f yolo_conf=%.2f "
-        "bbox_fuse=%s car_w=%.1fm near_ema=%.2f",
+        "bbox_fuse=%s prior_near=%s car_w=%.1fm freeze_occ=%s",
         n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
         use_fanout, int(args.capture_w), int(args.capture_h), int(args.wam_encode_size),
         search_fwd_step, search_fwd_label, args.search_yaw_rate,
         args.search_z_hold_mode, bool(args.visual_toward_g), tracker_min_conf, args.yolo_conf,
-        bool(args.bbox_depth_fuse), float(args.car_width_m), float(args.tracker_near_ema_alpha),
+        bool(args.bbox_depth_fuse), bool(args.bbox_prior_near), float(args.car_width_m),
+        bool(args.tracker_freeze_dist_on_occlude),
     )
 
     results: List[Dict[str, Any]] = []
@@ -1001,6 +1045,9 @@ def main() -> int:  # noqa: C901
                 camera_fov_deg=float(args.camera_fov_deg),
                 object_width_m=float(args.car_width_m),
                 fuse_bbox_depth=bool(args.bbox_depth_fuse),
+                near_bbox_px=float(args.bbox_near_px),
+                near_prior_dist_m=float(args.bbox_near_dist_m),
+                bbox_prior_near=bool(args.bbox_prior_near),
             )
             p_prev_tracker = p_curr.copy()
             prev_yaw_tracker = curr_yaw
@@ -1245,6 +1292,10 @@ def main() -> int:  # noqa: C901
             "tracker_inflate_alpha": float(args.tracker_inflate_alpha),
             "car_width_m": float(args.car_width_m),
             "bbox_depth_fuse": bool(args.bbox_depth_fuse),
+            "bbox_prior_near": bool(args.bbox_prior_near),
+            "bbox_near_px": float(args.bbox_near_px),
+            "bbox_near_dist_m": float(args.bbox_near_dist_m),
+            "tracker_freeze_dist_on_occlude": bool(args.tracker_freeze_dist_on_occlude),
             "perception_log": bool(args.perception_log),
             "gt_nearest_scene_object": bool(args.gt_nearest_scene_object),
             "gt_scene_pattern": str(args.gt_scene_pattern),
