@@ -99,6 +99,10 @@ class ImaginationPlanner:
         if callable(set_goal):
             set_goal(goal)
 
+    def reset(self) -> None:
+        """Per-episode hook for eval scripts; planner has no cross-step state today."""
+        return None
+
     def plan(
         self,
         obs: Observation,
