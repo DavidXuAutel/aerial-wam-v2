@@ -23,6 +23,7 @@ import logging
 import math
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -111,34 +112,67 @@ def _nearest_scene_object_goal(
     env: Any,
     pos: np.ndarray,
     *,
+    yaw: float = 0.0,
     pattern: str = "Cart.*",
     max_dist_m: float = 250.0,
+    fov_deg: float = 80.0,
+    min_fwd_m: float = 3.0,
 ) -> Optional[np.ndarray]:
-    """Resolve a static scene object pose from AirSim (GT smoke / car probe)."""
+    """Pick nearest scene object inside the forward camera cone (GT smoke)."""
     connect = getattr(env, "_connect", None)
     if not callable(connect):
         return None
-    try:
-        client = connect()
-        names = client.simListSceneObjects(str(pattern))
-    except Exception as exc:
-        logger.warning("gt scene goal lookup failed: %s", exc)
-        return None
+    names: List[str] = []
+    for attempt in range(3):
+        try:
+            client = connect()
+            names = list(client.simListSceneObjects(str(pattern)) or [])
+            if names:
+                break
+        except Exception as exc:
+            logger.warning("gt scene list attempt %d failed: %s", attempt + 1, exc)
+        if attempt < 2:
+            time.sleep(0.25)
     if not names:
         return None
+
+    half_fov = math.radians(float(max(10.0, fov_deg)) * 0.5)
+    c_yaw, s_yaw = math.cos(float(yaw)), math.sin(float(yaw))
+    pos_xy = np.asarray(pos[:2], dtype=np.float64)
     best_goal: Optional[np.ndarray] = None
     best_dist = float(max_dist_m)
-    pos_xy = np.asarray(pos[:2], dtype=np.float64)
+    best_name: Optional[str] = None
+    client = connect()
     for name in names:
         try:
             pose = client.simGetObjectPose(name)
         except Exception:
             continue
         goal = np.array([pose.position.x_val, pose.position.y_val, pose.position.z_val], dtype=np.float64)
+        d_world = goal - np.asarray(pos, dtype=np.float64).reshape(3)
+        d_fwd = float(c_yaw * d_world[0] + s_yaw * d_world[1])
+        d_left = float(-s_yaw * d_world[0] + c_yaw * d_world[1])
+        if d_fwd < float(min_fwd_m):
+            continue
+        bearing = math.atan2(d_left, d_fwd)
+        if abs(bearing) > half_fov:
+            continue
         horiz = float(np.linalg.norm(goal[:2] - pos_xy))
         if horiz < best_dist:
             best_dist = horiz
             best_goal = goal
+            best_name = str(name)
+    if best_goal is not None and best_name is not None:
+        logger.info(
+            "GT scene pick %s bearing=%.1f° fwd=%.1fm horiz=%.1fm",
+            best_name,
+            math.degrees(math.atan2(
+                float(-s_yaw * (best_goal[0] - pos[0]) + c_yaw * (best_goal[1] - pos[1])),
+                float(c_yaw * (best_goal[0] - pos[0]) + s_yaw * (best_goal[1] - pos[1])),
+            )),
+            float(c_yaw * (best_goal[0] - pos[0]) + s_yaw * (best_goal[1] - pos[1])),
+            best_dist,
+        )
     return best_goal
 
 
@@ -503,6 +537,13 @@ def main() -> int:  # noqa: C901
     )
     parser.add_argument("--gt-scene-pattern", default="Cart.*")
     parser.add_argument("--gt-scene-max-dist-m", type=float, default=250.0)
+    parser.add_argument(
+        "--gt-scene-fov-deg",
+        type=float,
+        default=None,
+        help="Forward cone for GT object pick (default: --camera-fov-deg)",
+    )
+    parser.add_argument("--gt-scene-min-fwd-m", type=float, default=3.0)
     parser.add_argument("--vgoal-repo", default=os.path.expanduser("~/Projects/aerial-vgoal-wam"))
     parser.add_argument("--camera-fov-deg", type=float, default=80.0)
     parser.add_argument(
@@ -825,11 +866,19 @@ def main() -> int:  # noqa: C901
         p_curr = np.array(obs.position, dtype=np.float64)
         curr_yaw = float(obs.yaw) if hasattr(obs, "yaw") else 0.0
         if bool(args.gt_nearest_scene_object) and str(args.detector).lower() == "gt":
+            gt_fov = (
+                float(args.gt_scene_fov_deg)
+                if args.gt_scene_fov_deg is not None
+                else float(args.camera_fov_deg)
+            )
             resolved = _nearest_scene_object_goal(
                 env,
                 p_curr,
+                yaw=curr_yaw,
                 pattern=str(args.gt_scene_pattern),
                 max_dist_m=float(args.gt_scene_max_dist_m),
+                fov_deg=gt_fov,
+                min_fwd_m=float(args.gt_scene_min_fwd_m),
             )
             if resolved is not None:
                 annot_goal = np.asarray(resolved, dtype=np.float64)
@@ -1199,6 +1248,8 @@ def main() -> int:  # noqa: C901
             "perception_log": bool(args.perception_log),
             "gt_nearest_scene_object": bool(args.gt_nearest_scene_object),
             "gt_scene_pattern": str(args.gt_scene_pattern),
+            "gt_scene_fov_deg": float(args.gt_scene_fov_deg or args.camera_fov_deg),
+            "gt_scene_min_fwd_m": float(args.gt_scene_min_fwd_m),
             "yolo_conf": float(args.yolo_conf),
             "fanout_rgb": use_fanout,
             "capture_w": int(args.capture_w),
