@@ -85,8 +85,8 @@ def _build_detector(args: argparse.Namespace, vgoal_repo: Path) -> Any:
         logger.warning("--detector gt is DEBUG ONLY — not valid for product eval")
         return _GroundTruthDetector(
             fov_deg=float(args.camera_fov_deg),
-            img_w=int(args.img_w),
-            img_h=int(args.img_h),
+            img_w=int(args.capture_w),
+            img_h=int(args.capture_h),
         )
     if kind in ("open_vocab", "semantic"):
         prompt = str(args.visual_prompt or args.target_class or "car")
@@ -339,8 +339,25 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--traj-out", default=None)
     parser.add_argument("--vgoal-repo", default=os.path.expanduser("~/Projects/aerial-vgoal-wam"))
     parser.add_argument("--camera-fov-deg", type=float, default=80.0)
-    parser.add_argument("--img-w", type=int, default=224)
-    parser.add_argument("--img-h", type=int, default=224)
+    parser.add_argument(
+        "--capture-w",
+        type=int,
+        default=int(os.environ.get("AERIAL_CAPTURE_W", os.environ.get("INDOOR_CAPTURE_W", "640"))),
+        help="AirSim CaptureSettings width (native grab before fan-out)",
+    )
+    parser.add_argument(
+        "--capture-h",
+        type=int,
+        default=int(os.environ.get("AERIAL_CAPTURE_H", os.environ.get("INDOOR_CAPTURE_H", "480"))),
+        help="AirSim CaptureSettings height",
+    )
+    parser.add_argument("--wam-encode-size", type=int, default=224)
+    parser.add_argument(
+        "--fanout-rgb",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Single grab → rgb_vio(native) + rgb_yolo(native) + rgb(224 WAM)",
+    )
     parser.add_argument("--tracker-max-occlusion-s", type=float, default=2.0)
     parser.add_argument("--tracker-ema-alpha", type=float, default=0.7)
     parser.add_argument(
@@ -407,6 +424,11 @@ def main() -> int:  # noqa: C901
     env_cfg["backend"] = "mock" if args.mock else "airsim"
     env_cfg["step_hz"] = float(args.step_hz)
     env_cfg["grab_depth"] = True
+    use_fanout = bool(args.fanout_rgb) and str(args.detector).lower() not in ("gt", "mock")
+    env_cfg["fanout_rgb"] = use_fanout
+    env_cfg["width"] = int(args.capture_w)
+    env_cfg["height"] = int(args.capture_h)
+    env_cfg["wam_encode_size"] = int(args.wam_encode_size)
     env = _build_env(env_cfg)
 
     wm_cfg = cfg.get("world_model") or {}
@@ -482,7 +504,9 @@ def main() -> int:  # noqa: C901
         else None
     )
 
-    intrinsics = CameraIntrinsics.from_fov(args.camera_fov_deg, width=args.img_w, height=args.img_h)
+    det_w = int(args.capture_w)
+    det_h = int(args.capture_h)
+    intrinsics = CameraIntrinsics.from_fov(args.camera_fov_deg, width=det_w, height=det_h)
     tracker_cfg = TrackerConfig(
         success_dist_m=float(args.success_dist),
         max_occlusion_s=float(args.tracker_max_occlusion_s),
@@ -493,8 +517,10 @@ def main() -> int:  # noqa: C901
 
     visual_prompt = str(args.visual_prompt or args.target_class or "car")
     logger.info(
-        "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s search_fwd=%.2f yaw=%.2f",
+        "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s "
+        "fanout=%s capture=%dx%d wam=%d search_fwd=%.2f yaw=%.2f",
         n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
+        use_fanout, int(args.capture_w), int(args.capture_h), int(args.wam_encode_size),
         args.search_fwd_speed, args.search_yaw_rate,
     )
 
@@ -822,6 +848,10 @@ def main() -> int:  # noqa: C901
             "fallback_toward_g": bool(args.fallback_toward_g),
             "search_fwd_speed": args.search_fwd_speed,
             "search_yaw_rate": args.search_yaw_rate,
+            "fanout_rgb": use_fanout,
+            "capture_w": int(args.capture_w),
+            "capture_h": int(args.capture_h),
+            "wam_encode_size": int(args.wam_encode_size),
         },
         "episodes": results,
     }

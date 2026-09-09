@@ -51,8 +51,12 @@ class AirSimEnvConfig:
     port: int = 41451
     camera: str = "front_custom"
     vehicle: str = "drone_1"
+    # CaptureSettings WH (single camera). With fan-out, native grab is e.g. 640×480;
+    # WAM branch is resized to ``wam_encode_size`` (224).
     width: int = 224
     height: int = 224
+    fanout_rgb: bool = False
+    wam_encode_size: int = 224
     step_hz: float = 30.0
     takeoff_z: float = -3.0            # NED start altitude (climb 3 m)
     health_check: bool = True          # sanity-gate IMU + depth on reset
@@ -71,8 +75,20 @@ class AirSimEnvConfig:
             port=int(os.environ.get("AIRSIM_PORT", cls.port)),
             camera=os.environ.get("AIRSIM_CAMERA", cls.camera),
             vehicle=os.environ.get("AIRSIM_VEHICLE", cls.vehicle),
-            width=int(os.environ.get("L2F_W", cls.width)),
-            height=int(os.environ.get("L2F_H", cls.height)),
+            width=int(
+                os.environ.get(
+                    "L2F_W",
+                    os.environ.get("AERIAL_CAPTURE_W", os.environ.get("INDOOR_CAPTURE_W", cls.width)),
+                )
+            ),
+            height=int(
+                os.environ.get(
+                    "L2F_H",
+                    os.environ.get("AERIAL_CAPTURE_H", os.environ.get("INDOOR_CAPTURE_H", cls.height)),
+                )
+            ),
+            fanout_rgb=os.environ.get("AIRSIM_FANOUT_RGB", "0") not in ("0", "false", "False"),
+            wam_encode_size=int(os.environ.get("WAM_ENCODE_SIZE", cls.wam_encode_size)),
             step_hz=float(os.environ.get("RL_STEP_HZ", cls.step_hz)),
         )
         if overrides:
@@ -234,7 +250,16 @@ class AirSimDroneEnv:
 
     def observe(self, *, force_depth: bool = False) -> Observation:
         client = self._connect()
-        rgb = self._grab_scene(client)
+        capture = self._grab_scene(client)
+        rgb = capture
+        rgb_vio = None
+        rgb_yolo = None
+        if self.config.fanout_rgb:
+            from experiments.aerial.rl.capture_fanout import fanout_rgb
+
+            rgb, rgb_vio, rgb_yolo = fanout_rgb(
+                capture, wam_size=int(self.config.wam_encode_size)
+            )
         # Depth is optional per-step (see ``grab_depth``); force it for the
         # one-shot health check on reset even when per-step grabs are off.
         want_depth = force_depth or self.config.grab_depth
@@ -250,6 +275,8 @@ class AirSimDroneEnv:
             imu=imu,
             t=time.perf_counter() - self._t0,
             info={"goal": None if self._goal is None else self._goal.tolist()},
+            rgb_vio=rgb_vio,
+            rgb_yolo=rgb_yolo,
         )
 
     def observe_state(self) -> np.ndarray:
@@ -297,8 +324,11 @@ class AirSimDroneEnv:
         if img is None:
             raise RuntimeError("empty/undecodable Scene buffer")
         rgb = img[..., ::-1]  # BGR -> RGB
-        if (img.shape[1], img.shape[0]) != (self.config.width, self.config.height):
-            rgb = cv2.resize(rgb, (self.config.width, self.config.height), interpolation=cv2.INTER_LINEAR)
+        if not self.config.fanout_rgb:
+            if (img.shape[1], img.shape[0]) != (self.config.width, self.config.height):
+                rgb = cv2.resize(
+                    rgb, (self.config.width, self.config.height), interpolation=cv2.INTER_LINEAR
+                )
         return np.ascontiguousarray(rgb, dtype=np.uint8)
 
     def _grab_depth(self, client: Any) -> Optional[np.ndarray]:

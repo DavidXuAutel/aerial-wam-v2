@@ -114,10 +114,16 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
 | `--target-class` | `car` | YOLO COCO 类过滤 |
 | `--visual-prompt` | — | 开放词表 prompt |
 | `--vgoal-repo` | `~/Projects/aerial-vgoal-wam` | 兄弟仓路径 |
+| `--capture-w/h` | 640×480 | AirSim 原生采集（fan-out 前） |
+| `--fanout-rgb` | **ON** | `rgb_yolo`/`rgb_vio` 原生 · `rgb`→224 WAM |
+| `--wam-encode-size` | 224 | π/WM 分支 |
 | `--search-fwd-speed` | 0.2 | SEARCHING 前进 (m/step) |
 | `--search-yaw-rate` | 0.314 | SEARCHING 偏航 (rad/step) |
 | `--fallback-toward-g` | **OFF** | 消融：SEARCHING 时几何 toward_g |
 | `--detector gt` | — | **仅 debug**，非产品路径 |
+
+`env_4090.sh` 默认导出 `AIRSIM_FANOUT_RGB=1` · `AERIAL_CAPTURE_W/H=640/480`。
+CaptureSettings 须与 `--capture-w/h` 一致（勿用 224 outdoor settings 跑 YOLO）。
 
 ## 4. 验收阶梯（本 project）
 

@@ -23,6 +23,11 @@ export AIRSIM_PORT="${AIRSIM_PORT:-41451}"
 export AIRSIM_HOST="${AIRSIM_HOST:-127.0.0.1}"
 export AIRSIM_CAMERA=front_custom
 export AIRSIM_VEHICLE=drone_1
+# Single-camera fan-out for vgoal / VIO (native capture → rgb_yolo + rgb_vio; WAM stays 224).
+export AIRSIM_FANOUT_RGB="${AIRSIM_FANOUT_RGB:-1}"
+export AERIAL_CAPTURE_W="${AERIAL_CAPTURE_W:-640}"
+export AERIAL_CAPTURE_H="${AERIAL_CAPTURE_H:-480}"
+export WAM_ENCODE_SIZE="${WAM_ENCODE_SIZE:-224}"
 export ANNOTATION="${ANNOTATION:-$ROOT/artifacts/seen_airsim16_m1a20.json}"
 export AERIAL_PERSIST_ROOT="${AERIAL_PERSIST_ROOT:-$HOME/aerial_airsim_persistent}"
 
