@@ -17,7 +17,8 @@
 | 分支 `project/phase2-vgoal` | **已推** `github` + `origin`（125 bare） |
 | RUNBOOK / 模块 README | **已写** |
 | 125 手递 | [`WAM_PHASE2_VGOAL_125_PROMPT.md`](WAM_PHASE2_VGOAL_125_PROMPT.md) |
-| V1 短探针 / 全 16 路 | **待 125**（Mac SSH 需 Cloudflare 登录，未能远程启动） |
+| V1 短探针（2 路） | **125 运行中** · `logs/wam_vgoal_probe_125_20260909_160653.log` → `artifacts/wam_vgoal_probe_125.json` |
+| V1 全 16 路 | **探针通过后** |
 | V2 几何 vs vgoal 对照 | **待 V1** |
 | YOLO 替换 GT 检测器 | **未开始** |
 
