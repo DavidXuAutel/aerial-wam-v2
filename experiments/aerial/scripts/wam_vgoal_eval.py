@@ -189,7 +189,7 @@ def _vision_step(
     prev_pos: np.ndarray,
     prev_yaw: float,
     dt: float,
-    search_fwd_speed: float,
+    search_fwd_step: float,
     search_yaw_rate: float,
     fallback_intent: Any,
     annot_goal: np.ndarray,
@@ -288,7 +288,7 @@ def _vision_step(
             search_action=None,
         )
 
-    search_action = np.array([search_fwd_speed, 0.0, 0.0, search_yaw_rate], dtype=np.float64)
+    search_action = np.array([search_fwd_step, 0.0, 0.0, search_yaw_rate], dtype=np.float64)
     return VisionStepResult(
         goal_rel=None,
         target_world=None,
@@ -373,7 +373,12 @@ def main() -> int:  # noqa: C901
     parser.add_argument("--yolo-imgsz", type=int, default=640)
     parser.add_argument("--yolo-device", default="cuda")
     parser.add_argument("--prefer-nearest-target", action="store_true", default=True)
-    parser.add_argument("--search-fwd-speed", type=float, default=0.2)
+    parser.add_argument(
+        "--search-fwd-speed",
+        type=float,
+        default=None,
+        help="SEARCHING forward m/step; default uses cruise_speed/step_hz (same cap as TRACKING)",
+    )
     parser.add_argument("--search-yaw-rate", type=float, default=0.314)
     parser.add_argument(
         "--fallback-toward-g",
@@ -466,6 +471,7 @@ def main() -> int:  # noqa: C901
         [vx_max_step, float(phys_limits[1]), float(phys_limits[2]), float(phys_limits[3])],
         dtype=np.float64,
     )
+    search_fwd_step = float(args.search_fwd_speed) if args.search_fwd_speed is not None else vx_max_step
 
     reward_cfg = RewardConfig(**(cfg.get("reward") or {}))
     reward_cfg.success_dist_m = float(args.success_dist)
@@ -518,10 +524,11 @@ def main() -> int:  # noqa: C901
     visual_prompt = str(args.visual_prompt or args.target_class or "car")
     logger.info(
         "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s "
-        "fanout=%s capture=%dx%d wam=%d search_fwd=%.2f yaw=%.2f",
+        "fanout=%s capture=%dx%d wam=%d search_fwd=%.3f(%s) yaw=%.2f",
         n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
         use_fanout, int(args.capture_w), int(args.capture_h), int(args.wam_encode_size),
-        args.search_fwd_speed, args.search_yaw_rate,
+        search_fwd_step, "cruise" if args.search_fwd_speed is None else "override",
+        args.search_yaw_rate,
     )
 
     results: List[Dict[str, Any]] = []
@@ -649,7 +656,7 @@ def main() -> int:  # noqa: C901
                 prev_pos=p_prev_tracker,
                 prev_yaw=prev_yaw_tracker,
                 dt=dt_step,
-                search_fwd_speed=float(args.search_fwd_speed),
+                search_fwd_step=search_fwd_step,
                 search_yaw_rate=float(args.search_yaw_rate),
                 fallback_intent=fallback_intent,
                 annot_goal=annot_goal,
@@ -687,7 +694,12 @@ def main() -> int:  # noqa: C901
 
             phys = body_delta_limits(dt_step)
             if vstep.search_action is not None:
-                action = clip_body_delta(vstep.search_action, action_limits)
+                vx_step_limit = float(min(float(args.cruise_speed) / float(args.step_hz), float(phys[0])))
+                search_limits = np.array(
+                    [vx_step_limit, float(phys[1]), float(phys[2]), float(phys[3])],
+                    dtype=np.float64,
+                )
+                action = clip_body_delta(vstep.search_action, search_limits)
                 g_rel_body = np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float64)
                 target_world = p_curr + np.array([1.0, 0.0, 0.0])
                 wm_out = None
@@ -846,7 +858,8 @@ def main() -> int:  # noqa: C901
             "visual_prompt": visual_prompt,
             "yolo_model": args.yolo_model,
             "fallback_toward_g": bool(args.fallback_toward_g),
-            "search_fwd_speed": args.search_fwd_speed,
+            "search_fwd_speed": search_fwd_step,
+            "search_fwd_from_cruise": args.search_fwd_speed is None,
             "search_yaw_rate": args.search_yaw_rate,
             "fanout_rgb": use_fanout,
             "capture_w": int(args.capture_w),

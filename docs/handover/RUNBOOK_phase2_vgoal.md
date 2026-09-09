@@ -106,6 +106,54 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
 
 短探针：`--episodes 2` 或 `--routes 0,1`
 
+### 3.2b 户外车目标探针（spawn-only · 125）
+
+**问题**：`seen_airsim16_long_routes` 是 200–500 m 导航走廊，YOLO 几乎看不到车（0909 fanout：`det_frac≈0.3%`）。  
+**做法**：室内 pillar 同款——annotation **只定 spawn**，车在场景里已有（`env_airsim_16` 静态车），**不能**代码 spawn 车辆。
+
+**Step 1 — YOLO 可见性快检**（无 π/WM，~30s）：
+
+```bash
+cd ~/aerial-wam-v2 && source experiments/aerial/scripts/env_4090.sh
+python -m experiments.aerial.scripts.vgoal_yolo_spawn_probe \
+  --vgoal-repo ~/aerial-vgoal-wam \
+  --annotation experiments/aerial/phase2-vgoal/airsim16_car_spawn_probe.json \
+  --routes 0,1,2,3 \
+  --yaw-sweep-deg 45 --yaw-step-deg 15 \
+  --out artifacts/yolo_spawn_probe.json
+```
+
+看 `artifacts/yolo_spawn_snapshots/*.jpg` 与 JSON `hit_rate`。若全 miss，在 UE 里飞到路边有车处，记下 pose 写入 JSON（或调 z/yaw）。
+
+**Step 2 — 短程 TRACKING 探针**（`hit_rate>0` 的 spawn 再跑）：
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+nohup $PYTHON_BIN -u -m experiments.aerial.scripts.wam_vgoal_eval \
+  --vgoal-repo ~/aerial-vgoal-wam \
+  --detector yolo --target-class car \
+  --annotation experiments/aerial/phase2-vgoal/airsim16_car_spawn_probe.json \
+  --routes 0,1,2,3 \
+  --capture-w 640 --capture-h 480 --fanout-rgb \
+  --cruise-speed 10.0 --tti-coeff 2.5 \
+  --max-steps 400 \
+  --planner --planner-horizon 5 \
+  --traj-out artifacts/vgoal_traj \
+  --out artifacts/wam_vgoal_car_probe_${TS}.json \
+  > artifacts/wam_vgoal_car_probe_${TS}.log 2>&1 &
+```
+
+**验收**：`det_frac > 10%` 且 `vision_frac > 5%` 才说明视觉栈在工作；再扩到 approach/follow。
+
+**GT 管线烟测**（debug，非产品）：
+
+```bash
+python -m experiments.aerial.scripts.wam_vgoal_eval \
+  --detector gt --routes 0,1 --max-steps 200 \
+  --annotation experiments/aerial/phase2-vgoal/airsim16_car_spawn_probe.json \
+  --out artifacts/wam_vgoal_gt_smoke.json
+```
+
 ### 3.3 关键 CLI
 
 | 参数 | 默认 | 说明 |
@@ -117,7 +165,7 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
 | `--capture-w/h` | 640×480 | AirSim 原生采集（fan-out 前） |
 | `--fanout-rgb` | **ON** | `rgb_yolo`/`rgb_vio` 原生 · `rgb`→224 WAM |
 | `--wam-encode-size` | 224 | π/WM 分支 |
-| `--search-fwd-speed` | 0.2 | SEARCHING 前进 (m/step) |
+| `--search-fwd-speed` | **cruise** | SEARCHING 前进 (m/step)；默认 `cruise_speed/step_hz`，与 TRACKING 同上限 |
 | `--search-yaw-rate` | 0.314 | SEARCHING 偏航 (rad/step) |
 | `--fallback-toward-g` | **OFF** | 消融：SEARCHING 时几何 toward_g |
 | `--detector gt` | — | **仅 debug**，非产品路径 |

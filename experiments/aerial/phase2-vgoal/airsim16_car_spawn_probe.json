@@ -1,0 +1,51 @@
+{
+  "version": "airsim16_car_spawn_probe_v1",
+  "description": "Spawn-only poses for outdoor YOLO car visibility (env_airsim_16). pos[-1] unused; success = YOLO lock at spawn.",
+  "n_routes": 4,
+  "routes": [
+    {
+      "route_id": "car_spawn_r3_start",
+      "route_idx": 0,
+      "source": "seen_airsim16_long_routes route_idx=3 start (fanout 0909: 10 det / 2000 steps)",
+      "pos": [
+        [-1112.809, -346.613, 45.086],
+        [-1112.809, -346.613, 45.086]
+      ],
+      "yaw": [-1.0471975511965979, -1.0471975511965979],
+      "gpt_instruction": "Find and approach the nearest car"
+    },
+    {
+      "route_id": "car_spawn_r1_start",
+      "route_idx": 1,
+      "source": "seen_airsim16_long_routes route_idx=1 start (fanout 0909: 10 det / 2000 steps)",
+      "pos": [
+        [-875.667, -530.09, 83.593],
+        [-875.667, -530.09, 83.593]
+      ],
+      "yaw": [3.141592653589793, 3.141592653589793],
+      "gpt_instruction": "Find and approach the nearest car"
+    },
+    {
+      "route_id": "car_spawn_r3_turn",
+      "route_idx": 2,
+      "source": "long route 3 waypoint near turn (-1082, -399)",
+      "pos": [
+        [-1082.476, -399.152, 45.086],
+        [-1082.476, -399.152, 45.086]
+      ],
+      "yaw": [-1.0471975511965979, -1.0471975511965979],
+      "gpt_instruction": "Find and approach the nearest car"
+    },
+    {
+      "route_id": "car_spawn_r1_low",
+      "route_idx": 3,
+      "source": "route 1 start lowered to z=25 (road-level probe; tune after spawn sweep)",
+      "pos": [
+        [-875.667, -530.09, 25.0],
+        [-875.667, -530.09, 25.0]
+      ],
+      "yaw": [3.141592653589793, 3.141592653589793],
+      "gpt_instruction": "Find and approach the nearest car"
+    }
+  ]
+}
