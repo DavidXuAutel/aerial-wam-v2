@@ -56,7 +56,7 @@ def main() -> int:
     parser.add_argument("--target-class", default="car")
     parser.add_argument("--visual-prompt", default=None)
     parser.add_argument("--yolo-model", default="yolov8n.pt")
-    parser.add_argument("--yolo-conf", type=float, default=0.25)
+    parser.add_argument("--yolo-conf", type=float, default=0.15)
     parser.add_argument("--yolo-imgsz", type=int, default=640)
     parser.add_argument("--yolo-device", default="cuda")
     parser.add_argument("--capture-w", type=int, default=640)
