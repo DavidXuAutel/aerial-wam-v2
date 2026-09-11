@@ -144,8 +144,12 @@ python -m experiments.aerial.scripts.wam_vgoal_deploy \
 ### Stage 4 — MAVLink 控制台架（OFFBOARD · disarmed）
 
 ```bash
-python -m experiments.aerial.scripts.wam_vgoal_deploy \
-  --mock-camera --offboard
+# 默认即 dry-run：只连 MAVLink + 零速 setpoint 流，不进 OFFBOARD
+python -m experiments.aerial.scripts.pixhawk_offboard_hover --port /dev/ttyACM0
+
+# 进 OFFBOARD（仍 disarmed）
+python -m experiments.aerial.scripts.pixhawk_offboard_hover \
+  --port /dev/ttyACM0 --offboard --warmup-s 5
 ```
 
 验证 PX4 收到零速 setpoint；桨叶仍 off。

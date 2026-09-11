@@ -221,6 +221,13 @@ class MavlinkBridge:
     def set_mode_offboard(self) -> None:
         if self._mav is None:
             raise RuntimeError("not connected")
+        mapping = getattr(self._mav, "mode_mapping_px4", None)
+        if callable(mapping):
+            px4_modes = mapping()
+            mode_id = px4_modes.get("OFFBOARD") if px4_modes else None
+            if mode_id is not None:
+                self._mav.set_mode(mode_id)
+                return
         self._mav.set_mode("OFFBOARD")
 
     def disarm(self) -> None:
