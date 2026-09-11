@@ -26,6 +26,10 @@ gpu = [
 airsim = [
   "airsim>=1.8",
 ]
+deploy = [
+  "pymavlink>=2.4",
+  "pyserial>=3.5",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

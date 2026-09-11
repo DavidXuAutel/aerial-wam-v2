@@ -128,7 +128,7 @@ python -m experiments.aerial.scripts.wam_vgoal_deploy \
   --vgoal-repo ~/Projects/aerial-vgoal-wam
 ```
 
-（若 Orin 上尚无 `wam_vgoal_deploy.py`，从 Mac rsync 或 `git pull` 同步。）
+入口脚本已合入本仓：`experiments/aerial/scripts/wam_vgoal_deploy.py`。
 
 ### Stage 3 — 感知台架（桨叶 off）
 

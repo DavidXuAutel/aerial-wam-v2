@@ -39,9 +39,19 @@ experiments/aerial/phase2-vgoal/
 experiments/aerial/scripts/
 ├── wam_phase2_long_eval.py      # 几何主臂（继承 phase2-pass）
 ├── wam_vgoal_eval.py            # 视觉目标臂（M1–M4）
+├── wam_vgoal_deploy.py          # Orin + Pixhawk 真机 deploy
+├── camera_yolo_probe.py         # C922 + YOLO 单帧探针
+├── pixhawk_offboard_hover.py    # MAVLink / OFFBOARD 烟测
 ├── vgoal_area_search.py         # M3 AreaSearchPlanner 接线
 ├── vgoal_dynamic_follow.py      # M4 DynamicTargetTracker 接线
 └── vgoal_red_car_*.py           # archived 旁线（sim 红车，勿再投入）
+
+experiments/aerial/deploy/
+└── real_camera.py               # V4L2 / C922 采集
+
+experiments/aerial/rl/env/
+├── mavlink_bridge.py            # PX4 MAVLink 速度 setpoint
+└── pixhawk_env.py               # 真机 env（对齐 AirSim 合同）
 ```
 
 ## 冻结基线
