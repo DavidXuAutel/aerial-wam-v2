@@ -40,6 +40,7 @@ experiments/aerial/scripts/
 ├── wam_phase2_long_eval.py      # 几何主臂（继承 phase2-pass）
 ├── wam_vgoal_eval.py            # 视觉目标臂（M1–M4）
 ├── wam_vgoal_deploy.py          # Orin + Pixhawk 真机 deploy
+├── c922_setup.py                # C922 v4l2 preset + 对焦扫描
 ├── camera_yolo_probe.py         # C922 + YOLO 单帧探针
 ├── pixhawk_offboard_hover.py    # MAVLink / OFFBOARD 烟测
 ├── vgoal_area_search.py         # M3 AreaSearchPlanner 接线

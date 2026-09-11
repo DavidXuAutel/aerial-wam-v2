@@ -89,16 +89,27 @@ ssh yao@10.229.66.164
 
 ## 3. C922 采集 preset（台架）
 
-每次采集前在 Orin 上执行：
+**推荐**：用固化脚本（`RealCamera` 打开时也会自动应用 `outdoor_bench` preset）：
 
 ```bash
-v4l2-ctl -d /dev/video2 --set-ctrl=focus_automatic_continuous=0
-v4l2-ctl -d /dev/video2 --set-ctrl=focus_absolute=0      # 近景；远景需扫焦
-v4l2-ctl -d /dev/video2 --set-ctrl=auto_exposure=1
-v4l2-ctl -d /dev/video2 --set-ctrl=exposure_time_absolute=20   # 外景；暗场景试 40–120
-v4l2-ctl -d /dev/video2 --set-ctrl=brightness=90
-v4l2-ctl -d /dev/video2 --set-ctrl=gain=0
+cd ~/aerial-wam-v2 && source ~/sim_verify/.venv/bin/activate
+
+# 应用默认 outdoor_bench preset（C922 = /dev/video2）
+python -m experiments.aerial.scripts.c922_setup --device 2 --show
+
+# 对焦不准时：扫焦 + 存快照
+python -m experiments.aerial.scripts.c922_setup \
+  --device 2 --focus-sweep --snapshot ~/c922_snap.jpg
+
+# 列出全部 preset
+python -m experiments.aerial.scripts.c922_setup --list-presets
 ```
+
+| Preset | 用途 |
+|--------|------|
+| `outdoor_bench` | 默认：24F 前视楼群台架（exp=20, bright=110, focus=0） |
+| `outdoor_dim` | 偏暗场景（exp=80） |
+| `outdoor_bright` | 过曝场景（exp=15, bright=90） |
 
 推荐台架参数：`640×480` MJPEG → WAM 内部缩 224。  
 1080p 采集可在真机协议稳定后再对齐 `capture_config.py` 默认。

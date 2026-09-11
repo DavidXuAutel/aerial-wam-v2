@@ -24,6 +24,8 @@ class RealCameraConfig:
     fourcc: str = "MJPG"
     warmup_frames: int = 3
     fisheye_calib: Optional[str] = None
+    # Apply C922 v4l2 preset before open (None = skip). Orin C922 default: outdoor_bench.
+    v4l2_preset: Optional[str] = "outdoor_bench"
 
 
 def _fourcc_to_int(fourcc: str) -> int:
@@ -53,6 +55,11 @@ class RealCamera:
         import sys
 
         import cv2  # type: ignore
+
+        if self.config.v4l2_preset:
+            from experiments.aerial.deploy.c922_controls import apply_preset
+
+            apply_preset(self.config.device, self.config.v4l2_preset)
 
         dev = self.config.device
         backend = cv2.CAP_V4L2 if sys.platform.startswith("linux") else cv2.CAP_ANY
