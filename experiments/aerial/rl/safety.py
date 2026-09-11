@@ -42,6 +42,9 @@ class SafetyShield(Protocol):
 class NullSafetyShield:
     """No-op shield: never intervenes. Default until D̂/τ heads exist."""
 
+    def reset(self) -> None:
+        return None
+
     def should_override(self, obs: Observation, wm_out: Optional[Any] = None) -> bool:
         return False
 
