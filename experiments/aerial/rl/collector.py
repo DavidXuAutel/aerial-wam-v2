@@ -32,6 +32,7 @@ from experiments.aerial.rl.env.obs import Observation
 from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
 from experiments.aerial.rl.reward import NavigationReward, RewardConfig
 from experiments.aerial.rl.safety import SafetyShield
+from experiments.aerial.rl.scene_profile import apply_episode_scene_profile, restore_scene_profile_context
 
 logger = logging.getLogger(__name__)
 
@@ -159,19 +160,26 @@ class RolloutCollector:
         # Per-step displacement cap for this env's control rate (keeps the clip
         # consistent with what env.step will apply).
         step_hz = float(getattr(getattr(self.env, "config", None), "step_hz", DEFAULT_STEP_HZ))
-        limits = body_delta_limits(1.0 / step_hz)
-        # Variable-cs training: if the episode carries a cruise_speed field,
-        # cap forward action to that speed and update shield's v_cruise_m_s.
+        scene_ctx = apply_episode_scene_profile(
+            episode,
+            self.reward_cfg,
+            self.safety,
+            step_hz=step_hz,
+        )
+        limits = scene_ctx.limits
+        # Variable-cs training: explicit cruise_speed overrides scene default.
         ep_cs = float((episode or {}).get("cruise_speed", 0.0))
         _prev_shield_cs: Optional[float] = None
         if ep_cs > 0.0:
-            limits = list(limits)
+            limits = np.asarray(limits, dtype=np.float64).copy()
             limits[0] = ep_cs / step_hz
             if self.safety is not None:
                 zone = getattr(self.safety, "zone", None)
                 if zone is not None and hasattr(zone, "v_cruise_m_s"):
                     _prev_shield_cs = float(zone.v_cruise_m_s)
                     zone.v_cruise_m_s = ep_cs
+        if episode and episode.get("scene"):
+            obs.info["scene"] = str(episode["scene"])
         t_start = time.perf_counter()
 
         for _ in range(self.max_steps):
@@ -281,11 +289,17 @@ class RolloutCollector:
                 "collector achieved %.1f Hz (< %.1f Hz target) over %d steps",
                 stats.achieved_hz, self.target_hz, stats.steps,
             )
-        # Restore shield cs so it doesn't bleed into the next episode.
-        if _prev_shield_cs is not None:
+        restore_scene_profile_context(scene_ctx, self.reward_cfg, self.safety)
+        # Restore cruise_speed override when scene profile did not replace the zone.
+        if _prev_shield_cs is not None and scene_ctx.prev_shield_zone is None and self.safety is not None:
+            from experiments.aerial.rl.three_zone import ThreeZoneSpec
+
             zone = getattr(self.safety, "zone", None)
-            if zone is not None and hasattr(zone, "v_cruise_m_s"):
-                zone.v_cruise_m_s = _prev_shield_cs
+            if zone is not None:
+                self.safety.zone = ThreeZoneSpec(
+                    **{k: getattr(zone, k) for k in zone.__dataclass_fields__},
+                    v_cruise_m_s=_prev_shield_cs,
+                )
         self.buffer.add_episode(transitions)
         if self.on_episode is not None:
             self.on_episode(transitions, stats)
