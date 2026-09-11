@@ -3,11 +3,27 @@
 > **分支**：`project/phase2-vgoal`  
 > **基线 tag**：`phase2-pass-20260908`（几何 `toward_g` SR=86.7% SCR=6.7%）  
 > **兄弟仓**：[`aerial-vgoal-wam`](../../../aerial-vgoal-wam)（本机默认 `~/Projects/aerial-vgoal-wam`）  
-> **活页**：[`WAM_PHASE2_VGOAL_STATUS.md`](WAM_PHASE2_VGOAL_STATUS.md)
+> **活页**：[`WAM_PHASE2_VGOAL_STATUS.md`](WAM_PHASE2_VGOAL_STATUS.md)  
+> **真机**：[`ORIN_REAL_HARDWARE_RUNBOOK.md`](ORIN_REAL_HARDWARE_RUNBOOK.md)
 
 ---
 
-## 0. 一句话
+## 0. 仿真结案（2026-09-11）
+
+| 层级 | 仿真状态 |
+|------|----------|
+| L1 Phase-2 几何导航 | ✅ closed（`phase2-pass-20260908`） |
+| L2 vgoal 接线 M1–M4 | ✅ 代码合入；GT 烟测可验轨迹 |
+| L3 产品视觉导航 | ⏸ **paused** — sim 红车/Cart 资产不可用 |
+
+**不再在 125 上投入**：open_vocab 红车 spawn 池、Cart YOLO、sim flight SR 作为 L3 gate。  
+**下一阶段**：Orin 真机采集与实测（见真机 RUNBOOK）。
+
+红车/Cart 旁线脚本保留在 `experiments/aerial/scripts/vgoal_red_car_*.py`，标 **archived**，仅供查阅。
+
+---
+
+## 0b. 一句话
 
 **Phase-2 close 的大脑不动**；只把 `goal_rel` 的来源从「标注世界坐标」换成 **检测器 + 跟踪器**。仿真先用 GT 投影检测器；部署换 YOLO。跟踪丢失时 **回落 `toward_g`**，避免悬停死锁。
 
@@ -24,7 +40,9 @@ RGB
   → env.step
 
 SEARCHING（无检测记忆）:
-  → fallback: clip_toward_goal(pos, G, r_m)  （与几何 toward_g 同）
+  → M3 默认: AreaSearchPlanner 割草机/螺旋 → goal_rel → π
+  → legacy scan: 慢速前进 + 偏航
+  → 可选 fallback: clip_toward_goal(pos, G, r_m)  （消融用）
 ```
 
 **明确不做（本 project）**：
@@ -98,6 +116,46 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
   --out artifacts/wam_vgoal_eval_result.json
 ```
 
+### 3.3 区域搜寻（M3 · AreaSearchPlanner）
+
+SEARCHING 阶段默认 **割草机** 覆盖 spawn 周围 `--search-area-half-m`（默认 40 m）方框；每步仍跑检测器，见到目标即切 TRACKING。
+
+```bash
+# 开发期可用 GT 验证搜寻轨迹（不算产品 pass）
+python -m experiments.aerial.scripts.wam_vgoal_eval \
+  --vgoal-repo ~/aerial-vgoal-wam \
+  --detector gt --gt-nearest-scene-object --gt-scene-pattern "Car.*" \
+  --search-pattern lawnmower --search-area-half-m 35 \
+  --routes 0,1 --max-steps 400 \
+  --traj-out artifacts/vgoal_traj_m3_smoke \
+  --out artifacts/wam_vgoal_m3_smoke.json
+
+# 螺旋重搜（丢锁后仍由 tracker SEARCHING 触发）
+python -m experiments.aerial.scripts.wam_vgoal_eval \
+  --search-pattern spiral --search-spiral-radius-m 30 ...
+
+# 回退旧行为：原地慢速前进 + 偏航
+python -m experiments.aerial.scripts.wam_vgoal_eval \
+  --search-pattern scan ...
+```
+
+### 3.4 抵近/伴飞（M4 · DynamicTargetTracker）
+
+锁定目标后由 EKF 估计目标状态；远距 **INTERCEPTING**，进入 `--intercept-dist-m` 内切 **FOLLOWING**，站位点默认目标后方 6 m、上方 3 m。
+
+```bash
+python -m experiments.aerial.scripts.wam_vgoal_eval \
+  --vgoal-repo ~/aerial-vgoal-wam \
+  --follow-mode standoff \
+  --standoff-dist-m 6 --standoff-height-m 3 --intercept-dist-m 12 \
+  --follow-success-dist-m 4 \
+  --detector gt --gt-nearest-scene-object --gt-scene-pattern "Car.*" \
+  --search-pattern lawnmower --routes 0 --max-steps 400 \
+  --out artifacts/wam_vgoal_m4_smoke.json
+```
+
+开发期仍用 GT；产品验收需 `goal_from=vision` + `arrived_follow=true`。
+
 语义 / 开放词表：
 
 ```bash
@@ -163,7 +221,9 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
 | `--target-class` | `car` | YOLO COCO 类过滤 |
 | `--visual-prompt` | — | 开放词表 prompt |
 | `--vgoal-repo` | `~/Projects/aerial-vgoal-wam` | 兄弟仓路径 |
-| `--capture-w/h` | 640×480 | AirSim 原生采集（fan-out 前） |
+| `--capture-w/h` | 1920×1080 | AirSim 原生采集（fan-out 前；`env_4090.sh` 默认） |
+| `--search-pattern` | `lawnmower` | M3：`lawnmower` / `spiral` / `scan` |
+| `--follow-mode` | `static` | M4：`standoff` 启用 DynamicTargetTracker |
 | `--fanout-rgb` | **ON** | `rgb_yolo`/`rgb_vio` 原生 · `rgb`→224 WAM |
 | `--wam-encode-size` | 224 | π/WM 分支 |
 | `--search-fwd-speed` | **0.2** slow | SEARCHING 前进 (m/step)；`--search-at-cruise` 才用 cs |
@@ -177,7 +237,7 @@ python -m experiments.aerial.scripts.wam_vgoal_eval \
 | `--fallback-toward-g` | **OFF** | 消融：SEARCHING 时几何 toward_g |
 | `--detector gt` | — | **仅 debug**，非产品路径 |
 
-`env_4090.sh` 默认导出 `AIRSIM_FANOUT_RGB=1` · `AERIAL_CAPTURE_W/H=640/480`。
+`env_4090.sh` 默认导出 `AIRSIM_FANOUT_RGB=1` · `AERIAL_CAPTURE_W/H=1920/1080` · `AERIAL_YOLO_MODEL=yolov8m.pt` · `AERIAL_YOLO_IMGSZ=1280`。
 CaptureSettings 须与 `--capture-w/h` 一致（勿用 224 outdoor settings 跑 YOLO）。
 
 ## 4. 验收阶梯（本 project）
@@ -209,3 +269,5 @@ CaptureSettings 须与 `--capture-w/h` 一致（勿用 224 outdoor settings 跑 
 | 日期 | 内容 |
 |------|------|
 | 2026-09-09 | 建立 `project/phase2-vgoal`：起自 `phase2-pass-20260908` + cherry-pick `wam_vgoal_eval.py` |
+| 2026-09-10 | M3/M4 合入；1080p fanout + yolov8m 默认（125 验证） |
+| 2026-09-11 | **仿真结案**：L3 paused；红车/Cart 旁线 archived；真机 RUNBOOK 建立 |

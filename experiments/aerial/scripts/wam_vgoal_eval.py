@@ -8,7 +8,8 @@ Product stack (no GT world-goal control by default):
     → goal_rel → LatentActorDeployPolicy + ImaginationPlanner
     → ThreeZoneSpeedShield → env.step
 
-SEARCHING: slow forward + yaw scan with optional z-hold (spawn z clipped 20–40 m).
+SEARCHING (M3): ``--search-pattern scan`` = slow fwd+yaw; ``lawnmower``/``spiral`` =
+``AreaSearchPlanner`` waypoint goals via Phase-2 π (perception still runs each step).
 TRACKING/APPROACH: visual ``G`` → ``TowardGoalIntent`` clip → π/planner (Phase-2
 toward_g shell). ``--fallback-toward-g`` is opt-in ablation only.
 
@@ -31,6 +32,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import yaml
 
+from experiments.aerial.scripts.vgoal_area_search import make_area_search_planner
+from experiments.aerial.scripts.vgoal_dynamic_follow import (
+    dynamic_tracker_step,
+    make_dynamic_tracker,
+)
 from experiments.aerial.scripts.wam_phase2_long_eval import (
     PASS_THRESHOLDS,
     _goal_closure,
@@ -106,6 +112,28 @@ class VisionStepResult:
     using_fallback: bool
     search_action: Optional[np.ndarray]
     perception: Optional[Dict[str, Any]] = None
+    using_area_search: bool = False
+    using_det_steer: bool = False
+    dynamic_mode: Optional[str] = None
+
+
+def bbox_det_steer_yaw_rate(
+    det: Any,
+    image_width: int,
+    *,
+    gain: float = 1.0,
+    max_yaw_rate: float = 0.314,
+) -> float:
+    """Yaw rate (rad/s step) to center a detection bbox in the image."""
+    bb = np.asarray(det.bbox, dtype=np.float64).reshape(-1)
+    if bb.size < 4:
+        return 0.0
+    cu = 0.5 * (float(bb[0]) + float(bb[2]))
+    half_w = max(float(image_width) * 0.5, 1.0)
+    err_norm = (cu - half_w) / half_w
+    return float(
+        np.clip(-float(gain) * err_norm * float(max_yaw_rate), -float(max_yaw_rate), float(max_yaw_rate))
+    )
 
 
 def _nearest_scene_object_goal(
@@ -361,6 +389,8 @@ def _vision_step(
     obs: Any,
     detector: Any,
     tracker: Any,
+    dynamic_tracker: Any,
+    dynamic_min_meas_conf: float,
     depth_pred: Any,
     intrinsics: Any,
     pos: np.ndarray,
@@ -370,6 +400,7 @@ def _vision_step(
     dt: float,
     search_fwd_step: float,
     search_yaw_rate: float,
+    area_search_planner: Any,
     fallback_intent: Any,
     annot_goal: np.ndarray,
     allow_fallback: bool,
@@ -380,6 +411,12 @@ def _vision_step(
     near_bbox_px: float = 20.0,
     near_prior_dist_m: float = 25.0,
     bbox_prior_near: bool = True,
+    reject_far_lock_m: float = 0.0,
+    spawn_acquire_yaw_rate: float = 0.0,
+    search_det_steer: bool = False,
+    search_det_steer_gain: float = 1.0,
+    search_det_steer_fwd: float = 0.0,
+    search_det_steer_max_yaw: float = 0.314,
 ) -> VisionStepResult:
     from vgoal.geometry import CameraIntrinsics
     from vgoal.tracker import TargetState
@@ -466,29 +503,71 @@ def _vision_step(
         d_world[2],
     ], dtype=np.float64)
 
-    tracker_state = tracker.update(
-        measured_gr,
-        dt=dt,
-        ego_delta_body=ego_delta,
-        ego_delta_yaw=dyaw,
-        confidence=det_conf,
-    )
-    cur_goal_rel = tracker.goal_rel
-    det_hit = measured_gr is not None
+    det_hit = det is not None and det_conf >= 1e-6
+    if (
+        measured_gr is not None
+        and float(reject_far_lock_m) > 0.0
+        and float(measured_gr[3]) > float(reject_far_lock_m)
+    ):
+        perception_rec["far_lock_rejected"] = True
+        perception_rec["rejected_goal_d_m"] = round(float(measured_gr[3]), 3)
+        measured_gr = None
 
-    if cur_goal_rel is not None and tracker_state != TargetState.SEARCHING:
-        g_rel = np.asarray(cur_goal_rel, dtype=np.float64)
-        target_world = _body_to_world(pos, yaw, g_rel)
-        return VisionStepResult(
-            goal_rel=g_rel,
-            target_world=target_world,
-            tracker_state=str(tracker_state.value),
-            det_hit=det_hit,
-            using_vision=True,
-            using_fallback=False,
-            search_action=None,
-            perception=perception_rec,
+    dynamic_mode: Optional[str] = None
+
+    if dynamic_tracker is not None:
+        from vgoal.dynamic_tracker import TrackingMode
+
+        mode, cur_goal_rel = dynamic_tracker_step(
+            dynamic_tracker,
+            measured_gr,
+            det_conf,
+            pos,
+            yaw,
+            dt,
+            min_meas_conf=float(dynamic_min_meas_conf),
         )
+        tracker_state = str(mode.value)
+        dynamic_mode = tracker_state
+        if cur_goal_rel is not None and mode not in (TrackingMode.SEARCHING, TrackingMode.LOST):
+            g_rel = np.asarray(cur_goal_rel, dtype=np.float64)
+            target_world = _body_to_world(pos, yaw, g_rel)
+            return VisionStepResult(
+                goal_rel=g_rel,
+                target_world=target_world,
+                tracker_state=tracker_state,
+                det_hit=det_hit,
+                using_vision=True,
+                using_fallback=False,
+                using_area_search=False,
+                search_action=None,
+                perception=perception_rec,
+                dynamic_mode=dynamic_mode,
+            )
+    else:
+        tracker_state = tracker.update(
+            measured_gr,
+            dt=dt,
+            ego_delta_body=ego_delta,
+            ego_delta_yaw=dyaw,
+            confidence=det_conf,
+        )
+        cur_goal_rel = tracker.goal_rel
+        if cur_goal_rel is not None and tracker_state != TargetState.SEARCHING:
+            g_rel = np.asarray(cur_goal_rel, dtype=np.float64)
+            target_world = _body_to_world(pos, yaw, g_rel)
+            return VisionStepResult(
+                goal_rel=g_rel,
+                target_world=target_world,
+                tracker_state=str(tracker_state.value),
+                det_hit=det_hit,
+                using_vision=True,
+                using_fallback=False,
+                using_area_search=False,
+                search_action=None,
+                perception=perception_rec,
+                dynamic_mode=None,
+            )
 
     if allow_fallback and fallback_intent is not None:
         d_fwd_hat = obs.info.get("depth_min_pred")
@@ -503,6 +582,58 @@ def _vision_step(
             det_hit=det_hit,
             using_vision=False,
             using_fallback=True,
+            using_area_search=False,
+            search_action=None,
+            perception=perception_rec,
+        )
+
+    if float(spawn_acquire_yaw_rate) != 0.0:
+        search_action = np.array([0.0, 0.0, 0.0, float(spawn_acquire_yaw_rate)], dtype=np.float64)
+        return VisionStepResult(
+            goal_rel=None,
+            target_world=None,
+            tracker_state=str(TargetState.SEARCHING.value),
+            det_hit=det_hit,
+            using_vision=False,
+            using_fallback=False,
+            using_area_search=False,
+            search_action=search_action,
+            perception=perception_rec,
+        )
+
+    if search_det_steer and det is not None:
+        yaw_rate = bbox_det_steer_yaw_rate(
+            det,
+            det_w,
+            gain=float(search_det_steer_gain),
+            max_yaw_rate=float(search_det_steer_max_yaw),
+        )
+        fwd = float(search_det_steer_fwd) if float(search_det_steer_fwd) > 0.0 else float(search_fwd_step) * 0.25
+        search_action = np.array([fwd, 0.0, 0.0, yaw_rate], dtype=np.float64)
+        return VisionStepResult(
+            goal_rel=None,
+            target_world=None,
+            tracker_state=str(TargetState.SEARCHING.value),
+            det_hit=det_hit,
+            using_vision=False,
+            using_fallback=False,
+            using_area_search=False,
+            using_det_steer=True,
+            search_action=search_action,
+            perception=perception_rec,
+        )
+
+    if area_search_planner is not None:
+        g_rel = np.asarray(area_search_planner.update(pos, yaw), dtype=np.float64)
+        target_world = _body_to_world(pos, yaw, g_rel)
+        return VisionStepResult(
+            goal_rel=g_rel,
+            target_world=target_world,
+            tracker_state=str(TargetState.SEARCHING.value),
+            det_hit=det_hit,
+            using_vision=False,
+            using_fallback=False,
+            using_area_search=True,
             search_action=None,
             perception=perception_rec,
         )
@@ -515,6 +646,7 @@ def _vision_step(
         det_hit=det_hit,
         using_vision=False,
         using_fallback=False,
+        using_area_search=False,
         search_action=search_action,
         perception=perception_rec,
     )
@@ -655,6 +787,102 @@ def main() -> int:  # noqa: C901
     )
     parser.add_argument("--search-yaw-rate", type=float, default=0.314)
     parser.add_argument(
+        "--reject-far-lock-m",
+        type=float,
+        default=40.0,
+        help="Ignore vision measurements with goal_rel dist above this (0=off). Rejects billboard far-locks.",
+    )
+    parser.add_argument(
+        "--det-early-steps",
+        type=int,
+        default=50,
+        help="Window for det_recall_early metric (any det_hit in first N steps).",
+    )
+    parser.add_argument(
+        "--spawn-yaw-acquire-steps",
+        type=int,
+        default=0,
+        help="Hover yaw micro-sweep at spawn before M3 search (0=off).",
+    )
+    parser.add_argument(
+        "--spawn-yaw-acquire-deg",
+        type=float,
+        default=60.0,
+        help="Total yaw span for spawn acquire ping-pong sweep.",
+    )
+    parser.add_argument(
+        "--spawn-yaw-acquire-step-deg",
+        type=float,
+        default=10.0,
+        help="Yaw delta per step during spawn acquire (degrees).",
+    )
+    parser.add_argument(
+        "--search-det-steer",
+        action="store_true",
+        help="When SEARCHING with det but no lock, yaw toward bbox center (before M3 area search).",
+    )
+    parser.add_argument("--search-det-steer-gain", type=float, default=1.0)
+    parser.add_argument(
+        "--search-det-steer-fwd",
+        type=float,
+        default=0.0,
+        help="Forward m/step during det-steer (0 = 25%% of search_fwd_speed).",
+    )
+    parser.add_argument(
+        "--search-det-steer-max-yaw",
+        type=float,
+        default=None,
+        help="Max yaw rate during det-steer (default: --search-yaw-rate).",
+    )
+    parser.add_argument(
+        "--search-yaw-hold-deg",
+        type=float,
+        default=0.0,
+        help="During M3 area search, pull yaw toward spawn heading within this band (0=off).",
+    )
+    parser.add_argument("--search-yaw-hold-gain", type=float, default=2.0)
+    parser.add_argument(
+        "--search-delay-area-until-acquire",
+        action="store_true",
+        help="Skip M3 area search until spawn-yaw-acquire window ends (or vision lock).",
+    )
+    parser.add_argument(
+        "--search-pattern",
+        choices=("scan", "lawnmower", "spiral"),
+        default="lawnmower",
+        help="SEARCHING: scan=fwd+yaw; lawnmower/spiral=AreaSearchPlanner (M3)",
+    )
+    parser.add_argument(
+        "--search-area-half-m",
+        type=float,
+        default=40.0,
+        help="Half-width of search box centered on spawn (world m)",
+    )
+    parser.add_argument("--search-sweep-spacing-m", type=float, default=15.0)
+    parser.add_argument("--search-waypoint-radius-m", type=float, default=3.5)
+    parser.add_argument("--search-spiral-radius-m", type=float, default=25.0)
+    parser.add_argument(
+        "--follow-mode",
+        choices=("static", "standoff"),
+        default="static",
+        help="static=TargetTracker approach (M2); standoff=DynamicTargetTracker intercept/follow (M4)",
+    )
+    parser.add_argument("--standoff-dist-m", type=float, default=6.0)
+    parser.add_argument("--standoff-height-m", type=float, default=3.0)
+    parser.add_argument("--intercept-dist-m", type=float, default=12.0)
+    parser.add_argument(
+        "--follow-success-dist-m",
+        type=float,
+        default=4.0,
+        help="Success when FOLLOWING and goal_rel dist <= this (standoff mode)",
+    )
+    parser.add_argument(
+        "--dynamic-meas-conf",
+        type=float,
+        default=None,
+        help="Min conf passed to DynamicTargetTracker measurement update (default: yolo_conf)",
+    )
+    parser.add_argument(
         "--search-z-hold-mode",
         choices=("auto", "off"),
         default="auto",
@@ -693,6 +921,8 @@ def main() -> int:  # noqa: C901
         help="Ablation: geometric toward_g when SEARCHING (default OFF)",
     )
     args = parser.parse_args()
+    if args.dynamic_meas_conf is None:
+        args.dynamic_meas_conf = float(args.yolo_conf)
 
     root = Path(__file__).resolve().parents[3]
     if str(root) not in sys.path:
@@ -788,6 +1018,11 @@ def main() -> int:  # noqa: C901
         if args.search_fwd_speed is not None
         else ("cruise" if args.search_at_cruise else "slow")
     )
+    det_steer_max_yaw = (
+        float(args.search_det_steer_max_yaw)
+        if args.search_det_steer_max_yaw is not None
+        else float(args.search_yaw_rate)
+    )
     tracker_min_conf = (
         float(args.tracker_min_confidence)
         if args.tracker_min_confidence is not None
@@ -859,15 +1094,18 @@ def main() -> int:  # noqa: C901
     visual_prompt = str(args.visual_prompt or args.target_class or "car")
     logger.info(
         "phase2_vgoal: %d routes | cs=%.1f tti=%.1f | det=%s prompt=%s "
-        "fanout=%s capture=%dx%d wam=%d search_fwd=%.3f(%s) yaw=%.2f "
-        "z_hold=%s visual_toward_g=%s tracker_conf=%.2f yolo_conf=%.2f "
-        "bbox_fuse=%s prior_near=%s car_w=%.1fm freeze_occ=%s",
+        "fanout=%s capture=%dx%d wam=%d search=%s area_half=%.0fm "
+        "search_fwd=%.3f(%s) yaw=%.2f z_hold=%s visual_toward_g=%s "
+        "tracker_conf=%.2f yolo_conf=%.2f bbox_fuse=%s prior_near=%s "
+        "car_w=%.1fm freeze_occ=%s follow=%s standoff=%.0f/%.0fm",
         n_routes, args.cruise_speed, args.tti_coeff, args.detector, visual_prompt,
         use_fanout, int(args.capture_w), int(args.capture_h), int(args.wam_encode_size),
+        args.search_pattern, float(args.search_area_half_m),
         search_fwd_step, search_fwd_label, args.search_yaw_rate,
         args.search_z_hold_mode, bool(args.visual_toward_g), tracker_min_conf, args.yolo_conf,
         bool(args.bbox_depth_fuse), bool(args.bbox_prior_near), float(args.car_width_m),
         bool(args.tracker_freeze_dist_on_occlude),
+        args.follow_mode, float(args.standoff_dist_m), float(args.standoff_height_m),
     )
 
     results: List[Dict[str, Any]] = []
@@ -902,7 +1140,27 @@ def main() -> int:  # noqa: C901
             z_min=float(args.search_z_min),
             z_max=float(args.search_z_max),
         )
-        tracker = TargetTracker(tracker_cfg)
+        dynamic_tracker = None
+        if str(args.follow_mode) == "standoff":
+            dynamic_tracker = make_dynamic_tracker(
+                standoff_dist_m=float(args.standoff_dist_m),
+                standoff_height_m=float(args.standoff_height_m),
+                intercept_dist_m=float(args.intercept_dist_m),
+                max_occlusion_s=float(args.tracker_max_occlusion_s),
+            )
+            tracker = None
+        else:
+            tracker = TargetTracker(tracker_cfg)
+        area_search_planner = make_area_search_planner(
+            start_pos,
+            pattern=str(args.search_pattern),
+            altitude_z=float(ep_z_hold if ep_z_hold is not None else start_pos[2]),
+            half_m=float(args.search_area_half_m),
+            sweep_spacing_m=float(args.search_sweep_spacing_m),
+            waypoint_reach_radius_m=float(args.search_waypoint_radius_m),
+            spiral_max_radius_m=float(args.search_spiral_radius_m),
+            route_info=r_info,
+        )
 
         ep_dict = {
             "pos": pts.tolist(),
@@ -993,10 +1251,25 @@ def main() -> int:  # noqa: C901
         p_prev_tracker = p_curr.copy()
         prev_yaw_tracker = curr_yaw
         detections_hit = 0
+        far_lock_rejects = 0
+        det_early = False
+        det_early_steps = max(1, int(args.det_early_steps))
         steps_searching = 0
+        steps_area_search = 0
+        steps_intercepting = 0
+        steps_following = 0
         steps_vision = 0
         steps_fallback = 0
+        steps_spawn_acquire = 0
+        steps_det_steer = 0
+        arrived_follow = False
         vision_target_last: Optional[np.ndarray] = None
+        acquire_steps = max(0, int(args.spawn_yaw_acquire_steps))
+        acquire_half = max(
+            1,
+            int(math.ceil(float(args.spawn_yaw_acquire_deg) / max(float(args.spawn_yaw_acquire_step_deg), 1.0))),
+        )
+        acquire_yaw_step = math.radians(float(args.spawn_yaw_acquire_step_deg))
 
         from vgoal.tracker import TargetState as TS
 
@@ -1025,10 +1298,27 @@ def main() -> int:  # noqa: C901
             if tau_v is not None:
                 obs.info["tau_pred"] = float(tau_v)
 
+            spawn_acquire_yaw = 0.0
+            if acquire_steps > 0 and step < acquire_steps and not had_vision_lock:
+                phase = step % (2 * acquire_half)
+                sign = 1.0 if phase < acquire_half else -1.0
+                spawn_acquire_yaw = sign * acquire_yaw_step
+
+            area_planner_step = area_search_planner
+            if (
+                bool(args.search_delay_area_until_acquire)
+                and acquire_steps > 0
+                and step < acquire_steps
+                and not had_vision_lock
+            ):
+                area_planner_step = None
+
             vstep = _vision_step(
                 obs=obs,
                 detector=detector,
                 tracker=tracker,
+                dynamic_tracker=dynamic_tracker,
+                dynamic_min_meas_conf=float(args.dynamic_meas_conf),
                 depth_pred=depth_pred,
                 intrinsics=intrinsics,
                 pos=p_curr,
@@ -1038,6 +1328,7 @@ def main() -> int:  # noqa: C901
                 dt=dt_step,
                 search_fwd_step=search_fwd_step,
                 search_yaw_rate=float(args.search_yaw_rate),
+                area_search_planner=area_planner_step,
                 fallback_intent=fallback_intent,
                 annot_goal=annot_goal,
                 allow_fallback=bool(args.fallback_toward_g),
@@ -1048,21 +1339,43 @@ def main() -> int:  # noqa: C901
                 near_bbox_px=float(args.bbox_near_px),
                 near_prior_dist_m=float(args.bbox_near_dist_m),
                 bbox_prior_near=bool(args.bbox_prior_near),
+                reject_far_lock_m=float(args.reject_far_lock_m),
+                spawn_acquire_yaw_rate=spawn_acquire_yaw,
+                search_det_steer=bool(args.search_det_steer),
+                search_det_steer_gain=float(args.search_det_steer_gain),
+                search_det_steer_fwd=float(args.search_det_steer_fwd),
+                search_det_steer_max_yaw=det_steer_max_yaw,
             )
             p_prev_tracker = p_curr.copy()
             prev_yaw_tracker = curr_yaw
 
             if vstep.perception and vstep.perception.get("measured_dist_m") is not None:
                 min_d_measured = min(min_d_measured, float(vstep.perception["measured_dist_m"]))
+            if vstep.perception and vstep.perception.get("far_lock_rejected"):
+                far_lock_rejects += 1
 
             if vstep.det_hit:
                 detections_hit += 1
+                if step < det_early_steps:
+                    det_early = True
             if vstep.using_fallback:
                 steps_fallback += 1
+            elif vstep.using_area_search:
+                steps_area_search += 1
+                steps_searching += 1
+            elif vstep.using_det_steer:
+                steps_det_steer += 1
+                steps_searching += 1
             elif vstep.search_action is not None:
                 steps_searching += 1
+                if spawn_acquire_yaw != 0.0:
+                    steps_spawn_acquire += 1
             elif vstep.using_vision:
                 steps_vision += 1
+            if vstep.dynamic_mode == "intercepting":
+                steps_intercepting += 1
+            elif vstep.dynamic_mode == "following":
+                steps_following += 1
 
             if vstep.target_world is not None:
                 vision_target_last = vstep.target_world.copy()
@@ -1070,7 +1383,15 @@ def main() -> int:  # noqa: C901
                 d_vis = _goal_dist(p_curr, vstep.target_world)
                 min_d_vision = min(min_d_vision, d_vis)
                 d_final_vision = d_vis
-                if d_vis <= float(args.success_dist) or vstep.tracker_state == TS.ARRIVED.value:
+                if str(args.follow_mode) == "standoff":
+                    if (
+                        vstep.dynamic_mode == "following"
+                        and vstep.goal_rel is not None
+                        and float(vstep.goal_rel[3]) <= float(args.follow_success_dist_m)
+                    ):
+                        arrived = True
+                        arrived_follow = True
+                elif d_vis <= float(args.success_dist) or vstep.tracker_state == TS.ARRIVED.value:
                     arrived = True
 
             d_annot = _goal_dist(p_curr, annot_goal)
@@ -1100,7 +1421,7 @@ def main() -> int:  # noqa: C901
             else:
                 assert vstep.goal_rel is not None and vstep.target_world is not None
                 g_vis = np.asarray(vstep.target_world, dtype=np.float64)
-                if vstep.using_vision and visual_intent is not None:
+                if (vstep.using_vision or vstep.using_area_search) and visual_intent is not None:
                     g_rel_body, s_info = visual_intent.compute(
                         curr_pos=p_curr,
                         curr_yaw=curr_yaw,
@@ -1124,6 +1445,15 @@ def main() -> int:  # noqa: C901
                 action = policy.act(obs)
                 if planner is not None:
                     action = planner.plan(obs, action, latent=policy._latent)
+                if vstep.using_area_search and float(args.search_yaw_hold_deg) > 0.0:
+                    hold_rad = math.radians(float(args.search_yaw_hold_deg))
+                    yaw_err = float(curr_yaw - start_yaw)
+                    yaw_err = float((yaw_err + math.pi) % (2.0 * math.pi) - math.pi)
+                    if abs(yaw_err) > hold_rad:
+                        excess = abs(yaw_err) - hold_rad
+                        corr = -math.copysign(excess * float(args.search_yaw_hold_gain), yaw_err)
+                        action = np.asarray(action, dtype=np.float64).copy()
+                        action[3] = float(np.clip(action[3] + corr, -float(phys[3]), float(phys[3])))
                 action = clip_body_delta(action, cur_limits)
                 wm_out = None
                 if policy._latent is not None and hasattr(dynamics, "step"):
@@ -1167,6 +1497,8 @@ def main() -> int:  # noqa: C901
                     "tracker_state": vstep.tracker_state,
                     "det_hit": vstep.det_hit,
                     "using_vision": vstep.using_vision,
+                    "using_area_search": vstep.using_area_search,
+                    "dynamic_mode": vstep.dynamic_mode,
                     "using_fallback": vstep.using_fallback,
                     "goal_rel": None if vstep.goal_rel is None else [round(float(x), 3) for x in vstep.goal_rel],
                 }) + "\n")
@@ -1223,7 +1555,8 @@ def main() -> int:  # noqa: C901
             "gt_goal_world": [round(float(x), 2) for x in annot_goal] if args.gt_nearest_scene_object else None,
             "goal_closure": round(goal_closure, 4),
             "arrived": arrived,
-            "arrived_vision": bool(arrived and had_vision_lock and steps_fallback == 0),
+            "arrived_vision": bool(arrived and had_vision_lock and steps_fallback == 0 and not arrived_follow),
+            "arrived_follow": bool(arrived_follow),
             "collided": collided,
             "severe_collision": severe_coll,
             "progress_ratio": round(prog_ratio, 4),
@@ -1233,10 +1566,18 @@ def main() -> int:  # noqa: C901
             "goal_from": "vision" if had_vision_lock and steps_fallback == 0 else ("mixed" if steps_fallback else "search_only"),
             "detections_hit": detections_hit,
             "steps_searching": steps_searching,
+            "steps_area_search": steps_area_search,
+            "steps_intercepting": steps_intercepting,
+            "steps_following": steps_following,
             "steps_vision": steps_vision,
             "steps_fallback": steps_fallback,
             "detection_frac": round(detections_hit / n_steps, 4),
+            "det_recall_early": bool(det_early),
+            "far_lock_rejects": far_lock_rejects,
+            "steps_spawn_acquire": steps_spawn_acquire,
+            "steps_det_steer": steps_det_steer,
             "vision_frac": round(steps_vision / n_steps, 4),
+            "area_search_frac": round(steps_area_search / n_steps, 4),
             "fail_tag": fail_tag,
         }
         results.append(ep_result)
@@ -1263,7 +1604,7 @@ def main() -> int:  # noqa: C901
         "n_scored": len(scored),
         "n_spawn_fail": len(spawn_fails),
         "metrics": metrics,
-        "protocol_version": "phase2_vgoal_m2",
+        "protocol_version": "phase2_vgoal_m4",
         "method": "monocular_visual",
         "goal_from": "vision",
         "config": {
@@ -1279,6 +1620,26 @@ def main() -> int:  # noqa: C901
             "search_fwd_speed": search_fwd_step,
             "search_fwd_mode": search_fwd_label,
             "search_yaw_rate": args.search_yaw_rate,
+            "search_det_steer": bool(args.search_det_steer),
+            "search_det_steer_gain": float(args.search_det_steer_gain),
+            "search_det_steer_fwd": float(args.search_det_steer_fwd),
+            "search_det_steer_max_yaw": det_steer_max_yaw,
+            "search_yaw_hold_deg": float(args.search_yaw_hold_deg),
+            "search_yaw_hold_gain": float(args.search_yaw_hold_gain),
+            "search_delay_area_until_acquire": bool(args.search_delay_area_until_acquire),
+            "reject_far_lock_m": float(args.reject_far_lock_m),
+            "spawn_yaw_acquire_steps": int(args.spawn_yaw_acquire_steps),
+            "search_pattern": str(args.search_pattern),
+            "search_area_half_m": float(args.search_area_half_m),
+            "search_sweep_spacing_m": float(args.search_sweep_spacing_m),
+            "search_waypoint_radius_m": float(args.search_waypoint_radius_m),
+            "search_spiral_radius_m": float(args.search_spiral_radius_m),
+            "follow_mode": str(args.follow_mode),
+            "standoff_dist_m": float(args.standoff_dist_m),
+            "standoff_height_m": float(args.standoff_height_m),
+            "intercept_dist_m": float(args.intercept_dist_m),
+            "follow_success_dist_m": float(args.follow_success_dist_m),
+            "dynamic_meas_conf": float(args.dynamic_meas_conf),
             "search_z_hold_mode": args.search_z_hold_mode,
             "search_z_min": float(args.search_z_min),
             "search_z_max": float(args.search_z_max),

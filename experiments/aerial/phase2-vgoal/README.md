@@ -2,7 +2,13 @@
 
 > **分支**：`project/phase2-vgoal`（起自 tag `phase2-pass-20260908`）  
 > **入口 RUNBOOK**：[`docs/handover/RUNBOOK_phase2_vgoal.md`](../../../docs/handover/RUNBOOK_phase2_vgoal.md)  
-> **活页**：[`docs/handover/WAM_PHASE2_VGOAL_STATUS.md`](../../../docs/handover/WAM_PHASE2_VGOAL_STATUS.md)
+> **活页**：[`docs/handover/WAM_PHASE2_VGOAL_STATUS.md`](../../../docs/handover/WAM_PHASE2_VGOAL_STATUS.md)  
+> **真机**：[`docs/handover/ORIN_REAL_HARDWARE_RUNBOOK.md`](../../../docs/handover/ORIN_REAL_HARDWARE_RUNBOOK.md)
+
+## 阶段（2026-09-11）
+
+- **仿真**：L1 closed · L2 接线完成 · **L3 paused**（红车/Cart 旁线 archived）
+- **真机**：Orin 台架 → 见真机 RUNBOOK
 
 ## 一句话
 
@@ -31,8 +37,11 @@ experiments/aerial/phase2-vgoal/
 └── notes/             # 实验一页记录（按需）
 
 experiments/aerial/scripts/
-├── wam_phase2_long_eval.py   # 几何主臂（继承 phase2-pass）
-└── wam_vgoal_eval.py         # 视觉目标臂（本 project 新增）
+├── wam_phase2_long_eval.py      # 几何主臂（继承 phase2-pass）
+├── wam_vgoal_eval.py            # 视觉目标臂（M1–M4）
+├── vgoal_area_search.py         # M3 AreaSearchPlanner 接线
+├── vgoal_dynamic_follow.py      # M4 DynamicTargetTracker 接线
+└── vgoal_red_car_*.py           # archived 旁线（sim 红车，勿再投入）
 ```
 
 ## 冻结基线
