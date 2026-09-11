@@ -20,8 +20,9 @@ from experiments.aerial.rl.reward import RewardConfig
 from experiments.aerial.rl.three_zone import ThreeZoneSpec
 
 SCENE_OUTDOOR_LONG = "outdoor_long"
+SCENE_OUTDOOR_APPROACH = "outdoor_approach"
 SCENE_INDOOR_MICRO = "indoor_micro"
-DEFAULT_SCENES = (SCENE_OUTDOOR_LONG, SCENE_INDOOR_MICRO)
+DEFAULT_SCENES = (SCENE_OUTDOOR_LONG, SCENE_OUTDOOR_APPROACH, SCENE_INDOOR_MICRO)
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,8 @@ def resolve_scene_profile(
     scene = str(episode.get("scene") or "").strip()
     if profiles and scene in profiles:
         return profiles[scene]
+    if scene in (SCENE_OUTDOOR_LONG, SCENE_OUTDOOR_APPROACH):
+        return default_outdoor_profile(step_hz)
     if scene == SCENE_INDOOR_MICRO:
         return SceneProfile(
             scene=SCENE_INDOOR_MICRO,

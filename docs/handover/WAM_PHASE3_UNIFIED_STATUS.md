@@ -13,7 +13,7 @@
 | 阶段 | 状态 | 说明 |
 |------|------|------|
 | **P0** 骨架 + 接线 | ✅ | branch、scene_profile、config、双门 eval |
-| **P1** 混采语料 + 采集接线 | ✅ | 20 eps（16 outdoor + 4 indoor），collector 按 scene 切 profile |
+| **P1** 混采语料 + 采集接线 | 🟡 | handover_seen（46 eps，含真 Building_99）；125 烟测采集中 |
 | **P2** 融合 FT | ⬜ | 签字后 H100 |
 | **P3** 双门验收 | ⬜ | 同一 ckpt outdoor + indoor |
 
@@ -21,7 +21,9 @@
 
 | 文件 | 内容 |
 |------|------|
-| `experiments/aerial/phase3_unified/annotations/mixed_seen.json` | 混采 annotation（`scene` + `pose_source`） |
+| `experiments/aerial/phase3_unified/annotations/handover_seen.json` | **室内外交接**语料（`map_id` + `handover_id`） |
+| `experiments/aerial/phase3_unified/annotations/building99_indoor_short_routes.json` | Building_99 真室内 8 条 |
+| `experiments/aerial/scripts/collect_phase3_handover.py` | 按 `map_id` 切 renderer 采集 |
 | `configs/aerial_rl_phase3_unified.yaml` | 默认指向混采语料 + `scene_profiles` |
 | `experiments/aerial/scripts/collect_phase3_unified.sh` | 125 混采采集入口 |
 

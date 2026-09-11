@@ -191,6 +191,11 @@ class RolloutCollector:
         ep_pose = str(episode.get("pose_source", "")).strip() if episode else ""
         if ep_pose:
             obs.info["pose_source"] = ep_pose
+        if episode:
+            for key in ("map_id", "handover_id", "leg"):
+                val = episode.get(key)
+                if val:
+                    obs.info[key] = str(val)
         t_start = time.perf_counter()
 
         for _ in range(self.max_steps):
@@ -274,6 +279,9 @@ class RolloutCollector:
                     ep_info["scene"] = obs.info["scene"]
                 if "pose_source" in obs.info:
                     ep_info["pose_source"] = obs.info["pose_source"]
+                for key in ("map_id", "handover_id", "leg"):
+                    if key in obs.info:
+                        ep_info[key] = obs.info[key]
             # ATTR / P7: persist shield inputs onto transition.info
             if isinstance(obs.info, dict):
                 for k in (

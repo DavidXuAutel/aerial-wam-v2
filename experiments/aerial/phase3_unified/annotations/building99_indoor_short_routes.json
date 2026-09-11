@@ -1,0 +1,50 @@
+[
+  {
+    "trajectory_id": "B99_lobby_east_3m",
+    "gpt_instruction": "Building_99 lobby east 3m",
+    "pos": [[0.0, 0.0, 1.5], [3.0, 0.0, 1.5]],
+    "yaw": [0.0, 0.0]
+  },
+  {
+    "trajectory_id": "B99_lobby_north_3m",
+    "gpt_instruction": "Building_99 lobby north 3m",
+    "pos": [[0.0, 1.0, 1.5], [0.0, 4.0, 1.5]],
+    "yaw": [1.5708, 1.5708]
+  },
+  {
+    "trajectory_id": "B99_lobby_west_3m",
+    "gpt_instruction": "Building_99 lobby west 3m",
+    "pos": [[1.0, 0.0, 1.5], [-2.0, 0.0, 1.5]],
+    "yaw": [3.1416, 3.1416]
+  },
+  {
+    "trajectory_id": "B99_lobby_south_3m",
+    "gpt_instruction": "Building_99 lobby south 3m",
+    "pos": [[0.0, -1.0, 1.5], [0.0, -4.0, 1.5]],
+    "yaw": [-1.5708, -1.5708]
+  },
+  {
+    "trajectory_id": "B99_lobby_diag_ne_3m",
+    "gpt_instruction": "Building_99 lobby NE 3m",
+    "pos": [[0.5, 0.5, 1.5], [2.6, 2.6, 1.5]],
+    "yaw": [0.7854, 0.7854]
+  },
+  {
+    "trajectory_id": "B99_lobby_diag_nw_3m",
+    "gpt_instruction": "Building_99 lobby NW 3m",
+    "pos": [[-0.5, 0.5, 1.5], [-2.6, 2.6, 1.5]],
+    "yaw": [2.3562, 2.3562]
+  },
+  {
+    "trajectory_id": "B99_lobby_east_from_1",
+    "gpt_instruction": "Building_99 lobby east from x=1",
+    "pos": [[1.0, 0.0, 1.5], [4.0, 0.0, 1.5]],
+    "yaw": [0.0, 0.0]
+  },
+  {
+    "trajectory_id": "B99_lobby_north_from_y1",
+    "gpt_instruction": "Building_99 lobby north from y=1",
+    "pos": [[0.0, 1.0, 1.5], [0.0, 4.0, 1.5]],
+    "yaw": [1.5708, 1.5708]
+  }
+]

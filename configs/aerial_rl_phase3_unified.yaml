@@ -19,6 +19,24 @@ scene_mix:
   require_scene_tag: true
 
 scene_profiles:
+  outdoor_approach:
+    action_limits:
+      max_dx: 1.0
+      max_dy: 0.4
+      max_dz: 0.4
+      max_dyaw: 0.314
+    success_dist_m: 3.0
+    safety:
+      kind: three_zone
+      l1_m: 8.0
+      l2_m: 5.0
+      l3_m: 1.5
+      v1_m_s: 2.0
+      v2_m_s: 1.0
+      v_stop_m_s: 0.2
+      v_cruise_m_s: 10.0
+      a_max_m_s2: 2.5
+      delay_s: 0.2
   outdoor_long:
     action_limits:
       max_dx: 1.0
@@ -132,7 +150,7 @@ report_required_fields:
   - goal_rel_pose_source
   - success_dist_m
 
-annotation: experiments/aerial/phase3_unified/annotations/mixed_seen.json
+annotation: experiments/aerial/phase3_unified/annotations/handover_seen.json
 max_episodes: 0
 
 safety:

@@ -8,6 +8,9 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from experiments.aerial.rl.scene_profile import SCENE_INDOOR_MICRO, SCENE_OUTDOOR_LONG
 
+MAP_OUTDOOR = "env_airsim_16"
+MAP_INDOOR = "building_99"
+
 DEFAULT_OUTDOOR_ANNOTATION = "artifacts/seen_airsim16_long_routes.json"
 DEFAULT_INDOOR_ROUTE_INDICES = [6, 9, 12, 13]
 
@@ -32,6 +35,8 @@ def build_indoor_segments(
     segments = build_segments(list(routes), list(route_indices), target_len_m=target_len_m)
     for seg in segments:
         seg["scene"] = SCENE_INDOOR_MICRO
+        seg["map_id"] = MAP_INDOOR
+        seg["leg"] = "indoor"
         seg["pose_source"] = "gt_proxy"
     return segments
 
@@ -41,6 +46,7 @@ def tag_outdoor_routes(routes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]
     for r in routes:
         ep = dict(r)
         ep["scene"] = SCENE_OUTDOOR_LONG
+        ep["map_id"] = MAP_OUTDOOR
         ep.setdefault("pose_source", "gt_proxy")
         out.append(ep)
     return out
