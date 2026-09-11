@@ -33,9 +33,13 @@ def _repo_root() -> Path:
 def load_annotation(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
-    if not isinstance(data, list):
-        raise ValueError(f"annotation must be a JSON list, got {type(data).__name__}")
-    return data
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and isinstance(data.get("episodes"), list):
+        return list(data["episodes"])
+    raise ValueError(
+        f"annotation must be a JSON list or {{episodes: [...]}} object, got {type(data).__name__}"
+    )
 
 
 def normalize_episode_poses(

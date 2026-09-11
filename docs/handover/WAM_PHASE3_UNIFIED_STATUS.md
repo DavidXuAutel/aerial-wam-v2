@@ -1,6 +1,6 @@
 # Phase-3 Unified Navigation · STATUS
 
-> **分支**：`project/phase3-unified`  
+> **分支**：`project/phase3-unified`（**当前工作区**）  
 > **RUNBOOK**：[`RUNBOOK_phase3_unified.md`](RUNBOOK_phase3_unified.md)  
 > **起点**：`phase2-pass-20260908`（Phase-2 outdoor close，SR 86.7%）
 
@@ -12,28 +12,34 @@
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
-| **P0** 骨架 + 接线 | 🟡 in progress | branch、scene_profile、混采脚本、双门 eval shell |
-| **P1** 混采语料 | ⬜ | 签字后 125 采集 |
+| **P0** 骨架 + 接线 | ✅ | branch、scene_profile、config、双门 eval |
+| **P1** 混采语料 + 采集接线 | ✅ | 20 eps（16 outdoor + 4 indoor），collector 按 scene 切 profile |
 | **P2** 融合 FT | ⬜ | 签字后 H100 |
 | **P3** 双门验收 | ⬜ | 同一 ckpt outdoor + indoor |
 
-## P0 checklist
+## P1 产物
 
-- [x] `project/phase3-unified` from `phase2-pass-20260908`
-- [x] `configs/aerial_rl_phase3_unified.yaml`
-- [x] `experiments/aerial/rl/scene_profile.py` + collector 接线
-- [x] `build_phase3_mixed_annotation.py`
-- [x] `eval_phase3_unified.sh`
-- [ ] Indoor 阶段 C 签字
-- [ ] 混采 7:3 签字
-- [ ] `train_v4_ac --config` 读 phase3 yaml（当前仍默认 aerial_rl.yaml）
+| 文件 | 内容 |
+|------|------|
+| `experiments/aerial/phase3_unified/annotations/mixed_seen.json` | 混采 annotation（`scene` + `pose_source`） |
+| `configs/aerial_rl_phase3_unified.yaml` | 默认指向混采语料 + `scene_profiles` |
+| `experiments/aerial/scripts/collect_phase3_unified.sh` | 125 混采采集入口 |
 
-## 阻塞
+场景分布：**16 × `outdoor_long` + 4 × `indoor_micro`**（seen pool；FT 目标混采 7:3）。
 
-1. Indoor `odom_from_imu_rgb` 仍为积分 stub（阶段 B 0/4 @ 0.2m）
-2. Indoor 阶段 C 未签字 → H100 FT 禁止
-3. `train_v4_ac` 尚未接受 `--config configs/aerial_rl_phase3_unified.yaml` 作为默认
+## 125 采集（P1）
+
+```bash
+git checkout project/phase3-unified
+bash experiments/aerial/scripts/collect_phase3_unified.sh
+```
+
+## 阻塞（P2 前）
+
+1. Indoor 阶段 C 签字
+2. `odom_from_imu_rgb` VIO stub 升级（eval 诚实基线）
+3. H100 融合 FT 签字
 
 ## 与 phase2-vgoal 关系
 
-并行、不合并。vgoal / Orin / 红车旁线留在 `project/phase2-vgoal`。
+并行、不合并。vgoal / Orin 留在 `project/phase2-vgoal`（HJ 相机 WIP 在 stash）。

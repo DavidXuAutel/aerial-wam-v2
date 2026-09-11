@@ -171,10 +171,23 @@ def main(argv: "list[str] | None" = None) -> int:
             failures.append(f"ep{idx}: {f}")
         for q in quar:
             quarantined.append(f"ep{idx}: {q}")
-        manifest.append({"file": path.name, "steps": rep["steps"],
-                         "return": rep["reward_sum"], "achieved_hz": rep["achieved_hz"],
-                         "nontrivial": not bad, "quarantined": bool(quar),
-                         "usable": not bad and not quar})
+        scene = None
+        pose_source = None
+        if transitions:
+            info0 = getattr(transitions[0], "info", None) or {}
+            scene = info0.get("scene")
+            pose_source = info0.get("pose_source")
+        manifest.append({
+            "file": path.name,
+            "steps": rep["steps"],
+            "return": rep["reward_sum"],
+            "achieved_hz": rep["achieved_hz"],
+            "nontrivial": not bad,
+            "quarantined": bool(quar),
+            "usable": not bad and not quar,
+            "scene": scene,
+            "pose_source": pose_source,
+        })
         reports.append(rep)
 
     loop = build_from_config(_resolve_cfg(args))

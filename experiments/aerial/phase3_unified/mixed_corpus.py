@@ -54,22 +54,16 @@ def build_mixed_corpus(
     seed: int = 0,
     shuffle: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Interleave outdoor and indoor episodes at the given outdoor probability."""
+    """Union of all outdoor + indoor episodes, shuffled (P1 seen pool).
+
+    ``outdoor_prob`` is recorded in metadata as the FT target mix; the episode
+    pool itself includes every seen outdoor route and indoor segment.
+    """
     if not 0.0 <= outdoor_prob <= 1.0:
         raise ValueError(f"outdoor_prob must be in [0, 1], got {outdoor_prob}")
-    rng = random.Random(seed)
-    pool: List[Dict[str, Any]] = []
-    n = max(len(outdoor_routes), len(indoor_segments), 1)
-    for i in range(n):
-        use_outdoor = rng.random() < outdoor_prob
-        if use_outdoor and outdoor_routes:
-            pool.append(dict(outdoor_routes[i % len(outdoor_routes)]))
-        elif indoor_segments:
-            pool.append(dict(indoor_segments[i % len(indoor_segments)]))
-        elif outdoor_routes:
-            pool.append(dict(outdoor_routes[i % len(outdoor_routes)]))
+    pool: List[Dict[str, Any]] = [dict(x) for x in outdoor_routes] + [dict(x) for x in indoor_segments]
     if shuffle:
-        rng.shuffle(pool)
+        random.Random(seed).shuffle(pool)
     return pool
 
 

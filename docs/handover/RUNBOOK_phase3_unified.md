@@ -41,25 +41,31 @@
 
 ## 2. 阶段
 
-### P0 — 骨架（当前）
+### P0 — 骨架 ✅
 
 - [x] `project/phase3-unified` @ `phase2-pass-20260908`
 - [x] `scene_profile.py` + collector 接线
 - [x] `build_phase3_mixed_annotation.py`
 - [x] 双门 eval 脚本
-- [ ] Indoor 阶段 C 签字
-- [ ] 混采比例签字
 
-### P1 — 混采语料（125）
+### P1 — 混采语料 + 采集 ✅
+
+语料：`experiments/aerial/phase3_unified/annotations/mixed_seen.json`（**16 outdoor_long + 4 indoor_micro**）
 
 ```bash
+# 再生语料
 python -m experiments.aerial.scripts.build_phase3_mixed_annotation \
-  --outdoor artifacts/seen_airsim16_long_routes.json \
-  --out artifacts/phase3_unified_mixed_seen.json \
-  --outdoor-prob 0.7
+  --out experiments/aerial/phase3_unified/annotations/mixed_seen.json
+
+# 125 混采采集（scene tag → action_limits / success_dist / shield）
+bash experiments/aerial/scripts/collect_phase3_unified.sh
 ```
 
-每 episode 带 `scene` + `pose_source`。
+每 episode 带 `scene` + `pose_source`；collector 按 `scene_profiles` 切换尺度。
+
+签字项（P2 前）：
+- [ ] Indoor 阶段 C 签字
+- [ ] 混采比例 7:3 签字
 
 ### P2 — 融合 FT（H100 · 签字后）
 

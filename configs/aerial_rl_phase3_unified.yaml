@@ -132,5 +132,20 @@ report_required_fields:
   - goal_rel_pose_source
   - success_dist_m
 
-annotation: null
-max_episodes: 20
+annotation: experiments/aerial/phase3_unified/annotations/mixed_seen.json
+max_episodes: 0
+
+safety:
+  kind: three_zone
+  l1_m: 8.0
+  l2_m: 5.0
+  l3_m: 1.5
+  v1_m_s: 2.0
+  v2_m_s: 1.0
+  v_stop_m_s: 0.2
+  v_cruise_m_s: 25.0
+  a_max_m_s2: 2.5
+  delay_s: 0.2
+  min_tau_s: 1.0
+  max_p_coll: 0.5
+  retreat_step_m: 3.0

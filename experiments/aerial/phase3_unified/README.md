@@ -34,16 +34,31 @@ experiments/aerial/scripts/
 └── eval_phase3_unified.sh
 ```
 
-## 快速开始（P0 骨架）
+## 工作区
+
+**当前主 project**：`project/phase3-unified`（起自 `phase2-pass`，不含 vgoal）。
 
 ```bash
 git checkout project/phase3-unified
+```
 
-# 生成混采语料（7:3 outdoor:indoor）
+## 快速开始
+
+```bash
+# 混采语料（已生成：16 outdoor + 4 indoor）
 python -m experiments.aerial.scripts.build_phase3_mixed_annotation \
-  --out artifacts/phase3_unified_mixed_seen.json
+  --out experiments/aerial/phase3_unified/annotations/mixed_seen.json
 
-# 双门验收（签字后，同一 ckpt）
+# P1 采集（125 · AirSim）
+bash experiments/aerial/scripts/collect_phase3_unified.sh
+
+# 训练入口（P2 签字后）
+python -m experiments.aerial.rl.train_v4_ac \
+  --config configs/aerial_rl_phase3_unified.yaml \
+  --backend airsim --dynamics torch --phase2 \
+  --init-actor-ckpt experiments/aerial/rl/artifacts/v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt
+
+# 双门验收
 bash experiments/aerial/scripts/eval_phase3_unified.sh <actor_ckpt>
 ```
 

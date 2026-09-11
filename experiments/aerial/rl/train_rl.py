@@ -313,7 +313,10 @@ def _load_episodes(cfg: Any) -> Optional[List[Dict[str, Any]]]:
     from experiments.aerial.eval.run_closed_loop import load_annotation
 
     episodes = load_annotation(Path(str(ann)))
-    return episodes[: max(0, int(_get(cfg, "max_episodes", 20)))]
+    max_eps = int(_get(cfg, "max_episodes", 20))
+    if max_eps <= 0:
+        return episodes
+    return episodes[:max_eps]
 
 
 def augment_near_goal_episodes(
@@ -351,12 +354,17 @@ def augment_near_goal_episodes(
             pt = pts[idx]
             d_vec = goal[:2] - pt[:2]
             spawn_yaw = float(np.arctan2(d_vec[1], d_vec[0]))
-            near_eps.append({
+            near_ep: Dict[str, Any] = {
                 "pos": [pt.tolist(), goal.tolist()],
                 "yaw": [spawn_yaw, spawn_yaw],
                 "gpt_instruction": ep.get("gpt_instruction", ""),
                 "_near_goal_spawn": True,
-            })
+            }
+            if ep.get("scene"):
+                near_ep["scene"] = ep["scene"]
+            if ep.get("pose_source"):
+                near_ep["pose_source"] = ep["pose_source"]
+            near_eps.append(near_ep)
     if not near_eps:
         logger.warning("augment_near_goal_episodes: no waypoints in [%.0f, %.0f]m of goal", dist_min_m, dist_max_m)
         return episodes
@@ -489,6 +497,13 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
 
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))
     planner = _build_planner(cfg, dynamics, reward_cfg)
+    scene_profiles = None
+    scene_profiles_raw = _get(cfg, "scene_profiles", None)
+    if scene_profiles_raw:
+        from experiments.aerial.rl.scene_profile import load_scene_profiles_from_mapping
+
+        scene_profiles = load_scene_profiles_from_mapping(scene_profiles_raw)
+
     collector = RolloutCollector(
         env, policy, buffer,
         reward_cfg=reward_cfg,
@@ -499,6 +514,7 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         tau_predictor=_build_tau_predictor(_get(cfg, "tau_predictor", {})),
         planner=planner,
         dynamics=dynamics,
+        scene_profiles=scene_profiles,
     )
     episodes = _load_episodes(cfg)
     latent_dim = int(getattr(dynamics, "latent_dim", 8))

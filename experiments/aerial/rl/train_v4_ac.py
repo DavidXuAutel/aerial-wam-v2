@@ -28,13 +28,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def _load_cfg(repo: Path) -> Dict[str, Any]:
-    cfg_path = repo / "configs" / "aerial_rl.yaml"
+def _load_cfg(repo: Path, config_rel: str = "configs/aerial_rl.yaml") -> Dict[str, Any]:
+    cfg_path = repo / config_rel
     return yaml.safe_load(cfg_path.read_text())
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description="V4 imagination AC short train")
+    p.add_argument(
+        "--config",
+        default="configs/aerial_rl.yaml",
+        help="yaml config (use configs/aerial_rl_phase3_unified.yaml for Phase-3)",
+    )
     p.add_argument("--iters", type=int, default=5)
     p.add_argument("--episodes-per-iter", type=int, default=2)
     p.add_argument("--imagine-batch", type=int, default=16)
@@ -147,7 +152,8 @@ def main() -> int:
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
-    cfg = _load_cfg(repo)
+    cfg = _load_cfg(repo, str(args.config))
+    logger.info("config: %s", args.config)
     cfg.setdefault("corrector", {})
     cfg.setdefault("env", {})
     cfg.setdefault("imagination", {})

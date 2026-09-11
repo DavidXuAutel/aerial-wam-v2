@@ -32,7 +32,11 @@ from experiments.aerial.rl.env.obs import Observation
 from experiments.aerial.rl.goal_features import body_vel_from_obs, goal_rel_from_obs
 from experiments.aerial.rl.reward import NavigationReward, RewardConfig
 from experiments.aerial.rl.safety import SafetyShield
-from experiments.aerial.rl.scene_profile import apply_episode_scene_profile, restore_scene_profile_context
+from experiments.aerial.rl.scene_profile import (
+    SceneProfile,
+    apply_episode_scene_profile,
+    restore_scene_profile_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +103,7 @@ class RolloutCollector:
         tau_predictor: Optional[Any] = None,
         planner: Optional[Any] = None,
         dynamics: Optional[Any] = None,
+        scene_profiles: Optional[Dict[str, SceneProfile]] = None,
     ) -> None:
         self.env = env
         self.policy = policy
@@ -124,6 +129,7 @@ class RolloutCollector:
         self.planner = planner
         # V4 P2: online WM for live p_coll → should_override(obs, wm_out=...).
         self.dynamics = dynamics
+        self.scene_profiles = scene_profiles
         self._latent: Optional[np.ndarray] = None
 
     def collect_episode(self, episode: Optional[Dict[str, Any]] = None) -> tuple[Episode, CollectStats]:
@@ -165,6 +171,7 @@ class RolloutCollector:
             self.reward_cfg,
             self.safety,
             step_hz=step_hz,
+            profiles=self.scene_profiles,
         )
         limits = scene_ctx.limits
         # Variable-cs training: explicit cruise_speed overrides scene default.
@@ -178,8 +185,12 @@ class RolloutCollector:
                 if zone is not None and hasattr(zone, "v_cruise_m_s"):
                     _prev_shield_cs = float(zone.v_cruise_m_s)
                     zone.v_cruise_m_s = ep_cs
-        if episode and episode.get("scene"):
-            obs.info["scene"] = str(episode["scene"])
+        ep_scene = str(episode.get("scene", "")).strip() if episode else ""
+        if ep_scene:
+            obs.info["scene"] = ep_scene
+        ep_pose = str(episode.get("pose_source", "")).strip() if episode else ""
+        if ep_pose:
+            obs.info["pose_source"] = ep_pose
         t_start = time.perf_counter()
 
         for _ in range(self.max_steps):
@@ -258,6 +269,11 @@ class RolloutCollector:
             ep_info = {**info, **terms, "intervention": intervened}
             if goal_xyz is not None:
                 ep_info["goal"] = goal_xyz.copy()
+            if isinstance(obs.info, dict):
+                if "scene" in obs.info:
+                    ep_info["scene"] = obs.info["scene"]
+                if "pose_source" in obs.info:
+                    ep_info["pose_source"] = obs.info["pose_source"]
             # ATTR / P7: persist shield inputs onto transition.info
             if isinstance(obs.info, dict):
                 for k in (

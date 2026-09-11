@@ -62,12 +62,9 @@ def _three_zone_from_mapping(safety: Mapping[str, Any]) -> ThreeZoneSpec:
     )
 
 
-def load_scene_profiles(config_path: str | Path) -> Dict[str, SceneProfile]:
-    path = Path(config_path)
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    profiles_raw = dict(raw.get("scene_profiles") or {})
+def load_scene_profiles_from_mapping(profiles_raw: Mapping[str, Any]) -> Dict[str, SceneProfile]:
     out: Dict[str, SceneProfile] = {}
-    for scene, block in profiles_raw.items():
+    for scene, block in dict(profiles_raw or {}).items():
         limits = _limits_from_mapping(block["action_limits"])
         safety = block.get("safety") or {}
         tz = _three_zone_from_mapping(safety) if safety.get("kind") == "three_zone" else None
@@ -80,6 +77,13 @@ def load_scene_profiles(config_path: str | Path) -> Dict[str, SceneProfile]:
             cruise_speed_m_s=cruise if cruise and cruise > 0 else None,
         )
     return out
+
+
+def load_scene_profiles(config_path: str | Path) -> Dict[str, SceneProfile]:
+    path = Path(config_path)
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    profiles_raw = dict(raw.get("scene_profiles") or {})
+    return load_scene_profiles_from_mapping(profiles_raw)
 
 
 def default_outdoor_profile(step_hz: float) -> SceneProfile:
