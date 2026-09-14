@@ -12,8 +12,8 @@ logger = logging.getLogger("sjcam_setup")
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="SJCAM 4000 snapshot (default /dev/video2)")
-    p.add_argument("--device", default="2")
+    p = argparse.ArgumentParser(description="SJCAM 4000 snapshot (default /dev/video0)")
+    p.add_argument("--device", default="0")
     p.add_argument("--capture-w", type=int, default=1280)
     p.add_argument("--capture-h", type=int, default=720)
     p.add_argument("--snapshot", default="~/sjcam_snap.jpg")

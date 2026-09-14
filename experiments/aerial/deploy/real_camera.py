@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RealCameraConfig:
-    device: str = "2"
+    device: str = "0"
     width: int = 1280
     height: int = 720
     wam_size: int = 224

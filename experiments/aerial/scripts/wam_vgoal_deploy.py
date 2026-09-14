@@ -19,7 +19,7 @@ Example (bench, props off):
 Outdoor flight (props on, RC ready):
 
   sudo python -m experiments.aerial.scripts.wam_vgoal_deploy \\
-    --mavlink-port /dev/ttyACM0 --camera 2 \\
+    --mavlink-port /dev/ttyACM0 --camera 0 \\
     --vgoal-repo ~/Projects/aerial-vgoal-wam \\
     --goal-x 10 --goal-y 0 --goal-z 5 \\
     --offboard --arm --run --max-steps 300 --i-know-props-are-on
@@ -48,7 +48,7 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--mavlink-port", default="/dev/ttyACM0")
     p.add_argument("--step-hz", type=float, default=5.0)
     p.add_argument("--max-steps", type=int, default=100)
-    p.add_argument("--camera", default="2", help="V4L2 device index or path")
+    p.add_argument("--camera", default="0", help="V4L2 device index or path")
     p.add_argument("--mock-camera", action="store_true")
     p.add_argument("--capture-w", type=int, default=1280)
     p.add_argument("--capture-h", type=int, default=720)

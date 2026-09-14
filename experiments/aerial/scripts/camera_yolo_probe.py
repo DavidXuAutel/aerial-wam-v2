@@ -14,7 +14,7 @@ logger = logging.getLogger("camera_yolo_probe")
 
 def _parse() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="RealCamera + YOLO one-shot probe")
-    p.add_argument("--camera", default="2")
+    p.add_argument("--camera", default="0")
     p.add_argument("--capture-w", type=int, default=1280)
     p.add_argument("--capture-h", type=int, default=720)
     p.add_argument("--capture-fps", type=int, default=30)

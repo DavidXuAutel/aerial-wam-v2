@@ -25,7 +25,7 @@ class PixhawkEnvConfig:
     mavlink_port: str = "/dev/ttyACM0"
     mavlink_baud: int = 115200
     step_hz: float = 30.0
-    camera_device: str = "2"
+    camera_device: str = "0"
     capture_w: int = 1280
     capture_h: int = 720
     capture_fps: int = 30
