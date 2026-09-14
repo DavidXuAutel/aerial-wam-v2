@@ -94,6 +94,10 @@ class ImaginationPlanner:
                 f"planner horizon {self.horizon} exceeds cap {MAX_IMAGINATION_HORIZON}"
             )
 
+    def reset(self) -> None:
+        """Per-episode hook (stateless; matches deploy policy interface)."""
+        return
+
     def set_goal(self, goal: Optional[np.ndarray]) -> None:
         set_goal = getattr(self.dynamics, "set_goal", None)
         if callable(set_goal):
