@@ -1,11 +1,12 @@
-"""MAVLink bridge for Pixhawk / PX4 companion-computer control.
+"""MAVLink bridge for Pixhawk companion-computer control (ArduPilot + PX4).
 
-Maps PX4 ``LOCAL_POSITION_NED`` + ``ATTITUDE`` into the same +up world
-``state`` vector ``AirSimDroneEnv.observe_state`` uses::
+Maps ``LOCAL_POSITION_NED`` / ``GLOBAL_POSITION_INT`` + ``ATTITUDE`` into the
+same +up world ``state`` vector ``AirSimDroneEnv.observe_state`` uses::
 
     [x, y, z_up, vx, vy, vz_up, yaw]
 
-Offboard velocity setpoints use NED (``vx_n, vy_e, vz_down``) per PX4.
+External velocity setpoints use NED (``vx_n, vy_e, vz_down``). ArduPilot uses
+GUIDED mode; PX4 uses OFFBOARD.
 """
 from __future__ import annotations
 
@@ -58,17 +59,24 @@ def velocity_mask_ignore_position() -> int:
     )
 
 
+# ArduCopter custom_mode values (MAV_CMD_DO_SET_MODE param2).
+ARDUCOPTER_MODE_GUIDED = 4
+
+MAV_AUTOPILOT_ARDUPILOT = 3
+MAV_AUTOPILOT_PX4 = 12
+
+
 @dataclass
 class MavlinkBridgeConfig:
     port: str = "/dev/ttyACM0"
-    baud: int = 115200
+    baud: int = 57600
     source_system: int = 255
     source_component: int = 190
     stream_hz: float = 30.0
 
 
 class MavlinkBridge:
-    """Thin PX4 MAVLink helper for Offboard velocity + state readback."""
+    """MAVLink helper for companion velocity control (ArduPilot GUIDED / PX4 OFFBOARD)."""
 
     def __init__(self, config: Optional[MavlinkBridgeConfig] = None) -> None:
         if mavutil is None:
@@ -76,8 +84,10 @@ class MavlinkBridge:
         self.config = config or MavlinkBridgeConfig()
         self._mav: Any = None
         self._last_local: Optional[Any] = None
+        self._last_global: Optional[Any] = None
         self._last_attitude: Optional[Any] = None
         self._last_heartbeat: Optional[Any] = None
+        self._autopilot: Optional[int] = None
 
     @property
     def connected(self) -> bool:
@@ -110,6 +120,10 @@ class MavlinkBridge:
             hb.type,
         )
         self._last_heartbeat = hb
+        self._autopilot = int(hb.autopilot)
+
+    def is_ardupilot(self) -> bool:
+        return self._autopilot == MAV_AUTOPILOT_ARDUPILOT
 
     def close(self) -> None:
         if self._mav is not None:
@@ -134,10 +148,14 @@ class MavlinkBridge:
             t = msg.get_type()
             if t == "LOCAL_POSITION_NED":
                 self._last_local = msg
+            elif t == "GLOBAL_POSITION_INT":
+                self._last_global = msg
             elif t == "ATTITUDE":
                 self._last_attitude = msg
             elif t == "HEARTBEAT":
                 self._last_heartbeat = msg
+                if msg.get_srcComponent() != 0:
+                    self._autopilot = int(msg.autopilot)
 
     def is_armed(self) -> bool:
         if self._last_heartbeat is None:
@@ -161,6 +179,13 @@ class MavlinkBridge:
                 float(loc.vz),
                 yaw,
             )
+        if self._last_global is not None:
+            g = self._last_global
+            rel_m = float(g.relative_alt) / 1000.0
+            vx = float(getattr(g, "vx", 0) or 0) / 100.0
+            vy = float(getattr(g, "vy", 0) or 0) / 100.0
+            vz_d = float(getattr(g, "vz", 0) or 0) / 100.0
+            return ned_to_wam_state(0.0, 0.0, -rel_m, vx, vy, vz_d, yaw)
         return np.zeros(7, dtype=np.float32)
 
     def send_velocity_ned(
@@ -218,9 +243,31 @@ class MavlinkBridge:
                 time.sleep(sleep_s)
         return n
 
-    def set_mode_offboard(self) -> None:
+    def set_mode_guided(self) -> None:
+        """ArduPilot Copter GUIDED — companion velocity control."""
         if self._mav is None:
             raise RuntimeError("not connected")
+        self._mav.mav.command_long_send(
+            self.target_system,
+            self.target_component,
+            mavlink.MAV_CMD_DO_SET_MODE,
+            0,
+            mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+            float(ARDUCOPTER_MODE_GUIDED),
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+
+    def set_mode_offboard(self) -> None:
+        """Enter companion external-control mode (ArduPilot GUIDED or PX4 OFFBOARD)."""
+        if self._mav is None:
+            raise RuntimeError("not connected")
+        if self.is_ardupilot():
+            self.set_mode_guided()
+            return
         mapping = getattr(self._mav, "mode_mapping_px4", None)
         if callable(mapping):
             px4_modes = mapping()
@@ -268,7 +315,9 @@ class MavlinkBridge:
         st = self.observe_state(timeout_s=0.2)
         return {
             "armed": self.is_armed(),
+            "ardupilot": self.is_ardupilot(),
             "state": st.tolist(),
             "port": self.config.port,
+            "baud": self.config.baud,
             "target_system": self.target_system,
         }

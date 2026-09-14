@@ -7,7 +7,7 @@ camera, no OFFBOARD, no ARM — only loads models and prints one observation.
 
 Stages:
   (default)       connect MAVLink + load stack + one observe()
-  --offboard      enter PX4 OFFBOARD (disarmed)
+  --offboard      enter ArduPilot GUIDED / PX4 OFFBOARD (disarmed)
   --arm           arm motors (requires --i-know-props-are-on)
   --run           closed-loop steps (requires --offboard; --arm for flight)
 
@@ -46,6 +46,7 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--config", default="configs/aerial_rl.yaml")
     p.add_argument("--vgoal-repo", default="~/Projects/aerial-vgoal-wam")
     p.add_argument("--mavlink-port", default="/dev/ttyACM0")
+    p.add_argument("--mavlink-baud", type=int, default=57600)
     p.add_argument("--step-hz", type=float, default=5.0)
     p.add_argument("--max-steps", type=int, default=100)
     p.add_argument("--camera", default="0", help="V4L2 device index or path")
@@ -156,6 +157,7 @@ def main() -> int:
     env = PixhawkDroneEnv(
         PixhawkEnvConfig(
             mavlink_port=args.mavlink_port,
+            mavlink_baud=int(args.mavlink_baud),
             step_hz=float(args.step_hz),
             camera_device=str(args.camera),
             capture_w=int(args.capture_w),

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PixhawkEnvConfig:
     mavlink_port: str = "/dev/ttyACM0"
-    mavlink_baud: int = 115200
+    mavlink_baud: int = 57600
     step_hz: float = 30.0
     camera_device: str = "0"
     capture_w: int = 1280
@@ -97,7 +97,7 @@ class PixhawkDroneEnv:
         self._bridge.stream_hover(self.config.offboard_warmup_s)
 
         if self.config.offboard_on_reset:
-            self._bridge.set_mode_offboard()
+            self._bridge.set_mode_offboard()  # ArduPilot → GUIDED; PX4 → OFFBOARD
             self._offboard_active = True
             self._bridge.stream_hover(0.5)
         else:

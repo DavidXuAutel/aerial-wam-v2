@@ -6,7 +6,7 @@ Default (**dry-run**): connect, print telemetry, stream zero-velocity setpoints
 
 Stages (each requires the previous flags):
 
-  --offboard   Enter PX4 OFFBOARD after warming up setpoint stream (still disarmed)
+  --offboard   Enter external control (ArduPilot GUIDED / PX4 OFFBOARD), disarmed
   --arm        Arm motors (DANGER: props must be off or aircraft secured)
   --hover-s    Hold zero-velocity Offboard for N seconds after arm
 
@@ -39,11 +39,15 @@ logger = logging.getLogger("pixhawk_offboard_hover")
 def _parse() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Pixhawk MAVLink / Offboard hover probe")
     p.add_argument("--port", default="/dev/ttyACM0")
-    p.add_argument("--baud", type=int, default=115200)
+    p.add_argument("--baud", type=int, default=57600)
     p.add_argument("--stream-hz", type=float, default=30.0)
     p.add_argument("--warmup-s", type=float, default=3.0, help="Setpoint stream before OFFBOARD")
     p.add_argument("--hover-s", type=float, default=0.0, help="Hover duration after arm")
-    p.add_argument("--offboard", action="store_true", help="Switch to OFFBOARD mode")
+    p.add_argument(
+        "--offboard",
+        action="store_true",
+        help="Switch to ArduPilot GUIDED or PX4 OFFBOARD",
+    )
     p.add_argument("--arm", action="store_true", help="Arm after OFFBOARD (DANGER)")
     p.add_argument(
         "--i-know-props-are-on",
