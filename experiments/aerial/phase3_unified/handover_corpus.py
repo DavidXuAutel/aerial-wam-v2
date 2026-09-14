@@ -143,6 +143,50 @@ def build_handover_pairs(
     return pairs
 
 
+def filter_episodes_by_spawn_report(
+    episodes: Sequence[Dict[str, Any]],
+    spawn_report: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Keep only episodes whose probe label matches a row with ok=true."""
+    ok_labels: set[str] = set()
+    for rows in (spawn_report.get("maps") or {}).values():
+        for row in rows:
+            if row.get("ok"):
+                ok_labels.add(str(row.get("label")))
+    if not ok_labels:
+        return list(episodes)
+    out: List[Dict[str, Any]] = []
+    for ep in episodes:
+        label = str(ep.get("segment_name") or ep.get("trajectory_id") or "")
+        if ep.get("leg") in ("outdoor", "indoor") and label and label not in ok_labels:
+            continue
+        out.append(dict(ep))
+    return out
+
+
+def rebuild_handover_pairs_from_legs(
+    episodes: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Re-pair surviving outdoor/indoor legs by handover_id (drop incomplete pairs)."""
+    by_hid: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for ep in episodes:
+        hid = ep.get("handover_id")
+        if not hid:
+            continue
+        leg = ep.get("leg")
+        if leg not in ("outdoor", "indoor"):
+            continue
+        by_hid.setdefault(str(hid), {})[str(leg)] = dict(ep)
+    paired: List[Dict[str, Any]] = []
+    for hid in sorted(by_hid.keys()):
+        legs = by_hid[hid]
+        if "outdoor" in legs and "indoor" in legs:
+            paired.append(legs["outdoor"])
+            paired.append(legs["indoor"])
+    extras = [dict(e) for e in episodes if not e.get("handover_id")]
+    return paired + extras
+
+
 def build_handover_annotation(
     *,
     outdoor_path: str | Path = "artifacts/seen_airsim16_long_routes.json",
@@ -150,6 +194,7 @@ def build_handover_annotation(
     outdoor_route_indices: Optional[Sequence[int]] = None,
     outdoor_approach_len_m: float = 30.0,
     include_long_outdoor: bool = True,
+    spawn_report: Optional[Dict[str, Any]] = None,
     seed: int = 0,
 ) -> Dict[str, Any]:
     outdoor_routes = _load_routes(Path(outdoor_path))
@@ -172,6 +217,8 @@ def build_handover_annotation(
     import random
 
     pool = list(handover_eps) + list(extra)
+    if spawn_report:
+        pool = rebuild_handover_pairs_from_legs(filter_episodes_by_spawn_report(pool, spawn_report))
     random.Random(seed).shuffle(pool)
 
     return {

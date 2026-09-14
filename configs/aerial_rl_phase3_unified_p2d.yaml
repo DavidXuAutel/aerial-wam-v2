@@ -1,20 +1,17 @@
-# Aerial WAM Phase-3 — Unified Outdoor + Indoor navigation
+# Aerial WAM Phase-3 — P2d outdoor close FT (offline replay from P2b)
 #
-# Branch: project/phase3-unified (起自 phase2-pass-20260908)
-# Goal: one WAM + π ckpt for outdoor long-horizon and indoor micro-scale.
-# NOT vgoal / visual target tracking.
+# Context (2026-09-13):
+#   P2b (outdoor-heavy replay, 300 iter) → d_min med 12.65m (best so far)
+#   P2c (125 online near-goal, 48 iter) → d_min med ~43m (regressed — abandoned)
+#   Phase-2 toward_g baseline → 13/16 arrivals
 #
-# Usage (after P0 sign-off):
-#   python -m experiments.aerial.scripts.build_phase3_mixed_annotation \
-#     --out artifacts/phase3_unified_mixed_seen.json
-#   python -m experiments.aerial.rl.train_v4_ac \
-#     --config configs/aerial_rl_phase3_unified.yaml \
-#     --annotation artifacts/phase3_unified_mixed_seen.json \
-#     --phase2 --init-actor-ckpt experiments/aerial/rl/artifacts/v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt
+# P2d: warm-start P2b ckpt, 100% outdoor replay, longer offline FT (500 iter).
+#
+#   bash experiments/aerial/scripts/train_phase3_unified_p2d.sh
 
 scene_mix:
-  outdoor_prob: 0.7
-  indoor_prob: 0.3
+  outdoor_prob: 1.0
+  indoor_prob: 0.0
   cross_scene_in_episode: false
   require_scene_tag: true
 
@@ -55,24 +52,6 @@ scene_profiles:
       v_cruise_m_s: 25.0
       a_max_m_s2: 2.5
       delay_s: 0.2
-  indoor_micro:
-    action_limits:
-      max_dx: 0.15
-      max_dy: 0.08
-      max_dz: 0.08
-      max_dyaw: 0.10
-    success_dist_m: 0.5
-    safety:
-      kind: three_zone
-      l1_m: 1.5
-      l2_m: 0.8
-      l3_m: 0.4
-      v1_m_s: 0.6
-      v2_m_s: 0.3
-      v_stop_m_s: 0.05
-      v_cruise_m_s: 1.0
-      a_max_m_s2: 1.5
-      delay_s: 0.1
 
 pose_contract:
   pose_source_required: true
@@ -82,7 +61,7 @@ pose_contract:
   eval_allow_gt_proxy: false
 
 env:
-  backend: airsim
+  backend: mock
   host: 127.0.0.1
   port: 41451
   camera: front_custom
@@ -91,7 +70,7 @@ env:
   height: 224
   step_hz: 5.0
   grab_depth: false
-  health_check: true
+  health_check: false
   seed: 0
 
 buffer:
@@ -123,7 +102,7 @@ planner:
 
 corrector:
   iterations: 10
-  episodes_per_iter: 1
+  episodes_per_iter: 0
   max_steps: 200
   enable_wm_update: false
   enable_policy_update: false
@@ -136,22 +115,20 @@ v4:
   lambda_gae: 0.95
   gamma: 0.997
   entropy_scale: 3.0e-4
-  actor_lr: 1.0e-4
-  critic_lr: 1.0e-4
+  actor_lr: 5.0e-5
+  critic_lr: 5.0e-5
   action_scale: 1.0
   device: cpu
 
-report_required_fields:
-  - scene
-  - controller_attribution
-  - sensors_used
-  - pose_source
-  - used_gt_world_pose_for_control
-  - goal_rel_pose_source
-  - success_dist_m
-
 annotation: experiments/aerial/phase3_unified/annotations/handover_seen_filtered.json
+dataset: experiments/aerial/rl/artifacts/dataset_phase3_p2d_outdoor_only
 max_episodes: 0
+
+p2d:
+  warm_start: experiments/aerial/rl/artifacts/v4_ac_ckpt_phase3_unified_p2b_20260912/v4_ac_latest.pt
+  outdoor_repeat: 6
+  iters: 500
+  regression_baseline: artifacts/phase3_unified_eval_20260911/outdoor_long_eval_phase2_baseline.json
 
 safety:
   kind: three_zone

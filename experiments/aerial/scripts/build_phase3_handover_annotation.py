@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ def main() -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--outdoor-approach-len-m", type=float, default=30.0)
     p.add_argument("--no-long-outdoor", action="store_true")
+    p.add_argument("--spawn-report", default=None, help="filter legs using probe_handover_spawns JSON")
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
 
@@ -30,12 +32,17 @@ def main() -> int:
 
     from experiments.aerial.phase3_unified.handover_corpus import write_handover_annotation
 
+    spawn_report = None
+    if args.spawn_report:
+        spawn_report = json.loads(Path(args.spawn_report).read_text(encoding="utf-8"))
+
     out = write_handover_annotation(
         args.out,
         outdoor_path=args.outdoor,
         indoor_path=args.indoor,
         outdoor_approach_len_m=float(args.outdoor_approach_len_m),
         include_long_outdoor=not args.no_long_outdoor,
+        spawn_report=spawn_report,
         seed=int(args.seed),
     )
     logger.info("wrote %s", out)

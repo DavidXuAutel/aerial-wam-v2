@@ -49,8 +49,8 @@ git checkout project/phase3-unified
 python -m experiments.aerial.scripts.build_phase3_mixed_annotation \
   --out experiments/aerial/phase3_unified/annotations/mixed_seen.json
 
-# P1 采集（125 · AirSim）
-bash experiments/aerial/scripts/collect_phase3_unified.sh
+# P1 采集（125 · AirSim；Mac 经 `ssh cursor-125-public`）
+ssh cursor-125-public 'cd ~/aerial-wam-v2 && bash experiments/aerial/scripts/collect_phase3_unified.sh'
 
 # 训练入口（P2 签字后）
 python -m experiments.aerial.rl.train_v4_ac \

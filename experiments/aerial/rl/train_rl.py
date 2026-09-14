@@ -482,6 +482,7 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
 
     cc = _get(cfg, "corrector", {})
     ic = _get(cfg, "imagination", {})
+    env_cfg = _get(cfg, "env", {})
     corrector_cfg = CorrectorConfig(
         iterations=int(_get(cc, "iterations", 10)),
         episodes_per_iter=int(_get(cc, "episodes_per_iter", 1)),
@@ -493,6 +494,12 @@ def build_from_config(cfg: Any) -> SerialCorrectorLoop:
         imagine_batch=int(_get(ic, "batch", 64)),
         imagine_horizon=int(_get(ic, "horizon", 10)),
         smoke=bool(_get(cc, "smoke", False)),
+        renderer_restart_every=int(_get(cc, "renderer_restart_every", 0)),
+        renderer_restart_script=_get(cc, "renderer_restart_script", None),
+        renderer_restart_scene=str(_get(cc, "renderer_restart_scene", "outdoor")),
+        renderer_restart_wait_s=float(_get(cc, "renderer_restart_wait_s", 30.0)),
+        renderer_host=str(_get(cc, "renderer_host", _get(env_cfg, "host", "127.0.0.1"))),
+        renderer_port=int(_get(cc, "renderer_port", _get(env_cfg, "port", 41451))),
     )
 
     policy = HeuristicPolicy(goal_getter=lambda: getattr(env, "goal", None))

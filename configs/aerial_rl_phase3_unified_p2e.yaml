@@ -1,0 +1,138 @@
+# Aerial WAM Phase-3 — P2e Phase-2 close-tail micro-FT
+#
+# Context (2026-09-14):
+#   P2a–P2d offline replay from handover corpus → outdoor 0–1/16, d_min ~11–12m.
+#   P2c online near-goal (48 iter) → d_min ~43m (catastrophic).
+#   Phase-2 toward_g baseline → 13/16 (81.2%).
+#
+# Root cause: handover npz was collected with HeuristicPolicy, not Phase-2 π.
+# Imagination replay on non-expert trajectories drifts IR 0.76 → ~0.25.
+#
+# P2e:
+#   1) Collect Phase-2 expert rollouts on 16 outdoor_long routes (125).
+#   2) Slice close-tail windows (d_goal ∈ [3, 18] m).
+#   3) H100 micro offline FT (80 iter, lr 2e-5) warm-start Phase-2 ONLY.
+#
+#   bash experiments/aerial/scripts/train_phase3_unified_p2e.sh
+
+scene_mix:
+  outdoor_prob: 1.0
+  indoor_prob: 0.0
+  cross_scene_in_episode: false
+  require_scene_tag: true
+
+scene_profiles:
+  outdoor_long:
+    action_limits:
+      max_dx: 1.0
+      max_dy: 0.4
+      max_dz: 0.4
+      max_dyaw: 0.314
+    success_dist_m: 3.0
+    safety:
+      kind: three_zone
+      l1_m: 8.0
+      l2_m: 5.0
+      l3_m: 1.5
+      v1_m_s: 2.0
+      v2_m_s: 1.0
+      v_stop_m_s: 0.2
+      v_cruise_m_s: 25.0
+      a_max_m_s2: 2.5
+      delay_s: 0.2
+
+pose_contract:
+  pose_source_required: true
+  forbid_gt_world_pose_control: true
+  forbid_silent_gt_goal_rel: true
+  train_allow_gt_proxy: true
+  eval_allow_gt_proxy: false
+
+env:
+  backend: mock
+  host: 127.0.0.1
+  port: 41451
+  camera: front_custom
+  vehicle: drone_1
+  width: 224
+  height: 224
+  step_hz: 5.0
+  grab_depth: false
+  health_check: false
+  seed: 0
+
+buffer:
+  capacity_episodes: 2000
+  seed: 0
+
+reward:
+  w_progress: 1.0
+  w_collision: 10.0
+  w_maneuver: 0.01
+  success_bonus: 10.0
+  success_dist_m: 3.0
+
+dynamics:
+  kind: torch
+  latent_dim: 8
+  collide_radius_m: 2.0
+
+world_model:
+  checkpoint_dir: experiments/aerial/rl/artifacts/wm_ckpt_d_full_20260828
+
+imagination:
+  batch: 32
+  horizon: 8
+
+planner:
+  enable: false
+  horizon: 5
+
+corrector:
+  iterations: 10
+  episodes_per_iter: 0
+  max_steps: 200
+  enable_wm_update: false
+  enable_policy_update: false
+  strict_gates: false
+  wm_batch: 32
+  wm_window: 8
+  smoke: false
+
+v4:
+  lambda_gae: 0.95
+  gamma: 0.997
+  entropy_scale: 1.0e-4
+  actor_lr: 2.0e-5
+  critic_lr: 2.0e-5
+  action_scale: 1.0
+  device: cpu
+
+annotation: experiments/aerial/phase3_unified/annotations/outdoor_long_only.json
+dataset: experiments/aerial/rl/artifacts/dataset_phase3_p2e_close_tail
+max_episodes: 0
+
+p2e:
+  warm_start: experiments/aerial/rl/artifacts/v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt
+  expert_raw: experiments/aerial/rl/artifacts/dataset_phase3_p2e_phase2_expert
+  close_dist_min_m: 3.0
+  close_dist_max_m: 18.0
+  min_tail_steps: 24
+  tail_repeat: 4
+  iters: 80
+  regression_baseline: artifacts/phase3_unified_eval_20260911/outdoor_long_eval_phase2_baseline.json
+
+safety:
+  kind: three_zone
+  l1_m: 8.0
+  l2_m: 5.0
+  l3_m: 1.5
+  v1_m_s: 2.0
+  v2_m_s: 1.0
+  v_stop_m_s: 0.2
+  v_cruise_m_s: 25.0
+  a_max_m_s2: 2.5
+  delay_s: 0.2
+  min_tau_s: 1.0
+  max_p_coll: 0.5
+  retreat_step_m: 3.0

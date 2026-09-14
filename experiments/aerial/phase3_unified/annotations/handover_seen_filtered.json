@@ -1,0 +1,4833 @@
+{
+  "protocol_version": "phase3_handover_v0",
+  "maps": {
+    "env_airsim_16": "outdoor OpenFly city (AirVLN / env_airsim_16)",
+    "building_99": "Building_99 indoor lobby (z~1.5m, separate renderer)"
+  },
+  "note": "No single-map doorway \u2014 handover pairs switch renderer between legs. handover_id links outdoor_approach + indoor_micro.",
+  "scene_mix": {
+    "handover_pairs": 15,
+    "outdoor_approach_n": 15,
+    "indoor_b99_n": 8,
+    "outdoor_long_n": 16,
+    "total_n": 44,
+    "seed": 0
+  },
+  "episodes": [
+    {
+      "route_id": "long_route_06",
+      "route_idx": 5,
+      "base_route_idx": 13,
+      "category": "native_short",
+      "nominal_length_m": 141.0,
+      "start_pos": [
+        -679.51,
+        -100.451,
+        15.39
+      ],
+      "goal_pos": [
+        -748.51,
+        22.061,
+        15.39
+      ],
+      "pos": [
+        [
+          -679.51,
+          -100.451,
+          15.39
+        ],
+        [
+          -684.01,
+          -92.657,
+          15.39
+        ],
+        [
+          -688.51,
+          -84.862,
+          15.39
+        ],
+        [
+          -693.01,
+          -77.068,
+          15.39
+        ],
+        [
+          -697.51,
+          -69.274,
+          15.39
+        ],
+        [
+          -702.01,
+          -61.48,
+          15.39
+        ],
+        [
+          -706.51,
+          -53.685,
+          15.39
+        ],
+        [
+          -711.01,
+          -45.891,
+          15.39
+        ],
+        [
+          -715.51,
+          -38.097,
+          15.39
+        ],
+        [
+          -720.01,
+          -30.303,
+          15.39
+        ],
+        [
+          -724.51,
+          -22.509,
+          15.39
+        ],
+        [
+          -729.01,
+          -14.714,
+          15.39
+        ],
+        [
+          -733.51,
+          -6.92,
+          15.39
+        ],
+        [
+          -738.01,
+          0.874,
+          15.39
+        ],
+        [
+          -739.51,
+          3.472,
+          15.39
+        ],
+        [
+          -739.51,
+          3.472,
+          15.39
+        ],
+        [
+          -739.51,
+          6.472,
+          15.39
+        ],
+        [
+          -742.51,
+          11.668,
+          15.39
+        ],
+        [
+          -747.01,
+          19.463,
+          15.39
+        ],
+        [
+          -748.51,
+          22.061,
+          15.39
+        ]
+      ],
+      "positions": [
+        [
+          -679.51,
+          -100.451,
+          15.39
+        ],
+        [
+          -684.01,
+          -92.657,
+          15.39
+        ],
+        [
+          -688.51,
+          -84.862,
+          15.39
+        ],
+        [
+          -693.01,
+          -77.068,
+          15.39
+        ],
+        [
+          -697.51,
+          -69.274,
+          15.39
+        ],
+        [
+          -702.01,
+          -61.48,
+          15.39
+        ],
+        [
+          -706.51,
+          -53.685,
+          15.39
+        ],
+        [
+          -711.01,
+          -45.891,
+          15.39
+        ],
+        [
+          -715.51,
+          -38.097,
+          15.39
+        ],
+        [
+          -720.01,
+          -30.303,
+          15.39
+        ],
+        [
+          -724.51,
+          -22.509,
+          15.39
+        ],
+        [
+          -729.01,
+          -14.714,
+          15.39
+        ],
+        [
+          -733.51,
+          -6.92,
+          15.39
+        ],
+        [
+          -738.01,
+          0.874,
+          15.39
+        ],
+        [
+          -739.51,
+          3.472,
+          15.39
+        ],
+        [
+          -739.51,
+          3.472,
+          15.39
+        ],
+        [
+          -739.51,
+          6.472,
+          15.39
+        ],
+        [
+          -742.51,
+          11.668,
+          15.39
+        ],
+        [
+          -747.01,
+          19.463,
+          15.39
+        ],
+        [
+          -748.51,
+          22.061,
+          15.39
+        ]
+      ],
+      "yaw": [
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        1.5708,
+        1.5708,
+        2.0944,
+        2.0944,
+        2.0944
+      ],
+      "gpt_instruction": "itCitoitnittitiitnituiteit itsittitritaitiitgithittit ittitoitwitaitritditsit ittithiteit ithitiitsittitoitritiitcit itbituitiitlitditiitnitgit itditiitsittitiitnitgituitiitsithiteitdit itbityit itiittitsit itgitriteityit itcitoitlitoitrit it,it itoitritnitaittiteit itwitiitnitditoitwitsit it,it itaitnitdit itcitoitlituitmitnitsit it.it itIittit itiitsit itlitaitritgiteit itiitnit itsitiitziteit it.it itSitlitiitgithittitlityit itviteiteitrit itritiitgithittit it,it ittithiteitnit itcitoitnittitiitnituiteit itgitoitiitnitgit itsittitritaitiitgithittit it,it itaitnitdit itsitlitiitgithittitlityit ittituitritnit itliteitfittit it.it itPitritoitciteiteitdit itditiitriteitcittitlityit ittitoit ittithiteit itniteitxittit itlitoitcitaittitiitoitnit it,it itait itlitaitritgiteit itmituitlittitiit it-it itsittitoitrityit itbituitiitlitditiitnitgit itwitiittithit itlitiitgithittit itgitritaityit itcitoitlitoitrit it,it itfiteitaittituitritiitnitgit itoitritnitaitmiteitnittitaitlit itmitoitlitditiitnitgit itbiteittitwiteiteitnit itfitlitoitoitritsit itaitnitdit itlitaitritgiteit itgitritiitdit itwitiitnitditoitwitsit it.it itTithitiitsit itbituitiitlitditiitnitgit itsiteitritviteitsit itaitsit iteitiittithiteitrit itait itriteitsitiitditeitnittitiitaitlit itoitrit itcitoitmitmiteitritcitiitaitlit iteitsittitaitbitlitiitsithitmiteitnittit it.it",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_east_from_1",
+      "gpt_instruction": "Building_99 lobby east from x=1",
+      "pos": [
+        [
+          1.0,
+          0.0,
+          1.5
+        ],
+        [
+          4.0,
+          0.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_east_from_1",
+      "d0_m": 3.0,
+      "handover_id": "HO07"
+    },
+    {
+      "route_id": "long_route_13",
+      "route_idx": 12,
+      "base_route_idx": 15,
+      "category": "native_short",
+      "nominal_length_m": 120.0,
+      "start_pos": [
+        67.549,
+        36.895,
+        29.18
+      ],
+      "goal_pos": [
+        -10.02,
+        -49.459,
+        29.18
+      ],
+      "pos": [
+        [
+          67.549,
+          36.895,
+          29.18
+        ],
+        [
+          63.049,
+          29.101,
+          29.18
+        ],
+        [
+          58.549,
+          21.306,
+          29.18
+        ],
+        [
+          54.049,
+          13.512,
+          29.18
+        ],
+        [
+          49.549,
+          5.718,
+          29.18
+        ],
+        [
+          45.049,
+          -2.076,
+          29.18
+        ],
+        [
+          40.549,
+          -9.87,
+          29.18
+        ],
+        [
+          36.049,
+          -17.665,
+          29.18
+        ],
+        [
+          34.549,
+          -20.263,
+          29.18
+        ],
+        [
+          33.049,
+          -22.861,
+          29.18
+        ],
+        [
+          27.853,
+          -25.861,
+          29.18
+        ],
+        [
+          20.058,
+          -30.361,
+          29.18
+        ],
+        [
+          12.264,
+          -34.861,
+          29.18
+        ],
+        [
+          4.47,
+          -39.361,
+          29.18
+        ],
+        [
+          -3.324,
+          -43.861,
+          29.18
+        ],
+        [
+          -5.922,
+          -45.361,
+          29.18
+        ],
+        [
+          -8.52,
+          -46.861,
+          29.18
+        ],
+        [
+          -8.52,
+          -46.861,
+          29.18
+        ],
+        [
+          -10.02,
+          -49.459,
+          29.18
+        ]
+      ],
+      "positions": [
+        [
+          67.549,
+          36.895,
+          29.18
+        ],
+        [
+          63.049,
+          29.101,
+          29.18
+        ],
+        [
+          58.549,
+          21.306,
+          29.18
+        ],
+        [
+          54.049,
+          13.512,
+          29.18
+        ],
+        [
+          49.549,
+          5.718,
+          29.18
+        ],
+        [
+          45.049,
+          -2.076,
+          29.18
+        ],
+        [
+          40.549,
+          -9.87,
+          29.18
+        ],
+        [
+          36.049,
+          -17.665,
+          29.18
+        ],
+        [
+          34.549,
+          -20.263,
+          29.18
+        ],
+        [
+          33.049,
+          -22.861,
+          29.18
+        ],
+        [
+          27.853,
+          -25.861,
+          29.18
+        ],
+        [
+          20.058,
+          -30.361,
+          29.18
+        ],
+        [
+          12.264,
+          -34.861,
+          29.18
+        ],
+        [
+          4.47,
+          -39.361,
+          29.18
+        ],
+        [
+          -3.324,
+          -43.861,
+          29.18
+        ],
+        [
+          -5.922,
+          -45.361,
+          29.18
+        ],
+        [
+          -8.52,
+          -46.861,
+          29.18
+        ],
+        [
+          -8.52,
+          -46.861,
+          29.18
+        ],
+        [
+          -10.02,
+          -49.459,
+          29.18
+        ]
+      ],
+      "yaw": [
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.0944,
+        -2.0944
+      ],
+      "gpt_instruction": "Proceed straight towards the grey skyscraper , a tall building with multiple windows . Then , slightly turn right and head straight to the tan and brown commercial office building , which features vertical windows with reflective glass and is medium - sized . Finally , slightly turn left and move forward to it .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_02",
+      "source_route_idx": 1,
+      "segment_name": "Approach_Route_02",
+      "pos": [
+        [
+          -1289.828,
+          100.248,
+          19.743
+        ],
+        [
+          -1271.828,
+          69.071,
+          19.743
+        ]
+      ],
+      "yaw": [
+        -1.0472,
+        -1.0472
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Proceed ahead to a gray , multi - story apartment building featuring rectangular windows , medium - sized compared to th (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO02"
+    },
+    {
+      "trajectory_id": "B99_lobby_diag_ne_3m",
+      "gpt_instruction": "Building_99 lobby NE 3m",
+      "pos": [
+        [
+          0.5,
+          0.5,
+          1.5
+        ],
+        [
+          2.6,
+          2.6,
+          1.5
+        ]
+      ],
+      "yaw": [
+        0.7854,
+        0.7854
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_diag_ne_3m",
+      "d0_m": 2.97,
+      "handover_id": "HO13"
+    },
+    {
+      "route_id": "long_route_13",
+      "source_route_idx": 12,
+      "segment_name": "Approach_Route_13",
+      "pos": [
+        [
+          67.549,
+          36.895,
+          29.18
+        ],
+        [
+          49.549,
+          5.718,
+          29.18
+        ]
+      ],
+      "yaw": [
+        -2.0944,
+        -2.0944
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Proceed straight towards the grey skyscraper , a tall building with multiple windows . Then , slightly turn right and he (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO12"
+    },
+    {
+      "route_id": "long_route_10",
+      "source_route_idx": 9,
+      "segment_name": "Approach_Route_10",
+      "pos": [
+        [
+          -1152.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1116.136,
+          -217.79,
+          21.304
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Continue straight towards a large gray high - rise building characterized by its rectangular windows . Then , shift righ (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO09"
+    },
+    {
+      "trajectory_id": "B99_lobby_diag_ne_3m",
+      "gpt_instruction": "Building_99 lobby NE 3m",
+      "pos": [
+        [
+          0.5,
+          0.5,
+          1.5
+        ],
+        [
+          2.6,
+          2.6,
+          1.5
+        ]
+      ],
+      "yaw": [
+        0.7854,
+        0.7854
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_diag_ne_3m",
+      "d0_m": 2.97,
+      "handover_id": "HO05"
+    },
+    {
+      "route_id": "long_route_12",
+      "source_route_idx": 11,
+      "segment_name": "Approach_Route_12",
+      "pos": [
+        [
+          -1250.816,
+          -533.106,
+          19.276
+        ],
+        [
+          -1232.816,
+          -501.929,
+          19.276
+        ]
+      ],
+      "yaw": [
+        1.0472,
+        1.0472
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Proceed straight to a medium - sized residential building characterized by a brown color , brick exterior , and fire esc (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO11"
+    },
+    {
+      "trajectory_id": "B99_lobby_south_3m",
+      "gpt_instruction": "Building_99 lobby south 3m",
+      "pos": [
+        [
+          0.0,
+          -1.0,
+          1.5
+        ],
+        [
+          0.0,
+          -4.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        -1.5708,
+        -1.5708
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_south_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO12"
+    },
+    {
+      "route_id": "long_route_09",
+      "source_route_idx": 8,
+      "segment_name": "Approach_Route_09",
+      "pos": [
+        [
+          -1167.601,
+          -509.203,
+          25.418
+        ],
+        [
+          -1183.699,
+          -484.32,
+          25.418
+        ]
+      ],
+      "yaw": [
+        2.618,
+        2.0944
+      ],
+      "d0_m": 29.636,
+      "gpt_instruction": "Proceed directly ahead to the beige building with a flat roof featuring rooftop structures . Slightly turn right and mov (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO08"
+    },
+    {
+      "route_id": "long_route_05",
+      "source_route_idx": 4,
+      "segment_name": "Approach_Route_05",
+      "pos": [
+        [
+          -968.519,
+          -358.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -394.901,
+          16.156
+        ]
+      ],
+      "yaw": [
+        -1.5708,
+        -1.5708
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Here \u2019s how the scattered actions and landmarks can be combined into a smooth and structured sentence : \" Advance forwar (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO05"
+    },
+    {
+      "trajectory_id": "B99_lobby_south_3m",
+      "gpt_instruction": "Building_99 lobby south 3m",
+      "pos": [
+        [
+          0.0,
+          -1.0,
+          1.5
+        ],
+        [
+          0.0,
+          -4.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        -1.5708,
+        -1.5708
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_south_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO04"
+    },
+    {
+      "trajectory_id": "B99_lobby_north_3m",
+      "gpt_instruction": "Building_99 lobby north 3m",
+      "pos": [
+        [
+          0.0,
+          1.0,
+          1.5
+        ],
+        [
+          0.0,
+          4.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        1.5708,
+        1.5708
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_north_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO02"
+    },
+    {
+      "route_id": "long_route_01",
+      "route_idx": 0,
+      "base_route_idx": 5,
+      "category": "extended_native",
+      "nominal_length_m": 168.0,
+      "start_pos": [
+        -746.355,
+        -250.738,
+        36.855
+      ],
+      "goal_pos": [
+        -893.512,
+        -207.346,
+        36.855
+      ],
+      "pos": [
+        [
+          -746.355,
+          -250.738,
+          36.855
+        ],
+        [
+          -749.355,
+          -250.738,
+          36.855
+        ],
+        [
+          -749.355,
+          -250.738,
+          39.855
+        ],
+        [
+          -754.551,
+          -247.738,
+          39.855
+        ],
+        [
+          -762.345,
+          -243.238,
+          39.855
+        ],
+        [
+          -770.139,
+          -238.738,
+          39.855
+        ],
+        [
+          -777.933,
+          -234.238,
+          39.855
+        ],
+        [
+          -785.728,
+          -229.738,
+          39.855
+        ],
+        [
+          -793.522,
+          -225.238,
+          39.855
+        ],
+        [
+          -801.316,
+          -220.738,
+          39.855
+        ],
+        [
+          -803.914,
+          -219.238,
+          39.855
+        ],
+        [
+          -806.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -812.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -821.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -830.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -839.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -848.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -857.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -866.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -875.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -884.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -887.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -887.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -890.512,
+          -212.542,
+          39.855
+        ],
+        [
+          -892.012,
+          -209.944,
+          39.855
+        ],
+        [
+          -893.512,
+          -207.346,
+          39.855
+        ],
+        [
+          -893.512,
+          -207.346,
+          36.855
+        ]
+      ],
+      "positions": [
+        [
+          -746.355,
+          -250.738,
+          36.855
+        ],
+        [
+          -749.355,
+          -250.738,
+          36.855
+        ],
+        [
+          -749.355,
+          -250.738,
+          39.855
+        ],
+        [
+          -754.551,
+          -247.738,
+          39.855
+        ],
+        [
+          -762.345,
+          -243.238,
+          39.855
+        ],
+        [
+          -770.139,
+          -238.738,
+          39.855
+        ],
+        [
+          -777.933,
+          -234.238,
+          39.855
+        ],
+        [
+          -785.728,
+          -229.738,
+          39.855
+        ],
+        [
+          -793.522,
+          -225.238,
+          39.855
+        ],
+        [
+          -801.316,
+          -220.738,
+          39.855
+        ],
+        [
+          -803.914,
+          -219.238,
+          39.855
+        ],
+        [
+          -806.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -812.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -821.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -830.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -839.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -848.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -857.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -866.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -875.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -884.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -887.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -887.512,
+          -217.738,
+          39.855
+        ],
+        [
+          -890.512,
+          -212.542,
+          39.855
+        ],
+        [
+          -892.012,
+          -209.944,
+          39.855
+        ],
+        [
+          -893.512,
+          -207.346,
+          39.855
+        ],
+        [
+          -893.512,
+          -207.346,
+          36.855
+        ]
+      ],
+      "yaw": [
+        3.1416,
+        3.1416,
+        3.1416,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        2.618,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944
+      ],
+      "gpt_instruction": "Continue traveling straight until you reach the large grey building with a billboard , then ascend slightly and bear right until you approach the large light brown building characterized by rectangular windows and rooftop structures . From there , slightly turn left and proceed forward to the large cream - colored building with a tall rectangular structure featuring vertical window patterns and a hint of Art Deco styling . Next , veer right toward the large modern skyscraper in beige and black colors , which displays a billboard with a red car . Proceed straight ahead to the large gray skyscraper adorned with billboards , and finally , descend toward the medium - sized beige office building with rectangular windows featuring decorative elements .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_east_3m",
+      "gpt_instruction": "Building_99 lobby east 3m",
+      "pos": [
+        [
+          0.0,
+          0.0,
+          1.5
+        ],
+        [
+          3.0,
+          0.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_east_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO09"
+    },
+    {
+      "route_id": "long_route_08",
+      "source_route_idx": 7,
+      "segment_name": "Approach_Route_08",
+      "pos": [
+        [
+          163.592,
+          -129.633,
+          7.512
+        ],
+        [
+          199.592,
+          -129.633,
+          7.512
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Proceed onward to the large red brick building facade , then ascend to the medium - sized gray urban structure with a br (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO07"
+    },
+    {
+      "route_id": "long_route_14",
+      "route_idx": 13,
+      "base_route_idx": 2,
+      "category": "native_short",
+      "nominal_length_m": 117.71,
+      "start_pos": [
+        -1200.211,
+        -407.734,
+        30.458
+      ],
+      "goal_pos": [
+        -1101.484,
+        -350.734,
+        30.458
+      ],
+      "pos": [
+        [
+          -1200.211,
+          -407.734,
+          30.458
+        ],
+        [
+          -1192.417,
+          -403.234,
+          30.458
+        ],
+        [
+          -1187.221,
+          -400.234,
+          30.458
+        ],
+        [
+          -1184.623,
+          -398.734,
+          30.458
+        ],
+        [
+          -1179.426,
+          -395.734,
+          33.458
+        ],
+        [
+          -1171.632,
+          -391.234,
+          33.458
+        ],
+        [
+          -1163.838,
+          -386.734,
+          33.458
+        ],
+        [
+          -1156.044,
+          -382.234,
+          33.458
+        ],
+        [
+          -1148.25,
+          -377.734,
+          33.458
+        ],
+        [
+          -1140.455,
+          -373.234,
+          33.458
+        ],
+        [
+          -1132.661,
+          -368.734,
+          33.458
+        ],
+        [
+          -1124.867,
+          -364.234,
+          33.458
+        ],
+        [
+          -1117.073,
+          -359.734,
+          33.458
+        ],
+        [
+          -1109.278,
+          -355.234,
+          33.458
+        ],
+        [
+          -1104.082,
+          -352.234,
+          33.458
+        ],
+        [
+          -1101.484,
+          -350.734,
+          33.458
+        ],
+        [
+          -1101.484,
+          -350.734,
+          30.458
+        ]
+      ],
+      "positions": [
+        [
+          -1200.211,
+          -407.734,
+          30.458
+        ],
+        [
+          -1192.417,
+          -403.234,
+          30.458
+        ],
+        [
+          -1187.221,
+          -400.234,
+          30.458
+        ],
+        [
+          -1184.623,
+          -398.734,
+          30.458
+        ],
+        [
+          -1179.426,
+          -395.734,
+          33.458
+        ],
+        [
+          -1171.632,
+          -391.234,
+          33.458
+        ],
+        [
+          -1163.838,
+          -386.734,
+          33.458
+        ],
+        [
+          -1156.044,
+          -382.234,
+          33.458
+        ],
+        [
+          -1148.25,
+          -377.734,
+          33.458
+        ],
+        [
+          -1140.455,
+          -373.234,
+          33.458
+        ],
+        [
+          -1132.661,
+          -368.734,
+          33.458
+        ],
+        [
+          -1124.867,
+          -364.234,
+          33.458
+        ],
+        [
+          -1117.073,
+          -359.734,
+          33.458
+        ],
+        [
+          -1109.278,
+          -355.234,
+          33.458
+        ],
+        [
+          -1104.082,
+          -352.234,
+          33.458
+        ],
+        [
+          -1101.484,
+          -350.734,
+          33.458
+        ],
+        [
+          -1101.484,
+          -350.734,
+          30.458
+        ]
+      ],
+      "yaw": [
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236
+      ],
+      "gpt_instruction": "Proceed directly to the large blue - gray commercial building with a rooftop equipped with ventilation systems , then gently ascend towards the large gray office building featuring grid - like windows , and finally descend to the medium - height light grey structure characterized by arched windows and a detailed fa\u00e7ade , which could be a residential or office building .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_east_from_1",
+      "gpt_instruction": "Building_99 lobby east from x=1",
+      "pos": [
+        [
+          1.0,
+          0.0,
+          1.5
+        ],
+        [
+          4.0,
+          0.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_east_from_1",
+      "d0_m": 3.0,
+      "handover_id": "HO15"
+    },
+    {
+      "route_id": "long_route_08",
+      "route_idx": 7,
+      "base_route_idx": 9,
+      "category": "native_short",
+      "nominal_length_m": 135.0,
+      "start_pos": [
+        163.592,
+        -129.633,
+        7.512
+      ],
+      "goal_pos": [
+        267.171,
+        -116.133,
+        10.512
+      ],
+      "pos": [
+        [
+          163.592,
+          -129.633,
+          7.512
+        ],
+        [
+          172.592,
+          -129.633,
+          7.512
+        ],
+        [
+          181.592,
+          -129.633,
+          7.512
+        ],
+        [
+          190.592,
+          -129.633,
+          7.512
+        ],
+        [
+          199.592,
+          -129.633,
+          7.512
+        ],
+        [
+          208.592,
+          -129.633,
+          7.512
+        ],
+        [
+          217.592,
+          -129.633,
+          7.512
+        ],
+        [
+          226.592,
+          -129.633,
+          7.512
+        ],
+        [
+          229.592,
+          -129.633,
+          7.512
+        ],
+        [
+          229.592,
+          -129.633,
+          10.512
+        ],
+        [
+          229.592,
+          -129.633,
+          13.512
+        ],
+        [
+          229.592,
+          -129.633,
+          16.512
+        ],
+        [
+          229.592,
+          -129.633,
+          19.512
+        ],
+        [
+          229.592,
+          -129.633,
+          22.512
+        ],
+        [
+          234.788,
+          -126.633,
+          22.512
+        ],
+        [
+          242.583,
+          -122.133,
+          22.512
+        ],
+        [
+          250.377,
+          -117.633,
+          22.512
+        ],
+        [
+          252.975,
+          -116.133,
+          22.512
+        ],
+        [
+          255.573,
+          -114.633,
+          22.512
+        ],
+        [
+          255.573,
+          -114.633,
+          19.512
+        ],
+        [
+          255.573,
+          -114.633,
+          16.512
+        ],
+        [
+          255.573,
+          -114.633,
+          13.512
+        ],
+        [
+          258.573,
+          -114.633,
+          13.512
+        ],
+        [
+          261.573,
+          -114.633,
+          13.512
+        ],
+        [
+          261.573,
+          -114.633,
+          10.512
+        ],
+        [
+          264.573,
+          -114.633,
+          10.512
+        ],
+        [
+          264.573,
+          -114.633,
+          10.512
+        ],
+        [
+          267.171,
+          -116.133,
+          10.512
+        ]
+      ],
+      "positions": [
+        [
+          163.592,
+          -129.633,
+          7.512
+        ],
+        [
+          172.592,
+          -129.633,
+          7.512
+        ],
+        [
+          181.592,
+          -129.633,
+          7.512
+        ],
+        [
+          190.592,
+          -129.633,
+          7.512
+        ],
+        [
+          199.592,
+          -129.633,
+          7.512
+        ],
+        [
+          208.592,
+          -129.633,
+          7.512
+        ],
+        [
+          217.592,
+          -129.633,
+          7.512
+        ],
+        [
+          226.592,
+          -129.633,
+          7.512
+        ],
+        [
+          229.592,
+          -129.633,
+          7.512
+        ],
+        [
+          229.592,
+          -129.633,
+          10.512
+        ],
+        [
+          229.592,
+          -129.633,
+          13.512
+        ],
+        [
+          229.592,
+          -129.633,
+          16.512
+        ],
+        [
+          229.592,
+          -129.633,
+          19.512
+        ],
+        [
+          229.592,
+          -129.633,
+          22.512
+        ],
+        [
+          234.788,
+          -126.633,
+          22.512
+        ],
+        [
+          242.583,
+          -122.133,
+          22.512
+        ],
+        [
+          250.377,
+          -117.633,
+          22.512
+        ],
+        [
+          252.975,
+          -116.133,
+          22.512
+        ],
+        [
+          255.573,
+          -114.633,
+          22.512
+        ],
+        [
+          255.573,
+          -114.633,
+          19.512
+        ],
+        [
+          255.573,
+          -114.633,
+          16.512
+        ],
+        [
+          255.573,
+          -114.633,
+          13.512
+        ],
+        [
+          258.573,
+          -114.633,
+          13.512
+        ],
+        [
+          261.573,
+          -114.633,
+          13.512
+        ],
+        [
+          261.573,
+          -114.633,
+          10.512
+        ],
+        [
+          264.573,
+          -114.633,
+          10.512
+        ],
+        [
+          264.573,
+          -114.633,
+          10.512
+        ],
+        [
+          267.171,
+          -116.133,
+          10.512
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.5236,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -0.5236,
+        -0.5236
+      ],
+      "gpt_instruction": "Proceed onward to the large red brick building facade , then ascend to the medium - sized gray urban structure with a brick exterior and fire escape . Slightly turn left and advance to the larger gray mid-rise office building with numerous windows , then descend to the large gray commercial high - rise with multiple windows . Slightly turn right and continue to the medium - sized brown brick residential apartment building with balconies , before slightly going downward , moving straight , and veering right once more to the medium red - brown residential building with a brick texture and metal railings .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_02",
+      "route_idx": 1,
+      "base_route_idx": 16,
+      "category": "extended_native",
+      "nominal_length_m": 156.0,
+      "start_pos": [
+        -1289.828,
+        100.248,
+        19.743
+      ],
+      "goal_pos": [
+        -1198.652,
+        -21.675,
+        19.743
+      ],
+      "pos": [
+        [
+          -1289.828,
+          100.248,
+          19.743
+        ],
+        [
+          -1285.328,
+          92.454,
+          19.743
+        ],
+        [
+          -1280.828,
+          84.659,
+          19.743
+        ],
+        [
+          -1276.328,
+          76.865,
+          19.743
+        ],
+        [
+          -1271.828,
+          69.071,
+          19.743
+        ],
+        [
+          -1267.328,
+          61.277,
+          19.743
+        ],
+        [
+          -1262.828,
+          53.482,
+          19.743
+        ],
+        [
+          -1258.328,
+          45.688,
+          19.743
+        ],
+        [
+          -1253.828,
+          37.894,
+          19.743
+        ],
+        [
+          -1249.328,
+          30.1,
+          19.743
+        ],
+        [
+          -1244.828,
+          22.305,
+          19.743
+        ],
+        [
+          -1240.328,
+          14.511,
+          19.743
+        ],
+        [
+          -1235.828,
+          6.717,
+          19.743
+        ],
+        [
+          -1234.328,
+          4.119,
+          19.743
+        ],
+        [
+          -1232.828,
+          1.521,
+          19.743
+        ],
+        [
+          -1227.632,
+          -1.479,
+          19.743
+        ],
+        [
+          -1219.838,
+          -5.979,
+          19.743
+        ],
+        [
+          -1212.044,
+          -10.479,
+          19.743
+        ],
+        [
+          -1204.25,
+          -14.979,
+          19.743
+        ],
+        [
+          -1201.652,
+          -16.479,
+          19.743
+        ],
+        [
+          -1200.152,
+          -19.077,
+          19.743
+        ],
+        [
+          -1198.652,
+          -21.675,
+          19.743
+        ]
+      ],
+      "positions": [
+        [
+          -1289.828,
+          100.248,
+          19.743
+        ],
+        [
+          -1285.328,
+          92.454,
+          19.743
+        ],
+        [
+          -1280.828,
+          84.659,
+          19.743
+        ],
+        [
+          -1276.328,
+          76.865,
+          19.743
+        ],
+        [
+          -1271.828,
+          69.071,
+          19.743
+        ],
+        [
+          -1267.328,
+          61.277,
+          19.743
+        ],
+        [
+          -1262.828,
+          53.482,
+          19.743
+        ],
+        [
+          -1258.328,
+          45.688,
+          19.743
+        ],
+        [
+          -1253.828,
+          37.894,
+          19.743
+        ],
+        [
+          -1249.328,
+          30.1,
+          19.743
+        ],
+        [
+          -1244.828,
+          22.305,
+          19.743
+        ],
+        [
+          -1240.328,
+          14.511,
+          19.743
+        ],
+        [
+          -1235.828,
+          6.717,
+          19.743
+        ],
+        [
+          -1234.328,
+          4.119,
+          19.743
+        ],
+        [
+          -1232.828,
+          1.521,
+          19.743
+        ],
+        [
+          -1227.632,
+          -1.479,
+          19.743
+        ],
+        [
+          -1219.838,
+          -5.979,
+          19.743
+        ],
+        [
+          -1212.044,
+          -10.479,
+          19.743
+        ],
+        [
+          -1204.25,
+          -14.979,
+          19.743
+        ],
+        [
+          -1201.652,
+          -16.479,
+          19.743
+        ],
+        [
+          -1200.152,
+          -19.077,
+          19.743
+        ],
+        [
+          -1198.652,
+          -21.675,
+          19.743
+        ]
+      ],
+      "yaw": [
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -0.5236,
+        -0.5236,
+        -0.5236,
+        -0.5236,
+        -0.5236,
+        -1.0472,
+        -1.0472
+      ],
+      "gpt_instruction": "Proceed ahead to a gray , multi - story apartment building featuring rectangular windows , medium - sized compared to the surrounding high - rise structures . Slightly turn left and go straight to a grey residential building with a rooftop and fire escapes , also medium - sized . Slightly turn right and continue directly ahead to it .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_15",
+      "route_idx": 14,
+      "base_route_idx": 0,
+      "category": "native_short",
+      "nominal_length_m": 114.0,
+      "start_pos": [
+        -729.62,
+        -41.758,
+        69.011
+      ],
+      "goal_pos": [
+        -835.18,
+        -73.258,
+        69.011
+      ],
+      "pos": [
+        [
+          -729.62,
+          -41.758,
+          69.011
+        ],
+        [
+          -737.415,
+          -46.258,
+          69.011
+        ],
+        [
+          -745.209,
+          -50.758,
+          69.011
+        ],
+        [
+          -753.003,
+          -55.258,
+          69.011
+        ],
+        [
+          -760.797,
+          -59.758,
+          69.011
+        ],
+        [
+          -768.592,
+          -64.258,
+          69.011
+        ],
+        [
+          -776.386,
+          -68.758,
+          69.011
+        ],
+        [
+          -778.984,
+          -70.258,
+          69.011
+        ],
+        [
+          -781.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -787.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -796.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -805.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -814.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -823.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -829.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -832.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -832.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -835.18,
+          -73.258,
+          69.011
+        ]
+      ],
+      "positions": [
+        [
+          -729.62,
+          -41.758,
+          69.011
+        ],
+        [
+          -737.415,
+          -46.258,
+          69.011
+        ],
+        [
+          -745.209,
+          -50.758,
+          69.011
+        ],
+        [
+          -753.003,
+          -55.258,
+          69.011
+        ],
+        [
+          -760.797,
+          -59.758,
+          69.011
+        ],
+        [
+          -768.592,
+          -64.258,
+          69.011
+        ],
+        [
+          -776.386,
+          -68.758,
+          69.011
+        ],
+        [
+          -778.984,
+          -70.258,
+          69.011
+        ],
+        [
+          -781.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -787.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -796.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -805.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -814.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -823.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -829.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -832.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -832.582,
+          -71.758,
+          69.011
+        ],
+        [
+          -835.18,
+          -73.258,
+          69.011
+        ]
+      ],
+      "yaw": [
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.6652,
+        3.6652
+      ],
+      "gpt_instruction": "Head directly toward the tall , light beige building with many windows . Then , slightly turn right and proceed to another large building characterized by its light gray color and balcony - like structures . Finish by slightly turning left , continuing straight towards a tall , multi - story skyscraper with large , beige windows featuring arched tops .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_07",
+      "route_idx": 6,
+      "base_route_idx": 1,
+      "category": "native_short",
+      "nominal_length_m": 138.71,
+      "start_pos": [
+        -875.667,
+        -530.09,
+        83.593
+      ],
+      "goal_pos": [
+        -1010.667,
+        -530.09,
+        83.593
+      ],
+      "pos": [
+        [
+          -875.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -884.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -893.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -902.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -911.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -920.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -929.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -938.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -947.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -956.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -965.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -974.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -983.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -986.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -992.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1001.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1007.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1010.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1010.667,
+          -530.09,
+          83.593
+        ]
+      ],
+      "positions": [
+        [
+          -875.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -884.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -893.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -902.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -911.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -920.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -929.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -938.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -947.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -956.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -965.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -974.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -983.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -986.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -992.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1001.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1007.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1010.667,
+          -530.09,
+          86.593
+        ],
+        [
+          -1010.667,
+          -530.09,
+          83.593
+        ]
+      ],
+      "yaw": [
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416
+      ],
+      "gpt_instruction": "\" Move forward to a white rooftop access structure or ventilation unit , featuring a ladder attached to its side , small chimney - like structures on top , and a size relatively small compared to the rooftop it sits on . Then slightly ascend in a straight direction to a light beige building with gray rooftops , characterized by a central low - rise rectangular shape among taller structures , a flat roof , and shadows cast by surrounding buildings . Finally , descend to a light brown and beige rectangular building with multi - level windows and a flat roof , medium in size compared to the taller surrounding buildings . \"",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_north_3m",
+      "gpt_instruction": "Building_99 lobby north 3m",
+      "pos": [
+        [
+          0.0,
+          1.0,
+          1.5
+        ],
+        [
+          0.0,
+          4.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        1.5708,
+        1.5708
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_north_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO10"
+    },
+    {
+      "route_id": "long_route_11",
+      "route_idx": 10,
+      "base_route_idx": 4,
+      "category": "native_short",
+      "nominal_length_m": 120.0,
+      "start_pos": [
+        -772.42,
+        -559.741,
+        14.943
+      ],
+      "goal_pos": [
+        -860.784,
+        -531.241,
+        14.943
+      ],
+      "pos": [
+        [
+          -772.42,
+          -559.741,
+          14.943
+        ],
+        [
+          -780.214,
+          -555.241,
+          14.943
+        ],
+        [
+          -788.009,
+          -550.741,
+          14.943
+        ],
+        [
+          -795.803,
+          -546.241,
+          14.943
+        ],
+        [
+          -803.597,
+          -541.741,
+          14.943
+        ],
+        [
+          -808.793,
+          -538.741,
+          14.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          14.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          17.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          20.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          23.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -817.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -826.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -835.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -844.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -847.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -850.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -850.391,
+          -537.241,
+          23.943
+        ],
+        [
+          -855.588,
+          -534.241,
+          23.943
+        ],
+        [
+          -858.186,
+          -532.741,
+          23.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          23.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          20.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          17.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          14.943
+        ]
+      ],
+      "positions": [
+        [
+          -772.42,
+          -559.741,
+          14.943
+        ],
+        [
+          -780.214,
+          -555.241,
+          14.943
+        ],
+        [
+          -788.009,
+          -550.741,
+          14.943
+        ],
+        [
+          -795.803,
+          -546.241,
+          14.943
+        ],
+        [
+          -803.597,
+          -541.741,
+          14.943
+        ],
+        [
+          -808.793,
+          -538.741,
+          14.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          14.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          17.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          20.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          23.943
+        ],
+        [
+          -811.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -817.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -826.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -835.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -844.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -847.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -850.391,
+          -537.241,
+          26.943
+        ],
+        [
+          -850.391,
+          -537.241,
+          23.943
+        ],
+        [
+          -855.588,
+          -534.241,
+          23.943
+        ],
+        [
+          -858.186,
+          -532.741,
+          23.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          23.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          20.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          17.943
+        ],
+        [
+          -860.784,
+          -531.241,
+          14.943
+        ]
+      ],
+      "yaw": [
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        3.1416,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618
+      ],
+      "gpt_instruction": "Move forward to a beige building characterized by large , arched windows with horizontal frames . Climb to it . Slightly turn left and move forward to it . Slightly descend , turn right , and head straight to a gray building distinguished by a detailed stone fa\u00e7ade with large arched windows . Finally , descend to it .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_10",
+      "route_idx": 9,
+      "base_route_idx": 14,
+      "category": "native_short",
+      "nominal_length_m": 123.0,
+      "start_pos": [
+        -1152.136,
+        -217.79,
+        21.304
+      ],
+      "goal_pos": [
+        -1044.94,
+        -246.771,
+        21.304
+      ],
+      "pos": [
+        [
+          -1152.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1143.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1134.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1125.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1116.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1107.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1098.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1089.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1080.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1071.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1068.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1065.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1065.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1062.136,
+          -222.986,
+          21.304
+        ],
+        [
+          -1057.636,
+          -230.78,
+          21.304
+        ],
+        [
+          -1053.136,
+          -238.574,
+          21.304
+        ],
+        [
+          -1051.636,
+          -241.173,
+          21.304
+        ],
+        [
+          -1050.136,
+          -243.771,
+          21.304
+        ],
+        [
+          -1047.538,
+          -245.271,
+          21.304
+        ],
+        [
+          -1044.94,
+          -246.771,
+          21.304
+        ]
+      ],
+      "positions": [
+        [
+          -1152.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1143.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1134.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1125.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1116.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1107.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1098.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1089.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1080.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1071.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1068.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1065.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1065.136,
+          -217.79,
+          21.304
+        ],
+        [
+          -1062.136,
+          -222.986,
+          21.304
+        ],
+        [
+          -1057.636,
+          -230.78,
+          21.304
+        ],
+        [
+          -1053.136,
+          -238.574,
+          21.304
+        ],
+        [
+          -1051.636,
+          -241.173,
+          21.304
+        ],
+        [
+          -1050.136,
+          -243.771,
+          21.304
+        ],
+        [
+          -1047.538,
+          -245.271,
+          21.304
+        ],
+        [
+          -1044.94,
+          -246.771,
+          21.304
+        ]
+      ],
+      "yaw": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -0.5236,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -0.5236,
+        -0.5236
+      ],
+      "gpt_instruction": "Continue straight towards a large gray high - rise building characterized by its rectangular windows . Then , shift right slightly to encounter it . Proceed straight again to it . Slightly turn left and move ahead to a medium - sized light gray historical building featuring an ornate decorative facade .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_09",
+      "route_idx": 8,
+      "base_route_idx": 18,
+      "category": "native_short",
+      "nominal_length_m": 126.0,
+      "start_pos": [
+        -1167.601,
+        -509.203,
+        25.418
+      ],
+      "goal_pos": [
+        -1183.699,
+        -388.32,
+        25.418
+      ],
+      "pos": [
+        [
+          -1167.601,
+          -509.203,
+          25.418
+        ],
+        [
+          -1170.199,
+          -507.703,
+          25.418
+        ],
+        [
+          -1173.199,
+          -502.507,
+          25.418
+        ],
+        [
+          -1177.699,
+          -494.713,
+          25.418
+        ],
+        [
+          -1182.199,
+          -486.918,
+          25.418
+        ],
+        [
+          -1183.699,
+          -484.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -478.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -469.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -460.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -451.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -442.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -433.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -424.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -415.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -406.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -397.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -391.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -388.32,
+          25.418
+        ]
+      ],
+      "positions": [
+        [
+          -1167.601,
+          -509.203,
+          25.418
+        ],
+        [
+          -1170.199,
+          -507.703,
+          25.418
+        ],
+        [
+          -1173.199,
+          -502.507,
+          25.418
+        ],
+        [
+          -1177.699,
+          -494.713,
+          25.418
+        ],
+        [
+          -1182.199,
+          -486.918,
+          25.418
+        ],
+        [
+          -1183.699,
+          -484.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -478.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -469.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -460.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -451.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -442.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -433.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -424.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -415.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -406.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -397.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -391.32,
+          25.418
+        ],
+        [
+          -1183.699,
+          -388.32,
+          25.418
+        ]
+      ],
+      "yaw": [
+        2.618,
+        2.618,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708,
+        1.5708
+      ],
+      "gpt_instruction": "Proceed directly ahead to the beige building with a flat roof featuring rooftop structures . Slightly turn right and move towards the large brown building distinguished by a brick texture , multiple chimneys , and a rooftop satellite dish . Then , slightly turn right again and walk straight to the medium - sized brown modern office building characterized by pyramidal skylights on the roof .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_west_3m",
+      "gpt_instruction": "Building_99 lobby west 3m",
+      "pos": [
+        [
+          1.0,
+          0.0,
+          1.5
+        ],
+        [
+          -2.0,
+          0.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        3.1416,
+        3.1416
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_west_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO03"
+    },
+    {
+      "route_id": "long_route_16",
+      "route_idx": 15,
+      "base_route_idx": 19,
+      "category": "native_short",
+      "nominal_length_m": 111.0,
+      "start_pos": [
+        36.375,
+        78.733,
+        21.327
+      ],
+      "goal_pos": [
+        -30.106,
+        -6.415,
+        21.327
+      ],
+      "pos": [
+        [
+          36.375,
+          78.733,
+          21.327
+        ],
+        [
+          31.875,
+          70.939,
+          21.327
+        ],
+        [
+          27.375,
+          63.144,
+          21.327
+        ],
+        [
+          22.875,
+          55.35,
+          21.327
+        ],
+        [
+          18.375,
+          47.556,
+          21.327
+        ],
+        [
+          13.875,
+          39.762,
+          21.327
+        ],
+        [
+          9.375,
+          31.967,
+          21.327
+        ],
+        [
+          4.875,
+          24.173,
+          21.327
+        ],
+        [
+          0.375,
+          16.379,
+          21.327
+        ],
+        [
+          -2.625,
+          11.183,
+          21.327
+        ],
+        [
+          -4.125,
+          8.585,
+          21.327
+        ],
+        [
+          -9.322,
+          5.585,
+          21.327
+        ],
+        [
+          -17.116,
+          1.085,
+          21.327
+        ],
+        [
+          -24.91,
+          -3.415,
+          21.327
+        ],
+        [
+          -27.508,
+          -4.915,
+          21.327
+        ],
+        [
+          -30.106,
+          -6.415,
+          21.327
+        ]
+      ],
+      "positions": [
+        [
+          36.375,
+          78.733,
+          21.327
+        ],
+        [
+          31.875,
+          70.939,
+          21.327
+        ],
+        [
+          27.375,
+          63.144,
+          21.327
+        ],
+        [
+          22.875,
+          55.35,
+          21.327
+        ],
+        [
+          18.375,
+          47.556,
+          21.327
+        ],
+        [
+          13.875,
+          39.762,
+          21.327
+        ],
+        [
+          9.375,
+          31.967,
+          21.327
+        ],
+        [
+          4.875,
+          24.173,
+          21.327
+        ],
+        [
+          0.375,
+          16.379,
+          21.327
+        ],
+        [
+          -2.625,
+          11.183,
+          21.327
+        ],
+        [
+          -4.125,
+          8.585,
+          21.327
+        ],
+        [
+          -9.322,
+          5.585,
+          21.327
+        ],
+        [
+          -17.116,
+          1.085,
+          21.327
+        ],
+        [
+          -24.91,
+          -3.415,
+          21.327
+        ],
+        [
+          -27.508,
+          -4.915,
+          21.327
+        ],
+        [
+          -30.106,
+          -6.415,
+          21.327
+        ]
+      ],
+      "yaw": [
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.0944,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618
+      ],
+      "gpt_instruction": "Advance forward to the medium - sized apartment building , which features red - brown and white colors , as well as fire escapes and windows . Then , slightly turn right and proceed straight to the medium - sized residential building with a light brown color , characterized by a rooftop with equipment .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_04",
+      "source_route_idx": 3,
+      "segment_name": "Approach_Route_04",
+      "pos": [
+        [
+          91.733,
+          110.533,
+          19.472
+        ],
+        [
+          109.733,
+          79.356,
+          19.472
+        ]
+      ],
+      "yaw": [
+        -1.0472,
+        -1.0472
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Head straight towards a medium - sized rectangular billboard with blue and white colors that displays the text \" CHARLIE (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO04"
+    },
+    {
+      "trajectory_id": "B99_lobby_diag_nw_3m",
+      "gpt_instruction": "Building_99 lobby NW 3m",
+      "pos": [
+        [
+          -0.5,
+          0.5,
+          1.5
+        ],
+        [
+          -2.6,
+          2.6,
+          1.5
+        ]
+      ],
+      "yaw": [
+        2.3562,
+        2.3562
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_diag_nw_3m",
+      "d0_m": 2.97,
+      "handover_id": "HO06"
+    },
+    {
+      "route_id": "long_route_07",
+      "source_route_idx": 6,
+      "segment_name": "Approach_Route_07",
+      "pos": [
+        [
+          -875.667,
+          -530.09,
+          83.593
+        ],
+        [
+          -911.667,
+          -530.09,
+          83.593
+        ]
+      ],
+      "yaw": [
+        3.1416,
+        3.1416
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "\" Move forward to a white rooftop access structure or ventilation unit , featuring a ladder attached to its side , small (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO06"
+    },
+    {
+      "route_id": "long_route_12",
+      "route_idx": 11,
+      "base_route_idx": 11,
+      "category": "native_short",
+      "nominal_length_m": 120.0,
+      "start_pos": [
+        -1250.816,
+        -533.106,
+        19.276
+      ],
+      "goal_pos": [
+        -1186.424,
+        -433.576,
+        19.276
+      ],
+      "pos": [
+        [
+          -1250.816,
+          -533.106,
+          19.276
+        ],
+        [
+          -1246.316,
+          -525.312,
+          19.276
+        ],
+        [
+          -1241.816,
+          -517.518,
+          19.276
+        ],
+        [
+          -1237.316,
+          -509.724,
+          19.276
+        ],
+        [
+          -1232.816,
+          -501.929,
+          19.276
+        ],
+        [
+          -1228.316,
+          -494.135,
+          19.276
+        ],
+        [
+          -1223.816,
+          -486.341,
+          19.276
+        ],
+        [
+          -1219.316,
+          -478.547,
+          19.276
+        ],
+        [
+          -1214.816,
+          -470.752,
+          19.276
+        ],
+        [
+          -1210.316,
+          -462.958,
+          19.276
+        ],
+        [
+          -1205.816,
+          -455.164,
+          19.276
+        ],
+        [
+          -1201.316,
+          -447.37,
+          19.276
+        ],
+        [
+          -1198.316,
+          -442.174,
+          19.276
+        ],
+        [
+          -1196.816,
+          -439.576,
+          19.276
+        ],
+        [
+          -1191.62,
+          -436.576,
+          19.276
+        ],
+        [
+          -1189.022,
+          -435.076,
+          19.276
+        ],
+        [
+          -1186.424,
+          -433.576,
+          19.276
+        ]
+      ],
+      "positions": [
+        [
+          -1250.816,
+          -533.106,
+          19.276
+        ],
+        [
+          -1246.316,
+          -525.312,
+          19.276
+        ],
+        [
+          -1241.816,
+          -517.518,
+          19.276
+        ],
+        [
+          -1237.316,
+          -509.724,
+          19.276
+        ],
+        [
+          -1232.816,
+          -501.929,
+          19.276
+        ],
+        [
+          -1228.316,
+          -494.135,
+          19.276
+        ],
+        [
+          -1223.816,
+          -486.341,
+          19.276
+        ],
+        [
+          -1219.316,
+          -478.547,
+          19.276
+        ],
+        [
+          -1214.816,
+          -470.752,
+          19.276
+        ],
+        [
+          -1210.316,
+          -462.958,
+          19.276
+        ],
+        [
+          -1205.816,
+          -455.164,
+          19.276
+        ],
+        [
+          -1201.316,
+          -447.37,
+          19.276
+        ],
+        [
+          -1198.316,
+          -442.174,
+          19.276
+        ],
+        [
+          -1196.816,
+          -439.576,
+          19.276
+        ],
+        [
+          -1191.62,
+          -436.576,
+          19.276
+        ],
+        [
+          -1189.022,
+          -435.076,
+          19.276
+        ],
+        [
+          -1186.424,
+          -433.576,
+          19.276
+        ]
+      ],
+      "yaw": [
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        1.0472,
+        0.5236,
+        0.5236,
+        0.5236
+      ],
+      "gpt_instruction": "Proceed straight to a medium - sized residential building characterized by a brown color , brick exterior , and fire escapes on the side . Slightly turn right and advance forward to another medium - sized structure , lighter grey in color , featuring a flat roof with a small structure on top , minimal windows , and a residential or commercial purpose , standing medium in size compared to the surrounding buildings .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_north_from_y1",
+      "gpt_instruction": "Building_99 lobby north from y=1",
+      "pos": [
+        [
+          0.0,
+          1.0,
+          1.5
+        ],
+        [
+          0.0,
+          4.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        1.5708,
+        1.5708
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_north_from_y1",
+      "d0_m": 3.0,
+      "handover_id": "HO08"
+    },
+    {
+      "route_id": "long_route_14",
+      "source_route_idx": 13,
+      "segment_name": "Approach_Route_14",
+      "pos": [
+        [
+          -1200.211,
+          -407.734,
+          30.458
+        ],
+        [
+          -1171.632,
+          -391.234,
+          33.458
+        ]
+      ],
+      "yaw": [
+        0.5236,
+        0.5236
+      ],
+      "d0_m": 33.136,
+      "gpt_instruction": "Proceed directly to the large blue - gray commercial building with a rooftop equipped with ventilation systems , then ge (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO13"
+    },
+    {
+      "route_id": "long_route_03",
+      "route_idx": 2,
+      "base_route_idx": 7,
+      "category": "extended_native",
+      "nominal_length_m": 153.0,
+      "start_pos": [
+        -641.481,
+        -328.007,
+        29.894
+      ],
+      "goal_pos": [
+        -747.629,
+        -225.153,
+        29.894
+      ],
+      "pos": [
+        [
+          -641.481,
+          -328.007,
+          29.894
+        ],
+        [
+          -649.276,
+          -323.507,
+          29.894
+        ],
+        [
+          -657.07,
+          -319.007,
+          29.894
+        ],
+        [
+          -664.864,
+          -314.507,
+          29.894
+        ],
+        [
+          -672.658,
+          -310.007,
+          29.894
+        ],
+        [
+          -680.452,
+          -305.507,
+          29.894
+        ],
+        [
+          -688.247,
+          -301.007,
+          29.894
+        ],
+        [
+          -696.041,
+          -296.507,
+          29.894
+        ],
+        [
+          -703.835,
+          -292.007,
+          29.894
+        ],
+        [
+          -709.031,
+          -289.007,
+          29.894
+        ],
+        [
+          -711.629,
+          -287.507,
+          29.894
+        ],
+        [
+          -714.629,
+          -282.31,
+          29.894
+        ],
+        [
+          -719.129,
+          -274.516,
+          29.894
+        ],
+        [
+          -723.629,
+          -266.722,
+          29.894
+        ],
+        [
+          -728.129,
+          -258.928,
+          29.894
+        ],
+        [
+          -732.629,
+          -251.133,
+          29.894
+        ],
+        [
+          -737.129,
+          -243.339,
+          29.894
+        ],
+        [
+          -741.629,
+          -235.545,
+          29.894
+        ],
+        [
+          -746.129,
+          -227.751,
+          29.894
+        ],
+        [
+          -747.629,
+          -225.153,
+          29.894
+        ]
+      ],
+      "positions": [
+        [
+          -641.481,
+          -328.007,
+          29.894
+        ],
+        [
+          -649.276,
+          -323.507,
+          29.894
+        ],
+        [
+          -657.07,
+          -319.007,
+          29.894
+        ],
+        [
+          -664.864,
+          -314.507,
+          29.894
+        ],
+        [
+          -672.658,
+          -310.007,
+          29.894
+        ],
+        [
+          -680.452,
+          -305.507,
+          29.894
+        ],
+        [
+          -688.247,
+          -301.007,
+          29.894
+        ],
+        [
+          -696.041,
+          -296.507,
+          29.894
+        ],
+        [
+          -703.835,
+          -292.007,
+          29.894
+        ],
+        [
+          -709.031,
+          -289.007,
+          29.894
+        ],
+        [
+          -711.629,
+          -287.507,
+          29.894
+        ],
+        [
+          -714.629,
+          -282.31,
+          29.894
+        ],
+        [
+          -719.129,
+          -274.516,
+          29.894
+        ],
+        [
+          -723.629,
+          -266.722,
+          29.894
+        ],
+        [
+          -728.129,
+          -258.928,
+          29.894
+        ],
+        [
+          -732.629,
+          -251.133,
+          29.894
+        ],
+        [
+          -737.129,
+          -243.339,
+          29.894
+        ],
+        [
+          -741.629,
+          -235.545,
+          29.894
+        ],
+        [
+          -746.129,
+          -227.751,
+          29.894
+        ],
+        [
+          -747.629,
+          -225.153,
+          29.894
+        ]
+      ],
+      "yaw": [
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.618,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944,
+        2.0944
+      ],
+      "gpt_instruction": "Head straight toward a large , multi - story beige building featuring a rectangular grid of windows with ornate accents , then slightly turn right and proceed to a medium - sized white structure , characterized by a triangular rooftop with a small rectangular addition containing a door , identified as a residential / commercial building .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "trajectory_id": "B99_lobby_west_3m",
+      "gpt_instruction": "Building_99 lobby west 3m",
+      "pos": [
+        [
+          1.0,
+          0.0,
+          1.5
+        ],
+        [
+          -2.0,
+          0.0,
+          1.5
+        ]
+      ],
+      "yaw": [
+        3.1416,
+        3.1416
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_west_3m",
+      "d0_m": 3.0,
+      "handover_id": "HO11"
+    },
+    {
+      "trajectory_id": "B99_lobby_diag_nw_3m",
+      "gpt_instruction": "Building_99 lobby NW 3m",
+      "pos": [
+        [
+          -0.5,
+          0.5,
+          1.5
+        ],
+        [
+          -2.6,
+          2.6,
+          1.5
+        ]
+      ],
+      "yaw": [
+        2.3562,
+        2.3562
+      ],
+      "map_id": "building_99",
+      "scene": "indoor_micro",
+      "leg": "indoor",
+      "pose_source": "gt_proxy",
+      "segment_name": "B99_lobby_diag_nw_3m",
+      "d0_m": 2.97,
+      "handover_id": "HO14"
+    },
+    {
+      "route_id": "long_route_04",
+      "route_idx": 3,
+      "base_route_idx": 17,
+      "category": "native_short",
+      "nominal_length_m": 147.0,
+      "start_pos": [
+        91.733,
+        110.533,
+        19.472
+      ],
+      "goal_pos": [
+        180.607,
+        -1.399,
+        19.472
+      ],
+      "pos": [
+        [
+          91.733,
+          110.533,
+          19.472
+        ],
+        [
+          96.233,
+          102.739,
+          19.472
+        ],
+        [
+          100.733,
+          94.945,
+          19.472
+        ],
+        [
+          105.233,
+          87.151,
+          19.472
+        ],
+        [
+          109.733,
+          79.356,
+          19.472
+        ],
+        [
+          114.233,
+          71.562,
+          19.472
+        ],
+        [
+          118.733,
+          63.768,
+          19.472
+        ],
+        [
+          123.233,
+          55.974,
+          19.472
+        ],
+        [
+          127.733,
+          48.18,
+          19.472
+        ],
+        [
+          132.233,
+          40.385,
+          19.472
+        ],
+        [
+          136.733,
+          32.591,
+          19.472
+        ],
+        [
+          141.233,
+          24.797,
+          19.472
+        ],
+        [
+          142.733,
+          22.199,
+          19.472
+        ],
+        [
+          144.233,
+          19.601,
+          19.472
+        ],
+        [
+          149.43,
+          16.601,
+          19.472
+        ],
+        [
+          157.224,
+          12.101,
+          19.472
+        ],
+        [
+          165.018,
+          7.601,
+          19.472
+        ],
+        [
+          172.812,
+          3.101,
+          19.472
+        ],
+        [
+          178.008,
+          0.101,
+          19.472
+        ],
+        [
+          180.607,
+          -1.399,
+          19.472
+        ]
+      ],
+      "positions": [
+        [
+          91.733,
+          110.533,
+          19.472
+        ],
+        [
+          96.233,
+          102.739,
+          19.472
+        ],
+        [
+          100.733,
+          94.945,
+          19.472
+        ],
+        [
+          105.233,
+          87.151,
+          19.472
+        ],
+        [
+          109.733,
+          79.356,
+          19.472
+        ],
+        [
+          114.233,
+          71.562,
+          19.472
+        ],
+        [
+          118.733,
+          63.768,
+          19.472
+        ],
+        [
+          123.233,
+          55.974,
+          19.472
+        ],
+        [
+          127.733,
+          48.18,
+          19.472
+        ],
+        [
+          132.233,
+          40.385,
+          19.472
+        ],
+        [
+          136.733,
+          32.591,
+          19.472
+        ],
+        [
+          141.233,
+          24.797,
+          19.472
+        ],
+        [
+          142.733,
+          22.199,
+          19.472
+        ],
+        [
+          144.233,
+          19.601,
+          19.472
+        ],
+        [
+          149.43,
+          16.601,
+          19.472
+        ],
+        [
+          157.224,
+          12.101,
+          19.472
+        ],
+        [
+          165.018,
+          7.601,
+          19.472
+        ],
+        [
+          172.812,
+          3.101,
+          19.472
+        ],
+        [
+          178.008,
+          0.101,
+          19.472
+        ],
+        [
+          180.607,
+          -1.399,
+          19.472
+        ]
+      ],
+      "yaw": [
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -1.0472,
+        -0.5236,
+        -0.5236,
+        -0.5236,
+        -0.5236,
+        -0.5236,
+        -0.5236
+      ],
+      "gpt_instruction": "Head straight towards a medium - sized rectangular billboard with blue and white colors that displays the text \" CHARLIE 'S CHOCOLATE \" and serves as an advertisement . Then , slightly turn left and advance forward to reach a medium - sized commercial office building with a gray exterior , characterized by a flat roof with antennas and windows spanning multiple floors , relative to nearby structures .",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_05",
+      "route_idx": 4,
+      "base_route_idx": 10,
+      "category": "native_short",
+      "nominal_length_m": 144.0,
+      "start_pos": [
+        -968.519,
+        -358.901,
+        16.156
+      ],
+      "goal_pos": [
+        -991.205,
+        -491.196,
+        16.156
+      ],
+      "pos": [
+        [
+          -968.519,
+          -358.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -367.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -376.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -385.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -394.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -403.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -412.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -421.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -430.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -439.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -448.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -457.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -466.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -469.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -472.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -472.901,
+          16.156
+        ],
+        [
+          -973.715,
+          -475.901,
+          16.156
+        ],
+        [
+          -981.509,
+          -480.401,
+          16.156
+        ],
+        [
+          -984.107,
+          -481.901,
+          16.156
+        ],
+        [
+          -986.705,
+          -483.401,
+          16.156
+        ],
+        [
+          -989.705,
+          -488.598,
+          16.156
+        ],
+        [
+          -991.205,
+          -491.196,
+          16.156
+        ]
+      ],
+      "positions": [
+        [
+          -968.519,
+          -358.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -367.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -376.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -385.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -394.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -403.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -412.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -421.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -430.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -439.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -448.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -457.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -466.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -469.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -472.901,
+          16.156
+        ],
+        [
+          -968.519,
+          -472.901,
+          16.156
+        ],
+        [
+          -973.715,
+          -475.901,
+          16.156
+        ],
+        [
+          -981.509,
+          -480.401,
+          16.156
+        ],
+        [
+          -984.107,
+          -481.901,
+          16.156
+        ],
+        [
+          -986.705,
+          -483.401,
+          16.156
+        ],
+        [
+          -989.705,
+          -488.598,
+          16.156
+        ],
+        [
+          -991.205,
+          -491.196,
+          16.156
+        ]
+      ],
+      "yaw": [
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -1.5708,
+        -2.0944,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.618,
+        -2.0944,
+        -2.0944
+      ],
+      "gpt_instruction": "Here \u2019s how the scattered actions and landmarks can be combined into a smooth and structured sentence : \" Advance forward to a gray building with a tall , rectangular structure featuring large windows ; then take a right slightly to it, rectangular design with multiple windows ; head straight to a medium - sized gray building with windows and a brick facade ; slightly turn left and go directly ahead to a tall , multi - story gray structure featuring arched windows with detailed frames and a repetitive design pattern , serving as a commercial or residential building . \"",
+      "pattern": "native_point_to_point",
+      "scene": "outdoor_long",
+      "map_id": "env_airsim_16",
+      "pose_source": "gt_proxy"
+    },
+    {
+      "route_id": "long_route_11",
+      "source_route_idx": 10,
+      "segment_name": "Approach_Route_11",
+      "pos": [
+        [
+          -772.42,
+          -559.741,
+          14.943
+        ],
+        [
+          -803.597,
+          -541.741,
+          14.943
+        ]
+      ],
+      "yaw": [
+        2.618,
+        2.618
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Move forward to a beige building characterized by large , arched windows with horizontal frames . Climb to it . Slightly (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO10"
+    },
+    {
+      "route_id": "long_route_03",
+      "source_route_idx": 2,
+      "segment_name": "Approach_Route_03",
+      "pos": [
+        [
+          -641.481,
+          -328.007,
+          29.894
+        ],
+        [
+          -672.658,
+          -310.007,
+          29.894
+        ]
+      ],
+      "yaw": [
+        2.618,
+        2.618
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Head straight toward a large , multi - story beige building featuring a rectangular grid of windows with ornate accents  (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO03"
+    },
+    {
+      "route_id": "long_route_16",
+      "source_route_idx": 15,
+      "segment_name": "Approach_Route_16",
+      "pos": [
+        [
+          36.375,
+          78.733,
+          21.327
+        ],
+        [
+          18.375,
+          47.556,
+          21.327
+        ]
+      ],
+      "yaw": [
+        -2.0944,
+        -2.0944
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Advance forward to the medium - sized apartment building , which features red - brown and white colors , as well as fire (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO15"
+    },
+    {
+      "route_id": "long_route_15",
+      "source_route_idx": 14,
+      "segment_name": "Approach_Route_15",
+      "pos": [
+        [
+          -729.62,
+          -41.758,
+          69.011
+        ],
+        [
+          -760.797,
+          -59.758,
+          69.011
+        ]
+      ],
+      "yaw": [
+        -2.618,
+        -2.618
+      ],
+      "d0_m": 36.0,
+      "gpt_instruction": "Head directly toward the tall , light beige building with many windows . Then , slightly turn right and proceed to anoth (outdoor approach)",
+      "map_id": "env_airsim_16",
+      "scene": "outdoor_approach",
+      "leg": "outdoor",
+      "pose_source": "gt_proxy",
+      "handover_id": "HO14"
+    }
+  ]
+}

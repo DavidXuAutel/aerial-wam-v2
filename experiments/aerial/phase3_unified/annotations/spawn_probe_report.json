@@ -1,0 +1,435 @@
+{
+  "annotation": "/home/yao/aerial-wam-v2/experiments/aerial/phase3_unified/annotations/handover_seen.json",
+  "maps": {
+    "env_airsim_16": [
+      {
+        "index": 0,
+        "label": "Approach_Route_01",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO01",
+        "leg": "outdoor",
+        "ok": false,
+        "collided": true,
+        "spawn_pos": [
+          -746.35498046875,
+          -250.73800659179688,
+          36.85499954223633
+        ]
+      },
+      {
+        "index": 1,
+        "label": "Approach_Route_09",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO08",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -1167.6009521484375,
+          -509.2030029296875,
+          25.417999267578125
+        ]
+      },
+      {
+        "index": 2,
+        "label": "Approach_Route_08",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO07",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          163.5919952392578,
+          -129.63299560546875,
+          7.511674404144287
+        ]
+      },
+      {
+        "index": 3,
+        "label": "Approach_Route_04",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO04",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          91.73300170898438,
+          110.53299713134766,
+          19.472000122070312
+        ]
+      },
+      {
+        "index": 4,
+        "label": "Approach_Route_12",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO11",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -1250.8160400390625,
+          -533.1060180664062,
+          19.275999069213867
+        ]
+      },
+      {
+        "index": 5,
+        "label": "Approach_Route_07",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO06",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -875.6669921875,
+          -530.0900268554688,
+          83.59300231933594
+        ]
+      },
+      {
+        "index": 6,
+        "label": "Approach_Route_03",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO03",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -641.4810180664062,
+          -328.0069885253906,
+          29.893999099731445
+        ]
+      },
+      {
+        "index": 7,
+        "label": "Approach_Route_16",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO15",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          36.375,
+          78.73300170898438,
+          21.32699966430664
+        ]
+      },
+      {
+        "index": 8,
+        "label": "Approach_Route_11",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO10",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -772.4199829101562,
+          -559.7410278320312,
+          14.942756652832031
+        ]
+      },
+      {
+        "index": 9,
+        "label": "Approach_Route_05",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO05",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -968.5189819335938,
+          -358.9010009765625,
+          16.1560001373291
+        ]
+      },
+      {
+        "index": 10,
+        "label": "Approach_Route_13",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO12",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          67.54900360107422,
+          36.89500045776367,
+          29.18000030517578
+        ]
+      },
+      {
+        "index": 11,
+        "label": "Approach_Route_10",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO09",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -1152.135986328125,
+          -217.7899932861328,
+          21.3037052154541
+        ]
+      },
+      {
+        "index": 12,
+        "label": "Approach_Route_02",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO02",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -1289.8280029296875,
+          100.24800109863281,
+          19.742664337158203
+        ]
+      },
+      {
+        "index": 13,
+        "label": "Approach_Route_15",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO14",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -729.6199951171875,
+          -41.757999420166016,
+          69.01100158691406
+        ]
+      },
+      {
+        "index": 14,
+        "label": "Approach_Route_14",
+        "map_id": "env_airsim_16",
+        "handover_id": "HO13",
+        "leg": "outdoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -1200.2110595703125,
+          -407.7340087890625,
+          30.45800018310547
+        ]
+      }
+    ],
+    "building_99": [
+      {
+        "index": 0,
+        "label": "B99_lobby_east_3m",
+        "map_id": "building_99",
+        "handover_id": "HO01",
+        "leg": "indoor",
+        "ok": false,
+        "collided": true,
+        "spawn_pos": [
+          0.0,
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "index": 1,
+        "label": "B99_lobby_diag_nw_3m",
+        "map_id": "building_99",
+        "handover_id": "HO14",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -0.5,
+          0.5,
+          1.5
+        ]
+      },
+      {
+        "index": 2,
+        "label": "B99_lobby_south_3m",
+        "map_id": "building_99",
+        "handover_id": "HO12",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.0,
+          -1.0,
+          1.5
+        ]
+      },
+      {
+        "index": 3,
+        "label": "B99_lobby_south_3m",
+        "map_id": "building_99",
+        "handover_id": "HO04",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.0,
+          -1.0,
+          1.5
+        ]
+      },
+      {
+        "index": 4,
+        "label": "B99_lobby_west_3m",
+        "map_id": "building_99",
+        "handover_id": "HO11",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          1.0,
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "index": 5,
+        "label": "B99_lobby_west_3m",
+        "map_id": "building_99",
+        "handover_id": "HO03",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          1.0,
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "index": 6,
+        "label": "B99_lobby_diag_nw_3m",
+        "map_id": "building_99",
+        "handover_id": "HO06",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          -0.5,
+          0.5,
+          1.5
+        ]
+      },
+      {
+        "index": 7,
+        "label": "B99_lobby_north_from_y1",
+        "map_id": "building_99",
+        "handover_id": "HO08",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.0,
+          1.0,
+          1.5
+        ]
+      },
+      {
+        "index": 8,
+        "label": "B99_lobby_east_from_1",
+        "map_id": "building_99",
+        "handover_id": "HO15",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          1.0,
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "index": 9,
+        "label": "B99_lobby_diag_ne_3m",
+        "map_id": "building_99",
+        "handover_id": "HO05",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.5,
+          0.5,
+          1.5
+        ]
+      },
+      {
+        "index": 10,
+        "label": "B99_lobby_east_3m",
+        "map_id": "building_99",
+        "handover_id": "HO09",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.0,
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "index": 11,
+        "label": "B99_lobby_north_3m",
+        "map_id": "building_99",
+        "handover_id": "HO02",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.0,
+          1.0,
+          1.5
+        ]
+      },
+      {
+        "index": 12,
+        "label": "B99_lobby_east_from_1",
+        "map_id": "building_99",
+        "handover_id": "HO07",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          1.0,
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "index": 13,
+        "label": "B99_lobby_north_3m",
+        "map_id": "building_99",
+        "handover_id": "HO10",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.0,
+          1.0,
+          1.5
+        ]
+      },
+      {
+        "index": 14,
+        "label": "B99_lobby_diag_ne_3m",
+        "map_id": "building_99",
+        "handover_id": "HO13",
+        "leg": "indoor",
+        "ok": true,
+        "collided": false,
+        "spawn_pos": [
+          0.5,
+          0.5,
+          1.499680519104004
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "outdoor_ok": 14,
+    "outdoor_n": 15,
+    "indoor_ok": 14,
+    "indoor_n": 15
+  }
+}

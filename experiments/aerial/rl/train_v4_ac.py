@@ -149,6 +149,35 @@ def main() -> int:
             "(e.g. '3,5,7,10'). Empty = fixed cs from config (default)."
         ),
     )
+    p.add_argument(
+        "--start-iter",
+        type=int,
+        default=0,
+        help="skip corrector iters [0, start_iter) when resuming online collect",
+    )
+    p.add_argument(
+        "--save-every-iter",
+        action="store_true",
+        help="write v4_ac_latest.pt after each corrector iteration (125 long runs)",
+    )
+    p.add_argument(
+        "--renderer-restart-every",
+        type=int,
+        default=None,
+        help="restart AirSim renderer every N corrector iters (omit to use config; 0=disabled)",
+    )
+    p.add_argument(
+        "--renderer-restart-script",
+        type=str,
+        default="",
+        help="recover_renderer_scene.sh path (required when --renderer-restart-every > 0)",
+    )
+    p.add_argument(
+        "--renderer-restart-scene",
+        type=str,
+        default="outdoor",
+        help="scene arg passed to renderer restart script (outdoor/building99/...)",
+    )
     args = p.parse_args()
 
     repo = Path(__file__).resolve().parents[3]
@@ -350,6 +379,17 @@ def main() -> int:
         cs_list = [float(x.strip()) for x in args.cs_values.split(",") if x.strip()]
         if cs_list:
             loop.episodes = assign_variable_cruise_speed(loop.episodes, cs_list)
+
+    loop.config.start_iter = int(args.start_iter)
+    if args.ckpt_dir:
+        loop.config.ckpt_dir = str(args.ckpt_dir)
+    loop.config.save_every_iter = bool(args.save_every_iter)
+    if args.renderer_restart_every is not None:
+        loop.config.renderer_restart_every = int(args.renderer_restart_every)
+    if args.renderer_restart_script:
+        loop.config.renderer_restart_script = str(args.renderer_restart_script)
+    if args.renderer_restart_scene:
+        loop.config.renderer_restart_scene = str(args.renderer_restart_scene)
 
     reports = loop.run()
     losses = []

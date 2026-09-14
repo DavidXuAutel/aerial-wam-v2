@@ -24,7 +24,7 @@ python experiments/aerial/scripts/wam_phase2_long_eval.py \
   --success-dist 3.0 \
   --out "$OUT_DIR/outdoor_long_eval.json"
 
-echo "=== Indoor gate (mainline baseline) ==="
+echo "=== Indoor gate (mainline baseline · outdoor-route stub) ==="
 python experiments/aerial/scripts/indoor_mainline_baseline_eval.py \
   --actor-ckpt "$ACTOR_CKPT" \
   --wm-ckpt "$WM_CKPT" \
@@ -33,6 +33,15 @@ python experiments/aerial/scripts/indoor_mainline_baseline_eval.py \
   --assist none \
   --out "$OUT_DIR/indoor_mainline_eval.json"
 
+echo "=== Indoor gate (Building_99 · gt_proxy) ==="
+python experiments/aerial/scripts/eval_phase3_building99_indoor.py \
+  --actor-ckpt "$ACTOR_CKPT" \
+  --wm-ckpt "$WM_CKPT" \
+  --pose-source gt_proxy \
+  --scene-script "${SCENE_SCRIPT:-$HOME/aerial-indoor-wam/experiments/aerial/scripts/recover_renderer_scene.sh}" \
+  --out "$OUT_DIR/building99_indoor_eval.json"
+
 echo "=== Done ==="
-echo "Outdoor: $OUT_DIR/outdoor_long_eval.json"
-echo "Indoor:  $OUT_DIR/indoor_mainline_eval.json"
+echo "Outdoor:   $OUT_DIR/outdoor_long_eval.json"
+echo "Indoor:    $OUT_DIR/indoor_mainline_eval.json"
+echo "Building99: $OUT_DIR/building99_indoor_eval.json"

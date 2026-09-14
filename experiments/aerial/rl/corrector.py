@@ -19,7 +19,11 @@ on-4090 smoke test entrypoint.
 from __future__ import annotations
 
 import logging
+import socket
+import subprocess
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -31,6 +35,25 @@ from experiments.aerial.rl.imagination import imagine
 from experiments.aerial.rl.reward import maneuver_weight_at
 
 logger = logging.getLogger(__name__)
+
+
+def _save_actor_ckpt(ckpt_dir: str, actor_critic: Any, iter_idx: int) -> None:
+    from pathlib import Path
+
+    import torch
+
+    out = Path(ckpt_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "actor": actor_critic._actor.state_dict(),
+        "critic": actor_critic._critic.state_dict(),
+        "log_std": actor_critic._log_std.detach().cpu(),
+        "config": actor_critic.config.__dict__,
+        "iter_idx": int(iter_idx),
+    }
+    torch.save(payload, out / "v4_ac_latest.pt")
+    torch.save(payload, out / f"v4_ac_iter_{iter_idx:04d}.pt")
+    logger.info("wrote ckpt iter %d -> %s", iter_idx, out / "v4_ac_latest.pt")
 
 
 @dataclass
@@ -48,6 +71,16 @@ class CorrectorConfig:
     imagine_batch: int = 64
     imagine_horizon: int = 10
     smoke: bool = False
+    start_iter: int = 0
+    ckpt_dir: Optional[str] = None
+    save_every_iter: bool = False
+    # Periodic AirSim renderer restart (125 long online runs). 0 = disabled.
+    renderer_restart_every: int = 0
+    renderer_restart_script: Optional[str] = None
+    renderer_restart_scene: str = "outdoor"
+    renderer_restart_wait_s: float = 30.0
+    renderer_host: str = "127.0.0.1"
+    renderer_port: int = 41451
 
 
 @dataclass
@@ -91,8 +124,15 @@ class SerialCorrectorLoop:
                 return [IterationReport(collect=stats, wm={"skipped": True}, rl={"skipped": True})]
 
             reports: List[IterationReport] = []
-            for it in range(self.config.iterations):
-                stats = self.collector.collect(self.config.episodes_per_iter, episodes=self.episodes)
+            start = max(0, int(self.config.start_iter))
+            for it in range(start, self.config.iterations):
+                if self._should_restart_renderer(it):
+                    self._restart_renderer()
+                stats = self.collector.collect(
+                    self.config.episodes_per_iter,
+                    episodes=self.episodes,
+                    episode_offset=it,
+                )
                 self._apply_maneuver_curriculum(stats)
                 wm = self._update_world_model()
                 rl = self._update_policy()
@@ -102,11 +142,52 @@ class SerialCorrectorLoop:
                     self.collector.reward_cfg.w_maneuver,
                 )
                 reports.append(IterationReport(collect=stats, wm=wm, rl=rl))
+                if self.config.save_every_iter and self.config.ckpt_dir and self.actor_critic is not None:
+                    _save_actor_ckpt(self.config.ckpt_dir, self.actor_critic, it)
             return reports
         finally:
             close = getattr(getattr(self.collector, "env", None), "close", None)
             if callable(close):
                 close()
+
+    def _should_restart_renderer(self, iter_idx: int) -> bool:
+        every = int(self.config.renderer_restart_every)
+        if every <= 0 or iter_idx <= 0:
+            return False
+        return iter_idx % every == 0
+
+    def _restart_renderer(self) -> None:
+        script = self.config.renderer_restart_script
+        if not script:
+            logger.warning("renderer restart requested but renderer_restart_script is unset — skipping")
+            return
+        scene_sh = Path(script).expanduser()
+        if not scene_sh.is_file():
+            alt = Path.home() / "aerial-indoor-wam/experiments/aerial/scripts/recover_renderer_scene.sh"
+            if alt.is_file():
+                scene_sh = alt
+            else:
+                raise FileNotFoundError(f"renderer restart script missing: {script}")
+
+        close = getattr(getattr(self.collector, "env", None), "close", None)
+        if callable(close):
+            close()
+
+        scene = str(self.config.renderer_restart_scene)
+        logger.info("restarting AirSim renderer (scene=%s) via %s", scene, scene_sh)
+        subprocess.run(["bash", str(scene_sh), scene], check=True)
+        time.sleep(float(self.config.renderer_restart_wait_s))
+
+        host = str(self.config.renderer_host)
+        port = int(self.config.renderer_port)
+        for attempt in range(1, 37):
+            try:
+                socket.create_connection((host, port), 3).close()
+                logger.info("AirSim reachable at %s:%d (try %d)", host, port, attempt)
+                return
+            except OSError:
+                time.sleep(5)
+        raise RuntimeError(f"AirSim not reachable at {host}:{port} after renderer restart")
 
     # -- maneuver-penalty curriculum (design doc §2.4) -------------------
     def _apply_maneuver_curriculum(self, stats: CollectStats) -> None:

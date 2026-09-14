@@ -1,0 +1,31 @@
+{
+  "protocol_version": "phase3_handover_geofence_v0",
+  "description": "Example deploy config for HandoverRouter waypoint mode (not used in oracle sim eval).",
+  "handover_waypoints": [
+    {
+      "handover_id": "HO02",
+      "outdoor_approach_end": [-720.0, -40.0, 15.39],
+      "indoor_spawn": [0.0, 0.0, 1.5],
+      "approach_radius_m": 10.0
+    }
+  ],
+  "indoor_geofences": [
+    {
+      "name": "building_99_lobby",
+      "handover_id": "HO02",
+      "polygon_xy": [
+        [-5.0, -5.0],
+        [15.0, -5.0],
+        [15.0, 10.0],
+        [-5.0, 10.0]
+      ],
+      "z_min_m": 0.5,
+      "z_max_m": 4.0
+    }
+  ],
+  "hysteresis": {
+    "indoor_confirm_frames": 5,
+    "outdoor_confirm_frames": 5
+  },
+  "gcs_commands": ["switch_indoor", "switch_outdoor"]
+}

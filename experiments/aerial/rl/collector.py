@@ -329,12 +329,17 @@ class RolloutCollector:
             self.on_episode(transitions, stats)
         return transitions, stats
 
-    def collect(self, num_episodes: int = 1, episodes: Optional[List[Dict[str, Any]]] = None) -> CollectStats:
+    def collect(
+        self,
+        num_episodes: int = 1,
+        episodes: Optional[List[Dict[str, Any]]] = None,
+        episode_offset: int = 0,
+    ) -> CollectStats:
         total = CollectStats()
         for i in range(int(num_episodes)):
             ep = None
             if episodes:
-                ep = episodes[i % len(episodes)]
+                ep = episodes[(int(episode_offset) + i) % len(episodes)]
             _, s = self.collect_episode(ep)
             total.episodes += s.episodes
             total.steps += s.steps

@@ -1,0 +1,134 @@
+# Aerial WAM Phase-3 — P2c outdoor online close-loop FT (125 · AirSim)
+#
+# Context (2026-09-13):
+#   P2a offline handover FT → outdoor 0/16 (d_min~28m)
+#   P2b outdoor-heavy replay → 0/16 (d_min~12.6m, better but no arrivals)
+#   Phase-2 toward_g baseline → 13/16 (81.2%)
+#
+# P2c: warm-start Phase-2 toward_g, online collect on 125 with --phase2 +
+#       --near-goal-frac to bias rollouts into the last ~20m close band.
+#
+#   bash experiments/aerial/scripts/train_phase3_unified_p2c.sh
+
+scene_mix:
+  outdoor_prob: 1.0
+  indoor_prob: 0.0
+  cross_scene_in_episode: false
+  require_scene_tag: true
+
+scene_profiles:
+  outdoor_long:
+    action_limits:
+      max_dx: 1.0
+      max_dy: 0.4
+      max_dz: 0.4
+      max_dyaw: 0.314
+    success_dist_m: 3.0
+    safety:
+      kind: three_zone
+      l1_m: 8.0
+      l2_m: 5.0
+      l3_m: 1.5
+      v1_m_s: 2.0
+      v2_m_s: 1.0
+      v_stop_m_s: 0.2
+      v_cruise_m_s: 25.0
+      a_max_m_s2: 2.5
+      delay_s: 0.2
+
+pose_contract:
+  pose_source_required: true
+  forbid_gt_world_pose_control: true
+  forbid_silent_gt_goal_rel: true
+  train_allow_gt_proxy: true
+  eval_allow_gt_proxy: false
+
+env:
+  backend: airsim
+  host: 127.0.0.1
+  port: 41451
+  camera: front_custom
+  vehicle: drone_1
+  width: 224
+  height: 224
+  step_hz: 5.0
+  grab_depth: false
+  health_check: true
+  seed: 0
+
+buffer:
+  capacity_episodes: 500
+  seed: 0
+
+reward:
+  w_progress: 1.0
+  w_collision: 10.0
+  w_maneuver: 0.01
+  success_bonus: 10.0
+  success_dist_m: 3.0
+
+dynamics:
+  kind: torch
+  latent_dim: 8
+  collide_radius_m: 2.0
+
+world_model:
+  checkpoint_dir: experiments/aerial/rl/artifacts/wm_ckpt_d_full_20260828
+
+imagination:
+  batch: 16
+  horizon: 15
+
+planner:
+  enable: false
+  horizon: 5
+
+corrector:
+  iterations: 10
+  episodes_per_iter: 1
+  max_steps: 200
+  enable_wm_update: false
+  enable_policy_update: true
+  strict_gates: false
+  wm_batch: 32
+  wm_window: 8
+  smoke: false
+  # Restart outdoor renderer every N iters to avoid simGetImages hangs (~iter 20).
+  renderer_restart_every: 10
+  renderer_restart_scene: outdoor
+  renderer_restart_wait_s: 30.0
+
+v4:
+  lambda_gae: 0.95
+  gamma: 0.997
+  entropy_scale: 3.0e-4
+  actor_lr: 1.0e-4
+  critic_lr: 1.0e-4
+  action_scale: 1.0
+  device: cpu
+
+annotation: experiments/aerial/phase3_unified/annotations/outdoor_long_only.json
+max_episodes: 0
+
+p2c:
+  warm_start: experiments/aerial/rl/artifacts/v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt
+  near_goal_frac: 0.5
+  near_goal_dist_min_m: 5.0
+  near_goal_dist_max_m: 20.0
+  iters: 48
+  regression_baseline: artifacts/phase3_unified_eval_20260911/outdoor_long_eval_phase2_baseline.json
+
+safety:
+  kind: three_zone
+  l1_m: 8.0
+  l2_m: 5.0
+  l3_m: 1.5
+  v1_m_s: 2.0
+  v2_m_s: 1.0
+  v_stop_m_s: 0.2
+  v_cruise_m_s: 25.0
+  a_max_m_s2: 2.5
+  delay_s: 0.2
+  min_tau_s: 1.0
+  max_p_coll: 0.5
+  retreat_step_m: 3.0

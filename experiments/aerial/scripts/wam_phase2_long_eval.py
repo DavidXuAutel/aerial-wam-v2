@@ -202,6 +202,12 @@ def main() -> int:
              "Trigger distance = tti_coeff × v_ref. Lower = shield fires later.",
     )
     parser.add_argument("--success-dist", type=float, default=3.0)
+    parser.add_argument(
+        "--save-dataset",
+        type=str,
+        default=None,
+        help="If set, write per-route expert rollouts to this directory (episode_XXXXX.npz)",
+    )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true")
     parser.add_argument("--planner-horizon", type=int, default=5)
@@ -318,7 +324,12 @@ def main() -> int:
     )
     with open(anno_path, "r", encoding="utf-8") as f:
         anno_data = json.load(f)
-    routes = anno_data.get("routes", anno_data) if isinstance(anno_data, dict) else anno_data
+    if isinstance(anno_data, dict):
+        routes = anno_data.get("routes") or anno_data.get("episodes")
+        if routes is None:
+            raise SystemExit(f"annotation {anno_path} missing routes/episodes list")
+    else:
+        routes = anno_data
     route_idxs = select_route_indices(len(routes), args.episodes, args.routes)
     n_routes = len(route_idxs)
 
@@ -509,6 +520,19 @@ def main() -> int:
     )
 
     results: List[Dict[str, Any]] = []
+    save_dir: Path | None = None
+    if args.save_dataset:
+        from experiments.aerial.rl import dataset as ds_mod
+
+        save_dir = (
+            Path(args.save_dataset).resolve()
+            if Path(args.save_dataset).is_absolute()
+            else (root / args.save_dataset).resolve()
+        )
+        save_dir.mkdir(parents=True, exist_ok=True)
+        for old in save_dir.glob("episode_*.npz"):
+            old.unlink()
+        logger.info("save-dataset: %s", save_dir)
 
     for slot, ep_idx in enumerate(route_idxs):
         r_info = routes[ep_idx]
@@ -608,6 +632,16 @@ def main() -> int:
         s_prog = 0.0
         last_true_s: float | None = None
         dev_degs: List[float] = []
+        transitions: List[Any] = []
+        nav_reward = None
+        goal_stamp = np.asarray(goal_pos, dtype=np.float32).reshape(3)
+        if save_dir is not None:
+            from experiments.aerial.rl.buffer import Transition
+            from experiments.aerial.rl.reward import NavigationReward
+
+            nav_reward = NavigationReward(goal_pos, reward_cfg)
+            nav_reward.reset(goal_pos, p_curr)
+        prev_obs = obs
 
         for step in range(args.max_steps):
             d_fwd = None
@@ -823,6 +857,25 @@ def main() -> int:
                 d_final = float(seg_d)
                 break
 
+            if save_dir is not None and nav_reward is not None:
+                r_step, done_r, terms = nav_reward.step(obs, action)
+                ep_info = dict(step_info or {})
+                ep_info.update(terms)
+                ep_info["goal"] = goal_stamp.copy()
+                ep_info["scene"] = "outdoor_long"
+                ep_info["route_idx"] = int(ep_idx)
+                transitions.append(
+                    Transition(
+                        obs=prev_obs,
+                        action=np.asarray(action, dtype=np.float32),
+                        reward=float(r_step),
+                        done=bool(done_r or done),
+                        next_obs=obs,
+                        info=ep_info,
+                    )
+                )
+            prev_obs = obs
+
             if done:
                 collided = bool(
                     getattr(obs, "collided", False) or step_info.get("collided", False)
@@ -830,6 +883,15 @@ def main() -> int:
                 if step_info.get("severe_collision", False) or collided:
                     severe_coll = True
                 break
+
+        if save_dir is not None and transitions:
+            ds_mod.write_episode(save_dir, slot, transitions)
+            logger.info(
+                "save-dataset: route %02d -> episode_%05d.npz (%d steps)",
+                ep_idx + 1,
+                slot,
+                len(transitions),
+            )
 
         actual_len = (
             float(np.sum(np.linalg.norm(np.diff(np.array(traj), axis=0), axis=1)))
