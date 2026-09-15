@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# 16-route eval with optimized Phase-2 stack (Route-10 sweep winner, 2026-09-15).
-# polyline+RG+HA, planner H=1, tti=2.5, peel_early.
+# 16-route eval — V11 stack (2026-09-15).
+# Code: cap_r (CTE>3m) + ha_fix (HA seg on full corridor, RG period skip, terminal_smooth).
+# CLI: polyline+RG+HA, planner H=1, tti=2.5, peel_early params.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -9,7 +10,7 @@ cd "$ROOT"
 source "$ROOT/experiments/aerial/scripts/env_4090.sh"
 PY="${AERIAL_PY:-${PYTHON_BIN:-python3}}"
 
-OUT_ROOT="${OUT_ROOT:-artifacts/wam_phase2_best_stack_full16_20260915}"
+OUT_ROOT="${OUT_ROOT:-artifacts/wam_phase2_v11_full16_20260915}"
 ANNO="${ANNO:-experiments/aerial/phase3_unified/annotations/outdoor_long_only.json}"
 ACTOR="${ACTOR:-experiments/aerial/rl/artifacts/v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt}"
 WM="${WM:-experiments/aerial/rl/artifacts/wm_ckpt_d_full_20260828/wm_step_3500.pt}"
