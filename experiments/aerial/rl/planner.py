@@ -77,8 +77,13 @@ class ImaginationPlanner:
     #: logged 2026-08-18 but deliberately NOT changed by default, since flipping
     #: it would alter the V1 deployed path and require a V1 re-gate.
     action_limits: Optional[np.ndarray] = None
+    #: ``pass``: return ``base_action`` unchanged (planner on, no WM imagination).
+    #: Use ``horizon=1`` for one-step WM scoring without adding a separate mode.
+    mock_mode: Optional[str] = None
 
     def __post_init__(self) -> None:
+        if self.mock_mode is not None and self.mock_mode not in ("pass",):
+            raise ValueError(f"unsupported mock_mode={self.mock_mode!r}")
         self.horizon = int(self.horizon)
         if self.action_limits is not None:
             lim = np.abs(np.asarray(self.action_limits, dtype=np.float64).reshape(-1))
@@ -115,6 +120,9 @@ class ImaginationPlanner:
         When ``latent`` is provided (deploy streaming posterior), imagination
         scores from that state instead of resetting via ``encode(obs)``.
         """
+        base = np.asarray(base_action, dtype=np.float64).reshape(4)
+        if self.mock_mode == "pass":
+            return base.copy()
         if latent is not None:
             z0 = np.asarray(latent, dtype=np.float64).reshape(-1)
         else:

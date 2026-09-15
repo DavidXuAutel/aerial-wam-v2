@@ -231,6 +231,9 @@ class ThreeZoneSpeedShield:
     retreat_step_m: float = 3.0
     #: TTI budget (seconds). Trigger distance = tti_coeff × v_eff.
     tti_coeff: float = 4.0
+    #: Once forward TTI cap engages, hold until d_fwd ≥ trigger × (1 + frac).
+    #: Reduces bang-bang stutter when d_fwd hovers near the trigger surface.
+    tti_hysteresis_release_frac: float = 0.0
     #: Hard exclusion zone (metres). Below this → retreat, no forward motion.
     exclusion_m: float = 3.0
     #: When True (default), use max(v_now, v_cmd) as effective speed reference.
@@ -241,6 +244,7 @@ class ThreeZoneSpeedShield:
     _emergency_engaged: bool = field(default=False, init=False, repr=False)
     _last_channels: tuple[str, ...] = field(default=(), init=False, repr=False)
     _clear_danger_steps: int = field(default=0, init=False, repr=False)
+    _forward_cap_latched: bool = field(default=False, init=False, repr=False)
 
     @property
     def last_channels(self) -> tuple[str, ...]:
@@ -250,6 +254,13 @@ class ThreeZoneSpeedShield:
         self._emergency_engaged = False
         self._last_channels = ()
         self._clear_danger_steps = 0
+        self._forward_cap_latched = False
+
+    def _effective_tti(self, obs: Observation) -> float:
+        override = obs.info.get("shield_tti_coeff")
+        if override is not None and np.isfinite(float(override)):
+            return float(override)
+        return float(self.tti_coeff)
 
     def _p_coll_clearance_veto_m(self) -> Optional[float]:
         if self.p_coll_clearance_veto_m is None:
@@ -324,10 +335,22 @@ class ThreeZoneSpeedShield:
         v_now = float(closing_speed_m_s(obs))
         v_cmd = max(0.0, float(capped[0]) / max(dt, 1e-6))
         v_ref = max(v_now, v_cmd) if bool(self.dynamic_v_ref) else float(self.zone.v_cruise_m_s)
-        trigger = float(self.tti_coeff) * v_ref
-        if d >= trigger or v_ref < 1e-6:
+        tti = self._effective_tti(obs)
+        trigger = float(tti) * v_ref
+        hyst = float(self.tti_hysteresis_release_frac)
+        release = trigger * (1.0 + hyst) if hyst > 0.0 else trigger
+        if v_ref < 1e-6:
             return action, False
-        v_cap = d / float(self.tti_coeff)
+        if hyst > 0.0 and self._forward_cap_latched:
+            if d >= release:
+                self._forward_cap_latched = False
+                if d >= trigger:
+                    return action, False
+        elif d >= trigger:
+            return action, False
+        elif hyst > 0.0:
+            self._forward_cap_latched = True
+        v_cap = d / float(tti)
         obs.info["tii_speed_cap_m_s"] = round(v_cap, 4)
         obs.info["tii_d_hat_fwd_m"] = round(d, 4)
         max_dx = v_cap * dt
@@ -360,10 +383,10 @@ class ThreeZoneSpeedShield:
             v_abs = abs(delta) / max(dt, 1e-6)
             if v_abs < 1e-6:
                 return delta, False
-            trigger = float(self.tti_coeff) * v_abs
+            trigger = float(self._effective_tti(obs)) * v_abs
             if float(d_obs) >= trigger:
                 return delta, False
-            max_delta = float(d_obs) / float(self.tti_coeff) * dt
+            max_delta = float(d_obs) / float(self._effective_tti(obs)) * dt
             if abs(delta) <= max_delta + 1e-6:
                 return delta, False
             return float(np.sign(delta)) * max_delta, True

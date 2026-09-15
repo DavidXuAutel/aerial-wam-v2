@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
-"""Orin MAVLink throttle control for ArduPilot (RC override on ch3).
+"""Orin MAVLink throttle via RC override on ch3.
 
-Bench / flight: ramps throttle via RC_CHANNELS_OVERRIDE while armed.
+ch7 button (rising edge): toggle Orin vs H12. No need to hold ch7.
 
-  # Dry-run: connect + print state only
-  python -m experiments.aerial.scripts.orin_mavlink_throttle --dry-run
-
-  # Recommended: ARM with H12 F-switch first, then Orin ramps throttle:
   python -m experiments.aerial.scripts.orin_mavlink_throttle \\
-    --wait-armed --throttle-pct 30 --hold-s 3 --i-know-props-are-on
-
-  # Or MAVLink arm (may fail indoors without GPS fix):
-  python -m experiments.aerial.scripts.orin_mavlink_throttle \\
-    --arm --throttle-pct 30 --hold-s 3 --i-know-props-are-on
+    --wait-armed --ch7-handoff --throttle-pct 25 --hold-s 2 --i-know-props-are-on
 """
 from __future__ import annotations
 
@@ -21,12 +13,11 @@ import logging
 import sys
 import time
 
-from pymavlink import mavutil
-
-from experiments.aerial.rl.env.mavlink_bridge import (
-    ARDUCOPTER_MODE_GUIDED,
-    MavlinkBridge,
-    MavlinkBridgeConfig,
+from experiments.aerial.rl.env.mavlink_bridge import MavlinkBridge, MavlinkBridgeConfig
+from experiments.aerial.rl.env.orin_rc_handoff import (
+    OrinRcHandoff,
+    OrinRcHandoffConfig,
+    release_rc_overrides,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
@@ -40,33 +31,58 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--port", default="/dev/ttyACM0")
     p.add_argument("--baud", type=int, default=57600)
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--arm", action="store_true", help="Arm via MAVLink before throttle ramp")
+    p.add_argument("--arm", action="store_true")
+    p.add_argument("--wait-armed", action="store_true")
     p.add_argument(
-        "--wait-armed",
+        "--ch7-handoff",
         action="store_true",
-        help="Wait for pilot ARM (H12 F-switch); do not MAVLink-arm",
+        help="Use ch7 rising-edge toggle (Orin <-> H12); default ch7",
     )
+    p.add_argument("--handoff-ch", type=int, default=7)
+    p.add_argument("--handoff-threshold", type=int, default=1600)
     p.add_argument("--wait-timeout-s", type=float, default=120.0)
     p.add_argument("--i-know-props-are-on", action="store_true")
-    p.add_argument("--no-disarm", action="store_true", help="Leave armed after run")
     p.add_argument(
-        "--throttle-pct",
-        type=float,
-        default=30.0,
-        help="Target throttle percent above idle (10-80)",
+        "--no-disarm",
+        action="store_true",
+        default=True,
+        help="Leave armed after run (default: True for bench)",
     )
-    p.add_argument("--ramp-s", type=float, default=2.0, help="Seconds to ramp up")
-    p.add_argument("--hold-s", type=float, default=2.0, help="Hold at target throttle")
+    p.add_argument(
+        "--disarm-on-exit",
+        action="store_true",
+        help="Disarm when script exits (overrides --no-disarm)",
+    )
+    p.add_argument("--throttle-pct", type=float, default=30.0)
+    p.add_argument("--ramp-s", type=float, default=2.0)
+    p.add_argument("--hold-s", type=float, default=2.0)
     p.add_argument("--hz", type=float, default=20.0)
     return p.parse_args()
 
 
-def pwm_from_pct(pct: float) -> int:
+def _read_param(mav: object, ts: int, tc: int, name: str) -> float | None:
+    mav.mav.param_request_read_send(ts, tc, name.encode(), -1)
+    deadline = time.time() + 4
+    while time.time() < deadline:
+        msg = mav.recv_match(type="PARAM_VALUE", blocking=True, timeout=0.3)
+        if msg is None:
+            continue
+        pid = (
+            msg.param_id.decode().rstrip("\x00")
+            if isinstance(msg.param_id, bytes)
+            else str(msg.param_id).rstrip("\x00")
+        )
+        if pid == name:
+            return float(msg.param_value)
+    return None
+
+
+def pwm_from_pct(pct: float, rc_min: int = 1100, rc_max: int = 1900) -> int:
     pct = max(0.0, min(100.0, pct))
-    return int(1000 + pct * 10.0)
+    return int(rc_min + max(1, rc_max - rc_min) * pct / 100.0)
 
 
-def send_throttle_override(mav: any, ts: int, tc: int, throttle_pwm: int) -> None:
+def send_throttle_override(mav: object, ts: int, tc: int, throttle_pwm: int) -> None:
     mav.mav.rc_channels_override_send(
         ts,
         tc,
@@ -81,6 +97,43 @@ def send_throttle_override(mav: any, ts: int, tc: int, throttle_pwm: int) -> Non
     )
 
 
+def _poll_handoff(
+    handoff: OrinRcHandoff,
+    mav: object,
+    bridge: MavlinkBridge,
+    ts: int,
+    tc: int,
+) -> None:
+    if handoff.poll_mavlink(mav):
+        if handoff.active:
+            logger.info("ch%d -> Orin control", handoff.config.channel)
+        else:
+            logger.info("ch%d -> H12 control (override released)", handoff.config.channel)
+            release_rc_overrides(mav, ts, tc)
+    bridge.poll(timeout_s=0.0)
+
+
+def _override_loop(
+    handoff: OrinRcHandoff | None,
+    mav: object,
+    bridge: MavlinkBridge,
+    ts: int,
+    tc: int,
+    duration_s: float,
+    throttle_fn: object,
+    dt: float,
+) -> None:
+    t0 = time.perf_counter()
+    while time.perf_counter() - t0 < duration_s:
+        if handoff is not None:
+            _poll_handoff(handoff, mav, bridge, ts, tc)
+        else:
+            bridge.poll(timeout_s=0.0)
+        if handoff is None or handoff.active:
+            send_throttle_override(mav, ts, tc, throttle_fn(time.perf_counter() - t0))
+        time.sleep(dt)
+
+
 def main() -> int:
     args = _parse()
     if (args.arm or args.wait_armed) and not args.i_know_props_are_on:
@@ -89,14 +142,21 @@ def main() -> int:
     if args.arm and args.wait_armed:
         logger.error("Use --arm or --wait-armed, not both")
         return 2
+
     pct = max(10.0, min(80.0, float(args.throttle_pct)))
+    handoff = OrinRcHandoff(
+        OrinRcHandoffConfig(
+            channel=args.handoff_ch,
+            press_threshold=args.handoff_threshold,
+        )
+    )
 
     bridge = MavlinkBridge(MavlinkBridgeConfig(port=args.port, baud=args.baud))
     bridge.connect(timeout_s=8)
     mav = bridge._mav
     ts, tc = bridge.target_system, 1
-
     bridge.poll(timeout_s=1.0)
+
     logger.info(
         "connected ardupilot=%s armed=%s mode=%s",
         bridge.is_ardupilot(),
@@ -105,92 +165,108 @@ def main() -> int:
     )
 
     if args.dry_run:
-        logger.info("dry-run OK")
         bridge.close()
         return 0
 
     if not bridge.is_ardupilot():
-        logger.error("This script targets ArduPilot; use GUIDED/OFFBOARD velocity for PX4")
+        logger.error("ArduPilot only")
         bridge.close()
         return 1
 
-    if bridge.is_armed():
-        logger.info("already ARMED")
-    elif args.wait_armed:
+    if not bridge.is_armed():
+        if args.wait_armed:
+            logger.info("Waiting for H12 ARM (F switch)... %.0fs", args.wait_timeout_s)
+            deadline = time.perf_counter() + args.wait_timeout_s
+            while time.perf_counter() < deadline:
+                bridge.poll(timeout_s=0.2)
+                if bridge.is_armed():
+                    break
+                time.sleep(0.1)
+        elif args.arm:
+            bridge.arm()
+            time.sleep(1.0)
+            bridge.poll(timeout_s=0.5)
+        if not bridge.is_armed():
+            logger.error("Not ARMED")
+            bridge.close()
+            return 1
+
+    active_handoff: OrinRcHandoff | None = handoff
+    if args.ch7_handoff:
         logger.info(
-            "Waiting for pilot ARM (F-switch, throttle low, Acro/Stabilize)... %.0fs",
+            "Press ch%d once for Orin (press again for H12)... %.0fs",
+            args.handoff_ch,
             args.wait_timeout_s,
         )
-        deadline = time.perf_counter() + args.wait_timeout_s
-        while time.perf_counter() < deadline:
-            bridge.poll(timeout_s=0.2)
-            if bridge.is_armed():
-                break
-            time.sleep(0.1)
-        if not bridge.is_armed():
-            logger.error("Timeout: FC not ARMED — use H12 F-switch to arm")
-            bridge.close()
-            return 1
-    elif args.arm:
-        logger.info("ARM via MAVLink")
-        bridge.arm()
-        time.sleep(1.0)
-        bridge.poll(timeout_s=0.5)
-        if not bridge.is_armed():
-            msg = bridge._mav.recv_match(type="STATUSTEXT", blocking=True, timeout=2)
-            logger.error(
-                "ARM failed%s — try --wait-armed and arm with H12 F-switch",
-                f": {msg.text}" if msg else "",
-            )
-            bridge.close()
-            return 1
-    else:
-        logger.error("Pass --wait-armed or --arm (with --i-know-props-are-on)")
-        bridge.close()
-        return 2
 
-    logger.info("ARMED — Orin taking over throttle on ch3 (RC override)")
-    idle_pwm = 1051
-    target_pwm = pwm_from_pct(pct)
+        def _poll() -> None:
+            bridge.poll(timeout_s=0.0)
+
+        if not handoff.wait_first_orin(mav, args.wait_timeout_s, poll_cb=_poll):
+            logger.error("Timeout: press ch%d to enable Orin", args.handoff_ch)
+            bridge.close()
+            return 1
+        logger.info("Orin active — press ch%d again to return to H12", args.handoff_ch)
+    else:
+        logger.info("No ch7 handoff — Orin override active immediately")
+        active_handoff = None
+
+    rc_opts = _read_param(mav, ts, tc, "RC_OPTIONS")
+    if rc_opts is not None and int(rc_opts) & 2:
+        logger.error("RC_OPTIONS blocks override — run configure_f_arm_switch.py")
+        bridge.close()
+        return 1
+
+    rc_min = int(_read_param(mav, ts, tc, "RC3_MIN") or 1100)
+    rc_max = int(_read_param(mav, ts, tc, "RC3_MAX") or 1900)
+    idle_pwm = rc_min
+    target_pwm = pwm_from_pct(pct, rc_min, rc_max)
     dt = 1.0 / float(args.hz)
-    logger.info("throttle ramp %d -> %d (%.0f%%) over %.1fs", idle_pwm, target_pwm, pct, args.ramp_s)
+
+    logger.info("throttle ramp %d -> %d over %.1fs", idle_pwm, target_pwm, args.ramp_s)
 
     try:
-        t0 = time.perf_counter()
-        while time.perf_counter() - t0 < args.ramp_s:
-            u = min(1.0, (time.perf_counter() - t0) / max(args.ramp_s, 0.01))
-            thr = int(idle_pwm + u * (target_pwm - idle_pwm))
-            send_throttle_override(mav, ts, tc, thr)
-            bridge.poll(timeout_s=0.0)
-            time.sleep(dt)
-
-        logger.info("hold throttle %d for %.1fs", target_pwm, args.hold_s)
-        t_hold0 = time.perf_counter()
-        while time.perf_counter() - t_hold0 < args.hold_s:
-            send_throttle_override(mav, ts, tc, target_pwm)
-            bridge.poll(timeout_s=0.0)
-            time.sleep(dt)
-
-        logger.info("ramp down to idle")
-        t_down0 = time.perf_counter()
-        while time.perf_counter() - t_down0 < args.ramp_s:
-            u = min(1.0, (time.perf_counter() - t_down0) / max(args.ramp_s, 0.01))
-            thr = int(target_pwm - u * (target_pwm - idle_pwm))
-            send_throttle_override(mav, ts, tc, thr)
-            bridge.poll(timeout_s=0.0)
-            time.sleep(dt)
-
-        send_throttle_override(mav, ts, tc, idle_pwm)
-        time.sleep(0.2)
+        _override_loop(
+            active_handoff,
+            mav,
+            bridge,
+            ts,
+            tc,
+            args.ramp_s,
+            lambda e: int(
+                idle_pwm + min(1.0, e / max(args.ramp_s, 0.01)) * (target_pwm - idle_pwm)
+            ),
+            dt,
+        )
+        _override_loop(
+            active_handoff,
+            mav,
+            bridge,
+            ts,
+            tc,
+            args.hold_s,
+            lambda _e: target_pwm,
+            dt,
+        )
+        _override_loop(
+            active_handoff,
+            mav,
+            bridge,
+            ts,
+            tc,
+            args.ramp_s,
+            lambda e: int(
+                target_pwm - min(1.0, e / max(args.ramp_s, 0.01)) * (target_pwm - idle_pwm)
+            ),
+            dt,
+        )
+        if active_handoff is None or active_handoff.active:
+            send_throttle_override(mav, ts, tc, idle_pwm)
     finally:
-        # release overrides
-        for _ in range(5):
-            mav.mav.rc_channels_override_send(ts, tc, 0, 0, 0, 0, 0, 0, 0, 0)
-            time.sleep(0.05)
-        if bridge.is_armed() and not args.no_disarm:
-            logger.info("DISARM via MAVLink (or use H12 F-switch)")
+        release_rc_overrides(mav, ts, tc)
+        bridge.restore_h12_passthrough(disarm=False)
+        if bridge.is_armed() and args.disarm_on_exit:
             bridge.disarm()
-            time.sleep(0.5)
         bridge.close()
 
     logger.info("done")

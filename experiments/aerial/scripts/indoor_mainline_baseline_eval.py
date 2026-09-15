@@ -336,7 +336,12 @@ def main() -> int:
         zone=ThreeZoneSpec(l1_m=1.5, l2_m=0.8, l3_m=0.4, v1_m_s=0.6, v2_m_s=0.3, v_stop_m_s=0.05, v_cruise_m_s=1.0, dt_s=0.2),
         retreat_step_m=0.3, min_tau_s=0.5,
     )
-    planner = ImaginationPlanner(dynamics=dynamics, horizon=5, reward_cfg=reward_cfg, action_limits=limits, policy=actor_ac)
+    planner = ImaginationPlanner(
+        dynamics=dynamics,
+        horizon=5,
+        reward_cfg=reward_cfg,
+        action_limits=limits,
+    )
 
     pose_est = make_pose_estimator(args.pose_source)
     policy = MainlineIndoorPolicyWrapper(

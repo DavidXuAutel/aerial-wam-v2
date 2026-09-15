@@ -11,10 +11,13 @@ Stages:
   --arm           arm motors (requires --i-know-props-are-on)
   --run           closed-loop steps (requires --offboard; --arm for flight)
 
-Example (bench, props off):
+Example (bench, props off; saves one frame + state under artifacts/orin_deploy/):
 
   python -m experiments.aerial.scripts.wam_vgoal_deploy \\
     --mavlink-port /dev/ttyACM0 --mock-camera
+
+Recording (default): **ch8** start, **ch9** stop (independent of ch7 Orin handoff).
+Disable: ``--no-record``. Immediate start: ``--record-auto``.
 
 Outdoor flight (props on, RC ready):
 
@@ -97,6 +100,23 @@ def _parse() -> argparse.Namespace:
         action="store_true",
         help="Disable TTI depth shield (recommended for 24F bench / untrusted depth)",
     )
+    p.add_argument(
+        "--record-dir",
+        default=None,
+        help="Orin local save root (default: <repo>/artifacts/orin_deploy)",
+    )
+    p.add_argument("--no-record", action="store_true", help="Disable frame + state recording")
+    p.add_argument(
+        "--record-auto",
+        action="store_true",
+        help="Start recording immediately (default: wait for RC ch8/ch9)",
+    )
+    p.add_argument("--record-start-ch", type=int, default=8, help="RC channel to start recording")
+    p.add_argument("--record-stop-ch", type=int, default=9, help="RC channel to stop recording")
+    p.add_argument("--corpus-scene", default="real_hardware", help="Corpus scene tag")
+    p.add_argument("--corpus-handover-id", default=None, help="Optional handover_id for corpus")
+    p.add_argument("--corpus-leg", default="deploy", help="Corpus leg tag (outdoor/indoor/deploy)")
+    p.add_argument("--corpus-instruction", default=None, help="Free-text corpus instruction")
     return p.parse_args()
 
 
@@ -104,6 +124,66 @@ def _goal_from_args(args: argparse.Namespace, origin: np.ndarray) -> Optional[np
     if args.goal_x is None or args.goal_y is None or args.goal_z is None:
         return None
     return np.array([args.goal_x, args.goal_y, args.goal_z], dtype=np.float64)
+
+
+def _corpus_meta(args: argparse.Namespace, annot_goal: Optional[np.ndarray]) -> dict[str, Any]:
+    return {
+        "source": "orin_deploy",
+        "map_id": "real_world",
+        "scene": str(args.corpus_scene),
+        "leg": str(args.corpus_leg),
+        "handover_id": args.corpus_handover_id,
+        "goal_world": annot_goal.tolist() if annot_goal is not None else None,
+        "target_class": str(args.target_class),
+        "instruction": args.corpus_instruction,
+        "camera": str(args.camera),
+        "mock_camera": bool(args.mock_camera),
+    }
+
+
+def _poll_record_gate(
+    gate: Any,
+    bridge: Any,
+    recorder: Optional[Any],
+    *,
+    record_base: Path,
+    manifest: dict[str, Any],
+) -> tuple[Any | None, str]:
+    """Process one RC sample for ch8/ch9 record control. Returns (recorder, event)."""
+    from experiments.aerial.deploy.orin_deploy_recorder import OrinDeployRecorder
+
+    bridge.poll(timeout_s=0.0)
+    event = gate.update_rc_dict(bridge.rc_pwm_dict())
+    if event == "start":
+        if recorder is not None:
+            recorder.close()
+        recorder = OrinDeployRecorder.open_run(record_base, manifest)
+        logger.info("RC ch%d: recording START → %s", gate.config.start_channel, recorder.root)
+    elif event == "stop" and recorder is not None:
+        path = recorder.root
+        recorder.close()
+        logger.info("RC ch%d: recording STOP → %s", gate.config.stop_channel, path)
+        recorder = None
+    return recorder, event
+
+
+def _deploy_manifest(args: argparse.Namespace, annot_goal: Optional[np.ndarray]) -> dict[str, Any]:
+    return {
+        "script": "wam_vgoal_deploy",
+        "mavlink_port": args.mavlink_port,
+        "step_hz": float(args.step_hz),
+        "max_steps": int(args.max_steps),
+        "offboard": bool(args.offboard),
+        "arm": bool(args.arm),
+        "run": bool(args.run),
+        "corpus": _corpus_meta(args, annot_goal),
+        "checkpoints": {
+            "wm": str(args.wm_ckpt),
+            "actor": str(args.actor_ckpt),
+            "depth": str(args.depth_ckpt),
+            "tau": str(args.tau_ckpt),
+        },
+    }
 
 
 def main() -> int:
@@ -139,6 +219,8 @@ def main() -> int:
     from experiments.aerial.rl.scene_intent import TowardGoalIntent
     from experiments.aerial.rl.tau_predictor import make_tau_predictor
     from experiments.aerial.rl.train_rl import _build_safety, load_torch_dynamics
+    from experiments.aerial.deploy.orin_deploy_recorder import OrinDeployRecorder
+    from experiments.aerial.rl.env.orin_rc_handoff import RcRecordGate, RcRecordGateConfig
     from experiments.aerial.scripts.wam_vgoal_eval import _build_detector, _vision_step
 
     cfg = yaml.safe_load((root / args.config).read_text()) if (root / args.config).is_file() else {}
@@ -238,6 +320,22 @@ def main() -> int:
         vgoal_repo,
     )
 
+    recorder: OrinDeployRecorder | None = None
+    record_base = (
+        Path(args.record_dir).expanduser()
+        if args.record_dir
+        else (root / "artifacts" / "orin_deploy")
+    )
+    record_enabled = not args.no_record
+    record_gate: RcRecordGate | None = None
+    deploy_manifest: dict[str, Any] | None = None
+    if record_enabled:
+        record_gate = RcRecordGate(
+            RcRecordGateConfig(
+                start_channel=int(args.record_start_ch),
+                stop_channel=int(args.record_stop_ch),
+            )
+        )
     try:
         obs = env.reset()
         p_curr = np.asarray(obs.position, dtype=np.float64)
@@ -246,6 +344,18 @@ def main() -> int:
         if annot_goal is None:
             annot_goal = p_curr + np.array([20.0, 0.0, 0.0], dtype=np.float64)
             logger.warning("No --goal-x/y/z; using fallback annot_goal=%s", annot_goal.tolist())
+
+        deploy_manifest = _deploy_manifest(args, annot_goal)
+        if record_enabled and args.record_auto:
+            recorder = OrinDeployRecorder.open_run(record_base, deploy_manifest)
+            record_gate.active = True
+            logger.info("Auto-recording to %s", recorder.root)
+        elif record_enabled:
+            logger.info(
+                "Recording armed — ch%d=start, ch%d=stop (independent of ch7 Orin handoff)",
+                int(args.record_start_ch),
+                int(args.record_stop_ch),
+            )
 
         policy.reset()
         shield.reset()
@@ -264,6 +374,27 @@ def main() -> int:
 
         if not args.run:
             logger.info("Bench load OK — pass --run --offboard to close the loop")
+            if record_enabled and record_gate is not None and deploy_manifest is not None:
+                logger.info("Waiting for RC record buttons (Ctrl+C to exit)")
+                try:
+                    while True:
+                        recorder, event = _poll_record_gate(
+                            record_gate,
+                            env._bridge,
+                            recorder,
+                            record_base=record_base,
+                            manifest=deploy_manifest,
+                        )
+                        if recorder is not None and record_gate.active:
+                            obs = env.observe()
+                            obs.info["corpus"] = _corpus_meta(args, annot_goal)
+                            recorder.record_step(
+                                obs,
+                                step_info={"phase": "bench", "rc_event": event},
+                            )
+                        time.sleep(1.0 / max(1.0, float(args.step_hz)))
+                except KeyboardInterrupt:
+                    logger.warning("Bench record loop interrupted")
             return 0
 
         search_fwd_step = min(0.5 / float(args.step_hz), vx_max_step)
@@ -271,6 +402,15 @@ def main() -> int:
         prev_yaw = curr_yaw
 
         for step in range(int(args.max_steps)):
+            if record_enabled and record_gate is not None and deploy_manifest is not None:
+                recorder, _ = _poll_record_gate(
+                    record_gate,
+                    env._bridge,
+                    recorder,
+                    record_base=record_base,
+                    manifest=deploy_manifest,
+                )
+
             obs.info.pop("depth_min_pred", None)
             obs.info.pop("tau_pred", None)
             d_fwd = depth_pred.predict_min(obs)
@@ -327,6 +467,24 @@ def main() -> int:
             p_curr = np.asarray(obs.position, dtype=np.float64)
             curr_yaw = float(obs.yaw)
 
+            if recorder is not None and record_gate is not None and record_gate.active:
+                obs.info["corpus"] = _corpus_meta(args, annot_goal)
+                gr = goal_rel.tolist() if goal_rel is not None else None
+                recorder.record_step(
+                    obs,
+                    step_info={
+                        "phase": "control",
+                        "action": [float(x) for x in np.asarray(action).reshape(-1)],
+                        "action_overridden": bool(overridden),
+                        "goal_rel": gr,
+                        "tracker_state": vstep.tracker_state,
+                        "using_fallback": bool(vstep.using_fallback),
+                        "depth_min_pred": obs.info.get("depth_min_pred"),
+                        "tau_pred": obs.info.get("tau_pred"),
+                        **step_info,
+                    },
+                )
+
             if step % max(1, int(args.step_hz)) == 0:
                 gr = goal_rel.tolist() if goal_rel is not None else None
                 logger.info(
@@ -350,6 +508,9 @@ def main() -> int:
         logger.warning("Interrupted")
         return 130
     finally:
+        if recorder is not None:
+            recorder.close()
+            logger.info("Recording closed: %s", recorder.root)
         env.close()
 
 

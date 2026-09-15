@@ -78,6 +78,16 @@ class MavlinkBridgeConfig:
 class MavlinkBridge:
     """MAVLink helper for companion velocity control (ArduPilot GUIDED / PX4 OFFBOARD)."""
 
+    _ARDU_MODE_NAMES = {
+        0: "STABILIZE",
+        1: "ACRO",
+        2: "ALT_HOLD",
+        4: "GUIDED",
+        5: "LOITER",
+        6: "RTL",
+        9: "LAND",
+    }
+
     def __init__(self, config: Optional[MavlinkBridgeConfig] = None) -> None:
         if mavutil is None:
             raise ImportError("pymavlink is required; pip install pymavlink pyserial")
@@ -87,6 +97,7 @@ class MavlinkBridge:
         self._last_global: Optional[Any] = None
         self._last_attitude: Optional[Any] = None
         self._last_heartbeat: Optional[Any] = None
+        self._last_rc: Optional[Any] = None
         self._autopilot: Optional[int] = None
 
     @property
@@ -152,6 +163,8 @@ class MavlinkBridge:
                 self._last_global = msg
             elif t == "ATTITUDE":
                 self._last_attitude = msg
+            elif t == "RC_CHANNELS":
+                self._last_rc = msg
             elif t == "HEARTBEAT":
                 self._last_heartbeat = msg
                 if msg.get_srcComponent() != 0:
@@ -243,6 +256,35 @@ class MavlinkBridge:
                 time.sleep(sleep_s)
         return n
 
+    def set_mode_stabilize(self) -> None:
+        """Return to manual RC flight (ArduPilot STABILIZE / PX4 equivalent)."""
+        if self._mav is None:
+            raise RuntimeError("not connected")
+        if self.is_ardupilot():
+            self._mav.set_mode_apm("STABILIZE")
+            return
+        mapping = getattr(self._mav, "mode_mapping_px4", None)
+        if callable(mapping):
+            px4_modes = mapping()
+            mode_id = px4_modes.get("STABILIZE") if px4_modes else None
+            if mode_id is not None:
+                self._mav.set_mode(mode_id)
+                return
+        self._mav.set_mode("STABILIZE")
+
+    def release_rc_override(self) -> None:
+        from experiments.aerial.rl.env.orin_rc_handoff import release_rc_overrides
+
+        release_rc_overrides(self._mav, self.target_system, 1)
+
+    def restore_h12_passthrough(self, *, disarm: bool = False) -> None:
+        """Release companion override and return to STABILIZE for H12 throttle."""
+        self.release_rc_override()
+        self.set_mode_stabilize()
+        self.poll(timeout_s=0.2)
+        if disarm and self.is_armed():
+            self.disarm()
+
     def set_mode_guided(self) -> None:
         """ArduPilot Copter GUIDED — companion velocity control."""
         if self._mav is None:
@@ -311,12 +353,38 @@ class MavlinkBridge:
             0,
         )
 
-    def status_dict(self) -> Dict[str, Any]:
-        st = self.observe_state(timeout_s=0.2)
+    def rc_pwm_dict(self) -> Dict[str, int]:
+        if self._last_rc is None:
+            self.poll(timeout_s=0.1)
+        if self._last_rc is None:
+            return {}
+        rc = self._last_rc
+        out: Dict[str, int] = {}
+        for i in range(1, 19):
+            raw = getattr(rc, f"chan{i}_raw", None)
+            if raw is not None:
+                out[f"ch{i}"] = int(raw)
+        return out
+
+    def flight_mode_info(self) -> Dict[str, Any]:
+        if self._last_heartbeat is None:
+            self.poll(timeout_s=0.1)
+        if self._last_heartbeat is None:
+            return {}
+        custom = int(self._last_heartbeat.custom_mode)
+        name = self._ARDU_MODE_NAMES.get(custom, f"MODE_{custom}")
+        if not self.is_ardupilot():
+            name = f"PX4_{custom}"
+        return {"custom_mode": custom, "mode_name": name}
+
+    def status_dict(self, state: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        st = state if state is not None else self.observe_state(timeout_s=0.2)
         return {
             "armed": self.is_armed(),
             "ardupilot": self.is_ardupilot(),
             "state": st.tolist(),
+            "rc": self.rc_pwm_dict(),
+            "flight_mode": self.flight_mode_info(),
             "port": self.config.port,
             "baud": self.config.baud,
             "target_system": self.target_system,

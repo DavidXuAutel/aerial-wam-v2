@@ -11,6 +11,7 @@ Mainline only:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
@@ -119,6 +120,40 @@ def project_to_polyline(
     return true_proj, true_seg, s_monotone, rem_dist
 
 
+def cap_r_before_sharp_turn(
+    path: np.ndarray,
+    s_anchor: float,
+    r_lookahead: float,
+    *,
+    r_min: float,
+    min_turn_deg: float = 30.0,
+) -> float:
+    """Shorten lookahead so the carrot cannot chord-cut past a sharp bend."""
+    pts = np.asarray(path, dtype=np.float64)
+    cum, total = compute_polyline_cum_lengths(pts)
+    s0 = float(np.clip(s_anchor, 0.0, total))
+    cap = float(r_lookahead)
+    for i in range(len(pts) - 2):
+        s_vert = float(cum[i + 1])
+        if s_vert <= s0 + 1e-6:
+            continue
+        if s_vert > s0 + r_lookahead + 1e-6:
+            break
+        v1 = pts[i + 1, :2] - pts[i, :2]
+        v2 = pts[i + 2, :2] - pts[i + 1, :2]
+        n1, n2 = float(np.linalg.norm(v1)), float(np.linalg.norm(v2))
+        if n1 < 1e-6 or n2 < 1e-6:
+            continue
+        turn = math.degrees(
+            math.acos(float(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0)))
+        )
+        if turn >= float(min_turn_deg):
+            dist = s_vert - s0
+            cap = min(cap, max(float(r_min), dist))
+            break
+    return cap
+
+
 def sample_point_along_polyline(
     path_points: np.ndarray,
     segment_idx: int,
@@ -189,12 +224,15 @@ class AdaptiveSubgoalGenerator:
     _fb_stall_count: int = field(default=0, init=False, repr=False)
     _fb_last_true_s: float = field(default=0.0, init=False, repr=False)
     _fb_r_mul: float = field(default=1.0, init=False, repr=False)
+    #: Earned arc-s for carrot anchor; only advances while on-corridor.
+    _carrot_s: float = field(default=0.0, init=False, repr=False)
 
     def reset(self) -> None:
         self._prev_s_max = 0.0
         self._fb_stall_count = 0
         self._fb_last_true_s = 0.0
         self._fb_r_mul = 1.0
+        self._carrot_s = 0.0
 
     def compute_subgoal(
         self,
@@ -218,8 +256,6 @@ class AdaptiveSubgoalGenerator:
             s_progress = max(float(self._prev_s_max), float(true_s))
             self._prev_s_max = s_progress
 
-        # Control geometry always from true projection (carrot + CTE).
-        proj_pt = true_proj
         seg_idx = int(true_seg)
         rem_dist = float(rem_true)
 
@@ -286,19 +322,42 @@ class AdaptiveSubgoalGenerator:
         yaw_err = (tang_yaw - float(curr_yaw) + np.pi) % (2.0 * np.pi) - np.pi
         cos_heading_tang = float(np.cos(yaw_err))
         heading_reentry = False
-        if cos_heading_tang < float(self.heading_reentry_cos):
+        # Open-terminal approach: do not shrink carrot on heading peel when still
+        # on-corridor (avoids oscillation when geometry is gentle).
+        terminal_smooth = (
+            float(rem_true) <= 30.0 and float(cte) <= 4.0
+        )
+        if (
+            cos_heading_tang < float(self.heading_reentry_cos)
+            and not terminal_smooth
+        ):
             heading_reentry = True
             r_nominal = min(
                 r_nominal,
                 max(float(self.r_min), float(self.heading_reentry_r_m)),
             )
 
+        cum_lengths, total_len = compute_polyline_cum_lengths(global_path)
+
+        proj_pt = true_proj
+        seg_idx = int(true_seg)
+        rem_dist = float(rem_true)
+        s_anchor = float(true_s)
+
         r_lookahead = min(rem_dist, r_nominal)
+        # Only cap before sharp bends while materially off-corridor (mid-route
+        # chord-cut); skip when already tracking to protect terminal closure.
+        if float(cte) > 3.0:
+            r_lookahead = cap_r_before_sharp_turn(
+                global_path,
+                s_anchor,
+                r_lookahead,
+                r_min=float(self.r_min),
+            )
 
         terminal_pin = False
         segment_pin = False
         segment_end_s = None
-        cum_lengths, total_len = compute_polyline_cum_lengths(global_path)
 
         # F12 / Phase-1 endgame: pin route goal so ‖g_rel‖ can shrink to the ball.
         if rem_dist <= float(self.terminal_pin_rem_m) + 1e-9:

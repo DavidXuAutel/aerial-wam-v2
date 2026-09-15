@@ -41,6 +41,16 @@ def test_drop_backward_when_subgoal_ahead():
     assert not any(c[0] < -0.01 and np.all(np.abs(c[1:]) < 1e-6) for c in filtered)
 
 
+def test_planner_mock_pass_returns_base_action():
+    dyn = StubLatentDynamics(goal=np.array([20.0, 0.0, 0.0]), latent_dim=8)
+    planner = ImaginationPlanner(
+        dyn, horizon=3, reward_cfg=RewardConfig(), mock_mode="pass"
+    )
+    obs = _obs([0.0, 0.0, 0.0], info={"goal": np.array([20.0, 0.0, 0.0])})
+    base = np.array([0.3, -0.2, 0.0, 0.1], dtype=np.float64)
+    assert np.allclose(planner.plan(obs, base), base)
+
+
 def test_planner_passes_goal_rel_into_imagine(monkeypatch):
     captured: dict = {}
 

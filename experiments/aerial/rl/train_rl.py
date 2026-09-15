@@ -248,6 +248,9 @@ def _build_safety(safety_cfg: Any) -> Any:
             max_p_coll=float(_get(safety_cfg, "max_p_coll", 0.5)),
             retreat_step_m=float(_get(safety_cfg, "retreat_step_m", 3.0)),
             tti_coeff=float(_get(safety_cfg, "tti_coeff", 4.0)),
+            tti_hysteresis_release_frac=float(
+                _get(safety_cfg, "tti_hysteresis_release_frac", 0.0)
+            ),
         )
     raise ValueError(f"unknown safety kind {kind!r}")
 

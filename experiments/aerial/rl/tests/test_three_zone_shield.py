@@ -388,3 +388,22 @@ def test_l3_3d_skipped_outside_l3():
     ch = obs.info.get("shield_channels") or []
     assert "three_zone_brake" not in ch
     assert "three_zone_3d" not in ch
+
+
+def test_tti_forward_hysteresis_holds_cap_near_boundary():
+    shield = ThreeZoneSpeedShield(tti_coeff=4.0, tti_hysteresis_release_frac=0.15)
+    limits = body_delta_limits(0.2)
+    action = np.array([1.2, 0.0, 0.0, 0.0], dtype=np.float64)
+    # v_ref≈6 → trigger=24m; release=27.6m
+    obs_cap = _obs(depth=20.0, v_fwd=6.0, info={"depth_cones_pred": {"forward": 20.0}})
+    out1, ch1 = shield.apply_action(action.copy(), obs_cap, limits=limits)
+    assert ch1
+    assert out1[0] < 1.2
+    obs_mid = _obs(depth=23.0, v_fwd=6.0, info={"depth_cones_pred": {"forward": 23.0}})
+    out2, ch2 = shield.apply_action(action.copy(), obs_mid, limits=limits)
+    assert ch2
+    assert out2[0] < 1.2
+    obs_clear = _obs(depth=28.0, v_fwd=6.0, info={"depth_cones_pred": {"forward": 28.0}})
+    out3, ch3 = shield.apply_action(action.copy(), obs_clear, limits=limits)
+    assert not ch3
+    assert out3[0] == pytest.approx(min(1.2, limits[0]))

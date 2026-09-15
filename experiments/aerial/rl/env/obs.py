@@ -52,6 +52,8 @@ class Observation:
     baro_alt: Optional[float] = None     # barometer / altimeter reading (m)
     rel_odom: Optional[np.ndarray] = None # relative odometry delta [dx, dy, dz, dyaw] from episode start or step t-1
     agl_m: Optional[float] = None        # above-ground-level distance (m) from altimeter/downward ToF
+    rgb_vio: Optional[np.ndarray] = None   # native capture → VIO
+    rgb_yolo: Optional[np.ndarray] = None  # native capture → YOLO side branch
 
     def __post_init__(self) -> None:
         self.rgb = np.ascontiguousarray(np.asarray(self.rgb, dtype=np.uint8))
@@ -62,6 +64,10 @@ class Observation:
             )
         if self.depth is not None:
             self.depth = np.asarray(self.depth, dtype=np.float32)
+        if self.rgb_vio is not None:
+            self.rgb_vio = np.ascontiguousarray(np.asarray(self.rgb_vio, dtype=np.uint8))
+        if self.rgb_yolo is not None:
+            self.rgb_yolo = np.ascontiguousarray(np.asarray(self.rgb_yolo, dtype=np.uint8))
 
     @property
     def position(self) -> np.ndarray:

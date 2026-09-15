@@ -94,14 +94,14 @@ class PixhawkDroneEnv:
             self.config.arm_on_reset,
             self.config.offboard_warmup_s,
         )
-        self._bridge.stream_hover(self.config.offboard_warmup_s)
-
         if self.config.offboard_on_reset:
+            self._bridge.stream_hover(self.config.offboard_warmup_s)
             self._bridge.set_mode_offboard()  # ArduPilot → GUIDED; PX4 → OFFBOARD
             self._offboard_active = True
             self._bridge.stream_hover(0.5)
         else:
             self._offboard_active = False
+            self._bridge.restore_h12_passthrough(disarm=False)
 
         if self.config.arm_on_reset:
             self._bridge.arm()
@@ -117,7 +117,11 @@ class PixhawkDroneEnv:
         import cv2  # type: ignore
 
         rgb_yolo = np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), dtype=np.uint8)
-        info: Dict[str, Any] = {"capture_shape": list(bgr.shape), "bgr_native": bgr}
+        info: Dict[str, Any] = {
+            "capture_shape": list(bgr.shape),
+            "bgr_native": bgr,
+            "mavlink": self._bridge.status_dict(state),
+        }
         if self._goal is not None:
             info["goal"] = self._goal.copy()
         return Observation(
@@ -135,9 +139,13 @@ class PixhawkDroneEnv:
         dt = 1.0 / float(self.config.step_hz)
         t0 = time.perf_counter()
         cmd = clip_body_delta(action, body_delta_limits(dt))
-        state = self._bridge.observe_state(timeout_s=0.05)
-        yaw = float(state[6])
-        vx, vy, vz_ned, yaw_rate_deg = self._bridge.send_body_delta(cmd, yaw, dt)
+        vx = vy = vz_ned = yaw_rate_deg = 0.0
+        if self._offboard_active:
+            state = self._bridge.observe_state(timeout_s=0.05)
+            yaw = float(state[6])
+            vx, vy, vz_ned, yaw_rate_deg = self._bridge.send_body_delta(cmd, yaw, dt)
+        else:
+            self._bridge.poll(timeout_s=0.0)
 
         remaining = dt - (time.perf_counter() - t0)
         if remaining > 0:
@@ -157,9 +165,9 @@ class PixhawkDroneEnv:
     def close(self) -> None:
         try:
             if self._bridge.connected:
-                self._bridge.stream_hover(0.5)
-                if self._bridge.is_armed():
-                    self._bridge.disarm()
+                if self._offboard_active:
+                    self._bridge.stream_hover(0.5)
+                self._bridge.restore_h12_passthrough(disarm=False)
         except Exception:  # noqa: BLE001
             pass
         self._bridge.close()

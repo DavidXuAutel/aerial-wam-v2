@@ -32,6 +32,8 @@ class GlobalRefConfig:
     max_cte_m_to_replan: float = 12.0
     blend_prev: float = 0.3
     max_anchor_jump_m: float = 8.0
+    #: Skip timer replans while on-corridor (open straight); still replan on stall/CTE.
+    period_replan_max_cte_m: float = 3.0
 
 
 class GlobalRefPlanner:
@@ -109,7 +111,9 @@ class GlobalRefPlanner:
         else:
             self._stall_steps = 0
 
-        reason = self._should_replan(force=force, cte_m=cte_m)
+        reason = self._should_replan(
+            force=force, cte_m=cte_m, progressed_m=progressed_m
+        )
         if reason is not None:
             self._pref = self._build_pref(float(true_s))
             self.replan_count += 1
@@ -122,7 +126,9 @@ class GlobalRefPlanner:
         assert self._pref is not None
         return self._pref.copy()
 
-    def _should_replan(self, *, force: bool, cte_m: float) -> Optional[str]:
+    def _should_replan(
+        self, *, force: bool, cte_m: float, progressed_m: float
+    ) -> Optional[str]:
         if self._pref is None:
             return "init"
         if force:
@@ -134,6 +140,12 @@ class GlobalRefPlanner:
         if float(self.cfg.replan_period_s) <= 0.0:
             return "period"
         if self._steps_since_replan + 1 >= period_steps:
+            on_corridor = (
+                float(cte_m) <= float(self.cfg.period_replan_max_cte_m)
+                and float(progressed_m) >= float(self.cfg.min_progress_m)
+            )
+            if on_corridor:
+                return None
             return "period"
         if self._stall_steps >= int(self.cfg.stall_steps_to_replan):
             return "stall"

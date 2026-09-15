@@ -81,3 +81,21 @@ def test_includes_goal_when_within_horizon():
     gp.reset(F, goal=F[-1])
     Pref = gp.step(np.array([0.0, 0.0, 10.0]), 0.0, force=True)
     np.testing.assert_allclose(Pref[-1], F[-1], atol=1e-5)
+
+
+def test_period_replan_skipped_when_on_corridor():
+    cfg = GlobalRefConfig(
+        horizon_m=40.0,
+        replan_period_s=1.0,
+        step_hz=5.0,
+        period_replan_max_cte_m=3.0,
+        min_progress_m=0.5,
+    )
+    gp = GlobalRefPlanner(cfg)
+    gp.reset(_straight_corridor())
+    p = np.array([5.0, 0.0, 10.0])
+    a = gp.step(p, 0.0, force=True)
+    for _ in range(4):
+        b = gp.step(p, 0.0, cte_m=0.5, progressed_m=1.0)
+        np.testing.assert_allclose(a, b)
+    assert gp.replan_count == 1

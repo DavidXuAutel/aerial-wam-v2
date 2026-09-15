@@ -56,6 +56,24 @@ def test_collect_aggregates_skips():
     assert total.episodes == 2         # only the healthy ones counted
 
 
+def test_collect_rotates_episodes_by_offset():
+    seen: list[str] = []
+
+    class _TagEnv(MockAirSimDroneEnv):
+        def reset(self, episode=None):
+            seen.append(str((episode or {}).get("tag", "")))
+            return super().reset(episode)
+
+    env = _TagEnv(_TIGHT)
+    col = _collector(env)
+    ep_a = {**_INSIDE, "tag": "a"}
+    ep_b = {"pos": [[0.0, 0.0, 0.0], [0.4, 0.0, 0.0]], "yaw": [0.0, 0.0], "tag": "b"}
+    col.collect(1, episodes=[ep_a, ep_b], episode_offset=0)
+    col.collect(1, episodes=[ep_a, ep_b], episode_offset=1)
+    col.collect(1, episodes=[ep_a, ep_b], episode_offset=2)
+    assert seen == ["a", "b", "a"]
+
+
 def test_guard_can_be_disabled():
     env = MockAirSimDroneEnv(_TIGHT)
     col = _collector(env, skip_reset_collision=False)

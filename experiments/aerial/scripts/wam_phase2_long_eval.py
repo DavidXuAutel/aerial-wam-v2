@@ -201,6 +201,37 @@ def main() -> int:
         help="Override ThreeZoneSpeedShield tti_coeff (default: 4.0). "
              "Trigger distance = tti_coeff × v_ref. Lower = shield fires later.",
     )
+    parser.add_argument(
+        "--shield-tti-hysteresis",
+        type=float,
+        default=0.0,
+        help="Forward TTI cap release hysteresis frac (0=OFF). Hold cap until "
+             "d_fwd >= trigger × (1 + frac).",
+    )
+    parser.add_argument(
+        "--shield-tti-relax-on-corridor",
+        action="store_true",
+        default=False,
+        help="On straight corridor (low CTE), scale tti_coeff down for fewer brakes.",
+    )
+    parser.add_argument(
+        "--shield-tti-relax-scale",
+        type=float,
+        default=0.82,
+        help="Multiply base tti_coeff when --shield-tti-relax-on-corridor (lower=fewer caps).",
+    )
+    parser.add_argument(
+        "--shield-tti-relax-cte-m",
+        type=float,
+        default=1.5,
+        help="CTE gate for corridor tti relax (m).",
+    )
+    parser.add_argument(
+        "--shield-tti-relax-rem-m",
+        type=float,
+        default=25.0,
+        help="Only relax tti when rem_dist exceeds this (m).",
+    )
     parser.add_argument("--success-dist", type=float, default=3.0)
     parser.add_argument(
         "--save-dataset",
@@ -211,6 +242,13 @@ def main() -> int:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--planner", action="store_true")
     parser.add_argument("--planner-horizon", type=int, default=5)
+    parser.add_argument(
+        "--planner-mock",
+        choices=("pass",),
+        default=None,
+        help="Planner on but skip WM imagination: pass=return π action unchanged. "
+             "Use --planner-horizon 1 for one-step WM scoring.",
+    )
     parser.add_argument(
         "--goal-feat-mode",
         choices=("meter", "g_norm"),
@@ -238,6 +276,42 @@ def main() -> int:
         action="store_true",
         default=False,
         help="F7 fuse: path-tangent dyaw (OFF by default; mainline SR must not rely on this)",
+    )
+    parser.add_argument(
+        "--heading-assist-cte-max-m",
+        type=float,
+        default=8.0,
+        help="Heading assist only when CTE <= this (m)",
+    )
+    parser.add_argument(
+        "--heading-assist-cos-thr",
+        type=float,
+        default=0.7,
+        help="Heading assist when cos(heading,tangent) < this",
+    )
+    parser.add_argument(
+        "--heading-assist-lateral-scale",
+        type=float,
+        default=0.25,
+        help="Scale body-lateral dy when cos(heading,tangent) < 0.3 during assist",
+    )
+    parser.add_argument(
+        "--cte-reentry-m",
+        type=float,
+        default=None,
+        help="AdaptiveSubgoal cte_reentry_m (default 2.0)",
+    )
+    parser.add_argument(
+        "--cte-lock-freeze-m",
+        type=float,
+        default=None,
+        help="AdaptiveSubgoal cte_lock_freeze_m (default 5.0)",
+    )
+    parser.add_argument(
+        "--heading-reentry-cos",
+        type=float,
+        default=None,
+        help="AdaptiveSubgoal heading_reentry_cos peel threshold (default 0.7)",
     )
     parser.add_argument(
         "--lookahead-feedback",
@@ -273,6 +347,12 @@ def main() -> int:
             "scene=alias for toward_g (fan intent removed; see E1r2 analysis); "
             "direct_g=ablation A"
         ),
+    )
+    parser.add_argument(
+        "--r-m-intent",
+        type=float,
+        default=100.0,
+        help="TowardGoalIntent / SceneIntentPlanner clip radius (m); default 100",
     )
     parser.add_argument(
         "--traj-out",
@@ -427,7 +507,10 @@ def main() -> int:
             horizon=int(args.planner_horizon),
             reward_cfg=reward_cfg,
             action_limits=action_limits,
+            mock_mode=args.planner_mock,
         )
+        if args.planner_mock:
+            logger.info("planner mock_mode=%s (WM imagination disabled)", args.planner_mock)
 
     policy = LatentActorDeployPolicy(
         dynamics, actor_ac, deterministic=True, stream_latent=True
@@ -443,6 +526,8 @@ def main() -> int:
         safety_cfg["a_max_m_s2"] = float(args.a_max)
     if args.tti_coeff is not None:
         safety_cfg["tti_coeff"] = float(args.tti_coeff)
+    if float(args.shield_tti_hysteresis) > 0.0:
+        safety_cfg["tti_hysteresis_release_frac"] = float(args.shield_tti_hysteresis)
     safety_cfg.pop("schedule_margin_l1_m", None)
     safety_cfg.pop("schedule_margin_l2_m", None)
     safety_cfg.pop("disc_lag_steps", None)
@@ -459,21 +544,28 @@ def main() -> int:
 
     # Local carrot for step_e π (H1 + P1 sweep 2026-09-01): r_base=25 /
     # cte_reentry=2 passed R01 ds>=25 & cte_end<=15; long routes still slide.
-    subgoal_gen = AdaptiveSubgoalGenerator(
-        r_base=25.0 if args.cruise_speed >= 8.0 else 20.0,
-        r_min=15.0 if args.cruise_speed >= 8.0 else 12.0,
-        d_clear=22.0 if args.cruise_speed >= 8.0 else 12.0,
-        d_danger=3.0,
-        cruise_speed=args.cruise_speed,
-        cte_reentry_m=2.0,
-        lookahead_feedback=bool(args.lookahead_feedback),
-    )
+    sg_kw: Dict[str, Any] = {
+        "r_base": 25.0 if args.cruise_speed >= 8.0 else 20.0,
+        "r_min": 15.0 if args.cruise_speed >= 8.0 else 12.0,
+        "d_clear": 22.0 if args.cruise_speed >= 8.0 else 12.0,
+        "d_danger": 3.0,
+        "cruise_speed": args.cruise_speed,
+        "cte_reentry_m": 2.0,
+        "lookahead_feedback": bool(args.lookahead_feedback),
+    }
+    if args.cte_reentry_m is not None:
+        sg_kw["cte_reentry_m"] = float(args.cte_reentry_m)
+    if args.cte_lock_freeze_m is not None:
+        sg_kw["cte_lock_freeze_m"] = float(args.cte_lock_freeze_m)
+    if args.heading_reentry_cos is not None:
+        sg_kw["heading_reentry_cos"] = float(args.heading_reentry_cos)
+    subgoal_gen = AdaptiveSubgoalGenerator(**sg_kw)
     if args.lookahead_feedback:
         logger.info("L1 lookahead_feedback=ON (opt-in; mainline default remains OFF)")
 
     subgoal_source = str(args.subgoal_source)
     intent: Any = None
-    r_intent = 100.0
+    r_intent = float(args.r_m_intent)
     if subgoal_source in ("toward_g", "direct_g"):
         intent = TowardGoalIntent(
             r_m=r_intent,
@@ -767,13 +859,24 @@ def main() -> int:
 
             action = clip_body_delta(action, cur_limits)
             if bool(args.heading_assist) and intent is None:
+                # Heading assist must use the full corridor polyline + projection
+                # on ``pts``.  With --rolling-global, ``s_info['seg_idx']`` indexes
+                # the short P_ref window, not ``pts`` — mixing them injects wrong
+                # tangents and causes late-phase zigzag in open terrain.
+                _ha_proj, _ha_seg, _, _ = nearest_on_polyline(p_curr, pts)
+                _ha_cte = float(np.linalg.norm(p_curr - _ha_proj))
                 action, _ha, _ = apply_path_heading_assist(
                     action,
                     yaw=curr_yaw,
                     path=pts,
-                    seg_idx=int(s_info.get("seg_idx", 0)),
-                    cte_m=float(s_info.get("cte_m", 0.0) or 0.0),
+                    seg_idx=int(_ha_seg),
+                    cte_m=_ha_cte,
                     limits=cur_limits,
+                    cte_max_m=float(args.heading_assist_cte_max_m),
+                    cos_thr=float(args.heading_assist_cos_thr),
+                    lateral_scale_when_misaligned=float(
+                        args.heading_assist_lateral_scale
+                    ),
                 )
                 if _ha:
                     action = clip_body_delta(action, cur_limits)
@@ -792,6 +895,20 @@ def main() -> int:
                     wm_out = None
 
             if shield is not None:
+                base_tti = float(
+                    args.tti_coeff
+                    if args.tti_coeff is not None
+                    else getattr(shield, "tti_coeff", 4.0)
+                )
+                eff_tti = base_tti
+                if bool(args.shield_tti_relax_on_corridor) and intent is None:
+                    cte_for_shield = float(s_info.get("cte", float("inf")))
+                    if (
+                        float(cte_for_shield) <= float(args.shield_tti_relax_cte_m)
+                        and float(rem_dist) > float(args.shield_tti_relax_rem_m)
+                    ):
+                        eff_tti = base_tti * float(args.shield_tti_relax_scale)
+                    obs.info["shield_tti_coeff"] = float(eff_tti)
                 act_safe, overridden = shield.apply_action(
                     action, obs, wm_out=wm_out, limits=cur_limits
                 )

@@ -303,6 +303,8 @@ class Trajectory3DRenderer:
         dist_m: float,
         d0_m: float,
         prog_ratio: float,
+        map_title: str = "ROUTE 04 : 3D GLOBAL FLIGHT PATH VISUALIZATION",
+        start_label: Optional[str] = None,
     ) -> np.ndarray:
         frame = np.full((self.h, self.w, 3), (16, 20, 30), dtype=np.uint8)
 
@@ -366,7 +368,8 @@ class Trajectory3DRenderer:
         cv2.circle(frame, tuple(st_g_uv), 5, (50, 180, 50), 1, cv2.LINE_AA)
         cv2.circle(frame, tuple(st_uv), 8, (80, 255, 80), -1, cv2.LINE_AA)
         cv2.circle(frame, tuple(st_uv), 12, (80, 255, 80), 1, cv2.LINE_AA)
-        cv2.putText(frame, "START (75.6m)", (st_uv[0] + 12, st_uv[1] + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (80, 255, 80), 1, cv2.LINE_AA)
+        st_lab = start_label if start_label else f"START ({d0_m:.1f}m)"
+        cv2.putText(frame, st_lab, (st_uv[0] + 12, st_uv[1] + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (80, 255, 80), 1, cv2.LINE_AA)
 
         # 6. Goal Marker
         gl_uv = self.project_3d_to_2d(self.goal_pos.reshape(1, 3), elev, azim).astype(np.int32)[0]
@@ -395,7 +398,7 @@ class Trajectory3DRenderer:
         # 8. Top Header
         cv2.rectangle(frame, (0, 0), (self.w, 48), (12, 16, 26), -1)
         cv2.line(frame, (0, 48), (self.w, 48), (255, 200, 0), 1)
-        cv2.putText(frame, "ROUTE 04 : 3D GLOBAL FLIGHT PATH VISUALIZATION", (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, map_title, (18, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
 
         stat_str = f"STEP: {step:03d}/{total_steps:03d} | DIST: {dist_m:5.1f}m | PROG: {prog_ratio*100:5.1f}%"
         cv2.putText(frame, stat_str, (self.w - 360, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 255, 255), 1, cv2.LINE_AA)
