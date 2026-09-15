@@ -1,0 +1,29 @@
+{
+  "route_label": "PHASE-2 R10 peel_early SPL=0.73",
+  "route_idx": 9,
+  "protocol": "phase2_toward_g_closed_loop_replay",
+  "start_pos": [
+    -1152.136,
+    -217.79,
+    21.304
+  ],
+  "goal_pos": [
+    -1044.94,
+    -246.771,
+    21.304
+  ],
+  "initial_distance_m": 111.04449908482626,
+  "final_distance_m": 2.7815390739439834,
+  "n_flown_steps": 233,
+  "n_video_frames": 233,
+  "progress_ratio": 0.9749511313314206,
+  "arrived": true,
+  "fps": 5.0,
+  "duration_seconds": 48.6,
+  "videos": {
+    "first_person_ego": "/home/yao/aerial-wam-v2/artifacts/videos/wam_phase2_route10_peel_early_dual/route10_peel_early_first_person_ego.mp4",
+    "full_flight_path": "/home/yao/aerial-wam-v2/artifacts/videos/wam_phase2_route10_peel_early_dual/route10_peel_early_full_flight_path.mp4",
+    "dual_view_dashboard": "/home/yao/aerial-wam-v2/artifacts/videos/wam_phase2_route10_peel_early_dual/route10_peel_early_dual_view_dashboard.mp4"
+  },
+  "traj_source": "/home/yao/aerial-wam-v2/artifacts/wam_phase2_route10_peel_validate_20260915/peel_r1_traj/route09/route09.jsonl"
+}

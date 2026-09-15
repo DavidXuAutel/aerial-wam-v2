@@ -1,0 +1,77 @@
+[
+  {
+    "key": "stepg_route06_153m",
+    "title": "Step G · Route 06 超长距离（153.7m）双视角看板",
+    "path": "videos/V1_stepg_route06_dual_view.mp4",
+    "repo_path": "artifacts/videos/route06_153m/route04_dual_view_dashboard.mp4",
+    "frames": 170,
+    "fps": 10.0,
+    "duration": 17.0,
+    "resolution": "1920x720",
+    "shots": [
+      "stepg_route06_153m_frame01.jpg",
+      "stepg_route06_153m_frame02.jpg",
+      "stepg_route06_153m_frame03.jpg"
+    ]
+  },
+  {
+    "key": "stepg_route14_hud",
+    "title": "Step G · Route 14 建筑群峡谷第一人称 HUD",
+    "path": "videos/V2_stepg_route14_hud.mp4",
+    "repo_path": "artifacts/videos/route14_closed_loop/route14_closed_loop_hud.mp4",
+    "frames": 250,
+    "fps": 10.0,
+    "duration": 25.0,
+    "resolution": "224x224",
+    "shots": [
+      "stepg_route14_hud_frame01.jpg",
+      "stepg_route14_hud_frame02.jpg",
+      "stepg_route14_hud_frame03.jpg"
+    ]
+  },
+  {
+    "key": "phase2_long_route15",
+    "title": "Phase-2 · 长航程 Route 15 闭环 HUD",
+    "path": "videos/V3_phase2_route15_hud.mp4",
+    "repo_path": "artifacts/videos/wam_phase2_reanchor_r15/long_route15_reanchor_hud.mp4",
+    "frames": 500,
+    "fps": 2.5,
+    "duration": 200.0,
+    "resolution": "224x224",
+    "shots": [
+      "phase2_long_route15_frame01.jpg",
+      "phase2_long_route15_frame02.jpg",
+      "phase2_long_route15_frame03.jpg"
+    ]
+  },
+  {
+    "key": "v4_arrival_ep13",
+    "title": "V4 策略 · Episode 13 成功到达",
+    "path": "videos/V4_v4_ep13_arrive.mp4",
+    "repo_path": "artifacts/videos/v4_pp8_actor_ep13_arrive_20260827.mp4",
+    "frames": 128,
+    "fps": 10.0,
+    "duration": 12.8,
+    "resolution": "1280x720",
+    "shots": [
+      "v4_arrival_ep13_frame01.jpg",
+      "v4_arrival_ep13_frame02.jpg",
+      "v4_arrival_ep13_frame03.jpg"
+    ]
+  },
+  {
+    "key": "depth_rgb_gt",
+    "title": "V0 深度头 · RGB / 预测深度 / GT 对比",
+    "path": "videos/V5_depth_rgb_gt.mp4",
+    "repo_path": "experiments/aerial/rl/artifacts/rgb_dhat_gt_traj_10s.mp4",
+    "frames": 50,
+    "fps": 5.0,
+    "duration": 10.0,
+    "resolution": "672x224",
+    "shots": [
+      "depth_rgb_gt_frame01.jpg",
+      "depth_rgb_gt_frame02.jpg",
+      "depth_rgb_gt_frame03.jpg"
+    ]
+  }
+]

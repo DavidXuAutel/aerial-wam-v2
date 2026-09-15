@@ -8,6 +8,8 @@ __pycache__/
 *.png
 *.jpg
 *.jpeg
+!docs/report/aerial-wam-v2-仿真视频佐证/**/*.jpg
+!docs/report/aerial-wam-v2-仿真视频佐证/**/*.jpeg
 artifacts/**/*
 !artifacts/**/.gitkeep
 experiments/aerial/rl/artifacts/**/*

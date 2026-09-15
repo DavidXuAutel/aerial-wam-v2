@@ -1,0 +1,29 @@
+{
+  "route_label": "PHASE-2 ROUTE 10 (ARM3 polyline+RG+HA)",
+  "route_idx": 9,
+  "protocol": "phase2_toward_g_closed_loop_replay",
+  "start_pos": [
+    -1152.136,
+    -217.79,
+    21.304
+  ],
+  "goal_pos": [
+    -1044.94,
+    -246.771,
+    21.304
+  ],
+  "initial_distance_m": 111.04449908482626,
+  "final_distance_m": 2.9630647896765128,
+  "n_flown_steps": 346,
+  "n_video_frames": 346,
+  "progress_ratio": 0.9733164198668406,
+  "arrived": true,
+  "fps": 5.0,
+  "duration_seconds": 71.2,
+  "videos": {
+    "first_person_ego": "/home/yao/aerial-wam-v2/artifacts/videos/wam_phase2_route10_arm3_dual/phase2_route10_arm3_first_person_ego.mp4",
+    "full_flight_path": "/home/yao/aerial-wam-v2/artifacts/videos/wam_phase2_route10_arm3_dual/phase2_route10_arm3_full_flight_path.mp4",
+    "dual_view_dashboard": "/home/yao/aerial-wam-v2/artifacts/videos/wam_phase2_route10_arm3_dual/phase2_route10_arm3_dual_view_dashboard.mp4"
+  },
+  "traj_source": "/home/yao/aerial-wam-v2/artifacts/wam_phase2_route10_efficiency_20260915/arm3_polyline_rolling_global_ha_traj/route09.jsonl"
+}

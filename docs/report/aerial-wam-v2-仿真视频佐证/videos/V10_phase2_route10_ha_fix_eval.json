@@ -1,0 +1,69 @@
+{
+  "protocol_version": "wam_phase2_goal_scene_e0_20260903",
+  "goal_feat_mode": "meter",
+  "actor_ckpt": "/home/yao/aerial-wam-v2/experiments/aerial/rl/artifacts/v4_ac_ckpt_phase2_toward_g_20260905_112006/v4_ac_latest.pt",
+  "depth_ckpt": "/home/yao/aerial-wam-v2/experiments/aerial/rl/artifacts/depth_ckpt_p45mid_s8j_20260825/depth_best_holdout_da3_ft_head.pt",
+  "tau_ckpt": "/home/yao/aerial-wam-v2/experiments/aerial/rl/artifacts/tau_ckpt_foe_r60_20260815/tau_foe_calibrator.pt",
+  "r_m_intent": 100.0,
+  "cruise_speed_m_s": 10.0,
+  "max_steps": 600,
+  "spawn_tol_m": 12.0,
+  "subgoal_source": "polyline",
+  "rolling_global": true,
+  "global_horizon_m": 60.0,
+  "global_replan_period_s": 1.0,
+  "route_indices": [
+    9
+  ],
+  "n_scored": 1,
+  "n_spawn_fail_f1": 0,
+  "metrics": {
+    "arrival_rate": 1.0,
+    "spl": 0.7936,
+    "severe_collision_rate": 0.0,
+    "mean_goal_closure": 0.9734,
+    "n_monotone_inflate": 0,
+    "mean_progress_ratio": 0.992,
+    "mean_intervention_rate": 0.4047,
+    "mean_global_replans": 40.0,
+    "n_intent_replans": 0,
+    "n_intent_offaxis": 0,
+    "intent_offaxis_frac": 0.0,
+    "max_intent_dev_deg": 0.0
+  },
+  "thresholds": {
+    "arrival_rate_min": 0.8,
+    "spl_min": 0.3,
+    "severe_collision_rate_max": 0.1,
+    "mean_intervention_rate_max": 0.5,
+    "mean_progress_ratio_diagnostic_only": 0.9
+  },
+  "verdict": "PASS",
+  "episodes": [
+    {
+      "route_idx": 9,
+      "base_route_idx": 14,
+      "nominal_length_m": 123.0,
+      "actual_length_m": 154.99,
+      "steps": 215,
+      "d_start_m": 111.04,
+      "d_min_m": 2.95,
+      "d_final_m": 2.95,
+      "goal_closure": 0.9734,
+      "monotone_inflate": false,
+      "arrived": true,
+      "collided": false,
+      "severe_collision": false,
+      "progress_ratio": 0.992,
+      "spl": 0.7936,
+      "intervention_rate": 0.4047,
+      "n_global_replans": 40,
+      "subgoal_source": "polyline",
+      "n_intent_replans": 0,
+      "n_intent_offaxis": 0,
+      "mean_intent_dev_deg": 0.0,
+      "max_intent_dev_deg": 0.0,
+      "fail_tag": null
+    }
+  ]
+}
